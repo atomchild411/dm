@@ -24,7 +24,47 @@ namespace CloseCode
 	};
 }
 
+#ifdef __sgi
+// websocketpp gives DNS, the TCP connect, the TLS handshake and the
+// WebSocket handshake 5 s each.  An R10000 doing other work can take longer
+// than that over the TLS handshake alone, so they get 30 s here.
+struct WSClientConfig : public websocketpp::config::asio_tls_client
+{
+	typedef WSClientConfig type;
+	typedef websocketpp::config::asio_tls_client base;
+
+	typedef base::concurrency_type concurrency_type;
+	typedef base::request_type request_type;
+	typedef base::response_type response_type;
+	typedef base::message_type message_type;
+	typedef base::con_msg_manager_type con_msg_manager_type;
+	typedef base::endpoint_msg_manager_type endpoint_msg_manager_type;
+	typedef base::alog_type alog_type;
+	typedef base::elog_type elog_type;
+	typedef base::rng_type rng_type;
+
+	struct transport_config : public base::transport_config
+	{
+		typedef type::concurrency_type concurrency_type;
+		typedef type::alog_type alog_type;
+		typedef type::elog_type elog_type;
+		typedef type::request_type request_type;
+		typedef type::response_type response_type;
+		typedef websocketpp::transport::asio::tls_socket::endpoint socket_type;
+
+		static const long timeout_dns_resolve = 30000;
+		static const long timeout_connect = 30000;
+		static const long timeout_socket_post_init = 30000; // the TLS handshake
+	};
+
+	typedef websocketpp::transport::asio::endpoint<transport_config> transport_type;
+
+	static const long timeout_open_handshake = 30000;
+};
+typedef websocketpp::client<WSClientConfig> WSClient;
+#else
 typedef websocketpp::client<websocketpp::config::asio_tls_client> WSClient;
+#endif
 typedef websocketpp::lib::shared_ptr<websocketpp::lib::thread> WSThreadSharedPtr;
 typedef websocketpp::lib::asio::ssl::context AsioSslContext;
 typedef websocketpp::lib::shared_ptr<AsioSslContext> AsioSslContextSharedPtr;

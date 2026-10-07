@@ -48,10 +48,20 @@ void WSConnectionMetadata::OnFail(WSClient* c, websocketpp::connection_hdl hdl)
 		guiMessage += " (transport error " + xportEc.message() + ")";
 
 	namespace SocketErrors = websocketpp::transport::asio::socket::error;
+	namespace TransportErrors = websocketpp::transport::error;
 	using WebsocketErrors = websocketpp::error::value;
 
+	// The numbers below come from four lists that reuse the same values (a
+	// transport timeout is 9, as is a socket's failed SNI host name), so
+	// each switch only looks at the list it is about.
+	const websocketpp::lib::error_code ec = pConn->get_ec();
+	const int socketError = ec.category() == websocketpp::transport::asio::socket::get_socket_category() ? ec.value() : 0;
+	const int wsError = ec.category() == websocketpp::error::get_category() ? ec.value() : 0;
+	const int sysError = ec.category() == websocketpp::lib::asio::error::get_system_category() ? ec.value() : 0;
+	const bool timedOut = ec.category() == TransportErrors::get_category() && ec.value() == TransportErrors::timeout;
+
 	bool isTLSError = false;
-	switch (pConn->get_ec().value()) {
+	switch (socketError) {
 		case SocketErrors::missing_tls_init_handler:
 		case SocketErrors::tls_failed_sni_hostname:
 		case SocketErrors::invalid_tls_context:
@@ -61,8 +71,8 @@ void WSConnectionMetadata::OnFail(WSClient* c, websocketpp::connection_hdl hdl)
 			isTLSError = true;
 	}
 
-	bool mayRetry = false;
-	switch (pConn->get_ec().value()) {
+	bool mayRetry = timedOut;
+	switch (sysError) {
 #ifdef _WIN32
 		case WSAHOST_NOT_FOUND:
 		case WSATRY_AGAIN:
@@ -75,8 +85,14 @@ void WSConnectionMetadata::OnFail(WSClient* c, websocketpp::connection_hdl hdl)
 		case ENETUNREACH:
 		case EHOSTUNREACH:
 #endif
+			mayRetry = true;
+	}
+	switch (socketError) {
 		case SocketErrors::tls_handshake_timeout:
 		case SocketErrors::tls_handshake_failed:
+			mayRetry = true;
+	}
+	switch (wsError) {
 		case WebsocketErrors::bad_connection:
 		case WebsocketErrors::open_handshake_timeout:
 		case WebsocketErrors::close_handshake_timeout:
