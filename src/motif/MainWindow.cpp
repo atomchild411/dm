@@ -25,6 +25,7 @@
 #include "MessageView.hpp"
 #include "Theme.hpp"
 #include "IconList.hpp"
+#include "ImageViewer.hpp"
 #include "Perf.hpp"
 #include "models/ActiveStatus.hpp"
 
@@ -680,6 +681,7 @@ void MainWindow::ShowDemoLists()
 void MainWindow::OnImagesChanged()
 {
 	m_messages->ImagesChanged();
+	ImageViewer::ImagesChanged();
 	if (!m_listRepaintTimer)
 		m_listRepaintTimer = XtAppAddTimeOut(XtWidgetToApplicationContext(m_shell), 100, ListRepaintCB, this);
 }

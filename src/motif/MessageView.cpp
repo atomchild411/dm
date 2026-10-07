@@ -15,6 +15,7 @@
 #include "state/MessageCache.hpp"
 #include "Theme.hpp"
 #include "ImageCache.hpp"
+#include "ImageViewer.hpp"
 #include "Perf.hpp"
 
 // Geometry, in pixels
@@ -40,8 +41,9 @@ struct MessageView::ItemExtra
 	std::vector<std::unique_ptr<FormattedText>> embedTexts;
 	std::vector<int> embedTops;
 	std::vector<int> embedHeights;
-	// images: where they go (item coordinates) and what to fetch
-	struct Pic { Rect rect; std::string url; };
+	// images: where they go (item coordinates), what to fetch, and what a
+	// click shows in the image viewer (no url there: a click opens the link)
+	struct Pic { Rect rect; std::string url; ImageViewer::Picture view; };
 	std::vector<Pic> attachPics;       // one per attachment; empty url: a file line
 	std::vector<Pic> embedThumbs;      // one per embed; empty url: none
 	std::vector<Pic> embedImages;      // one per embed; empty url: none
@@ -409,12 +411,17 @@ void MessageView::LayoutItem(Item& item, int width)
 			FitBox(w, h, std::min(300, right - TEXT_X), 300);
 			y += 4;
 			Rect r(TEXT_X, y, TEXT_X + w, y + h);
-			ex.attachPics.push_back({ r, PreviewURL(att.m_proxyUrl, w, h, att.m_width, att.m_height) });
+			ImageViewer::Picture view;
+			view.url = att.m_proxyUrl;
+			view.width = att.m_width;
+			view.height = att.m_height;
+			view.title = att.m_fileName;
+			ex.attachPics.push_back({ r, PreviewURL(att.m_proxyUrl, w, h, att.m_width, att.m_height), view });
 			ex.links.push_back(ItemLink{ r, att.m_actualUrl });
 			y += h + 4;
 			continue;
 		}
-		ex.attachPics.push_back({ Rect(TEXT_X, y, right, y + lh), "" });
+		ex.attachPics.push_back({ Rect(TEXT_X, y, right, y + lh), "", ImageViewer::Picture() });
 		ex.links.push_back(ItemLink{ Rect(TEXT_X, y, right, y + lh), att.m_actualUrl });
 		y += lh;
 	}
@@ -459,6 +466,12 @@ void MessageView::LayoutItem(Item& item, int width)
 			FitBox(w, h, THUMB, THUMB);
 			th.rect = Rect(boxRight - 8 - w, top + 8, boxRight - 8, top + 8 + h);
 			th.url = PreviewURL(em.m_thumbnailProxiedUrl, w, h, em.m_thumbnailWidth, em.m_thumbnailHeight);
+			if (em.m_type != RichEmbed::VIDEO) { // a video plays in the browser
+				th.view.url = em.m_thumbnailProxiedUrl;
+				th.view.width = em.m_thumbnailWidth;
+				th.view.height = em.m_thumbnailHeight;
+				th.view.title = !em.m_title.empty() ? em.m_title : em.m_providerName;
+			}
 			y = std::max(y, th.rect.bottom);
 		}
 		std::string imgUrl = em.m_bHasImage ? em.m_imageProxiedUrl :
@@ -471,6 +484,12 @@ void MessageView::LayoutItem(Item& item, int width)
 			y += 6;
 			img.rect = Rect(TEXT_X + 12, y, TEXT_X + 12 + w, y + h);
 			img.url = PreviewURL(imgUrl, w, h, ow, oh);
+			if (em.m_type != RichEmbed::VIDEO) {
+				img.view.url = imgUrl;
+				img.view.width = ow;
+				img.view.height = oh;
+				img.view.title = !em.m_title.empty() ? em.m_title : em.m_providerName;
+			}
 			y += h;
 		}
 		ex.embedThumbs.push_back(th);
@@ -599,6 +618,16 @@ void MessageView::OnClick(int x, int y)
 			if (Inside(words[ii.m_wordIndex].m_rect, x, iy)) {
 				GetFrontend()->LaunchURL(ii.m_destination);
 				return;
+			}
+		}
+		// a picture opens in the image viewer
+		const std::vector<ItemExtra::Pic>* pics[] = { &it.extra->attachPics, &it.extra->embedImages, &it.extra->embedThumbs };
+		for (auto* list : pics) {
+			for (auto& pic : *list) {
+				if (!pic.view.url.empty() && Inside(pic.rect, x, iy)) {
+					ImageViewer::Show(m_area, m_fmt, pic.view);
+					return;
+				}
 			}
 		}
 		for (auto& l : it.extra->links) {
