@@ -79,9 +79,15 @@ public:
 	// A disc of one colour filling w x h, at the given opacity (0..255).
 	void FillCircle(int x, int y, int w, int h, Rgb c, int alpha = 255);
 
+	// Moves the whole picture up by dy rows (down when dy < 0); the rows
+	// it leaves are not cleared.
+	void Scroll(int dy);
+
 	// Shows the rectangle (x, y, w, h) of the canvas at (dx, dy) in a
-	// drawable.
-	void Present(const PixelFormat& fmt, Drawable d, GC gc, int x, int y, int w, int h, int dx, int dy) const;
+	// drawable.  A dithered visual's pattern is anchored ditherDy rows
+	// above the drawable's top (a scrolled view passes its scroll offset,
+	// so pixels it moves keep matching pixels drawn afresh).
+	void Present(const PixelFormat& fmt, Drawable d, GC gc, int x, int y, int w, int h, int dx, int dy, int ditherDy = 0) const;
 
 private:
 	bool ClipRect(int& x, int& y, int& w, int& h) const;

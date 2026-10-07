@@ -32,6 +32,8 @@ public:
 	void ScrollToBottom();
 	void ScrollTo(int y) { SetScroll(y); }
 	int GetScroll() const { return m_scrollY; }
+	// Each item's message, place and height, to compare layouts (--bench).
+	std::string LayoutSignature() const;
 
 	// The text size changed, or the colours: lay everything out again.
 	void Relayout();
@@ -66,13 +68,22 @@ private:
 	static void ResizeCB(Widget, XtPointer, XtPointer);
 	static void ScrollCB(Widget, XtPointer, XtPointer);
 	static void InputEH(Widget, XtPointer, XEvent*, Boolean*);
+	static void VisibilityEH(Widget, XtPointer, XEvent*, Boolean*);
+	static void GraphicsExposeEH(Widget, XtPointer, XEvent*, Boolean*);
 
-	void Rebuild();
+	// Brings the items up to date with the cache; true when the only change
+	// is messages added after the last one.
+	bool Rebuild();
 	void LayoutAll();
 	void LayoutItem(Item& item, int width);
 	void UpdateScrollbar();
 	void SetScroll(int y);
+	// Paint draws the whole view; Update only what scrolling or messages
+	// added at the end changed, moving the rest (XCopyArea) when it can.
 	void Paint();
+	void Update();
+	bool CheckSize();
+	void PaintBand(int y0, int y1);
 	void PaintItem(Item& item, int top);
 	void RequestVisibleGaps();
 	void OnClick(int x, int y);
@@ -94,4 +105,13 @@ private:
 	int m_viewW = 1, m_viewH = 1;
 	bool m_stickToBottom = true;
 	XtIntervalId m_repaintTimer = 0;
+
+	// what the canvas (and the window) show
+	bool m_canvasValid = false;   // the view as of m_paintedScrollY
+	int m_paintedScrollY = 0;
+	int m_dirtyFromY = -1;        // content y from which it is out of date; -1: none
+	bool m_unobscured = false;    // the window wholly visible: XCopyArea can move it
+	// recent cost of an update by moving pixels, and of drawing it all (ms)
+	double m_copyMs = 0, m_fullMs = 0;
+	int m_updatesSinceProbe = 0;
 };

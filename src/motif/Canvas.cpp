@@ -479,7 +479,18 @@ static XImage* MakeShmImage(Display* dpy, Visual* visual, int depth, int w, int 
 	return img;
 }
 
-void Canvas::Present(const PixelFormat& fmt, Drawable dr, GC gc, int x, int y, int w, int h, int dx, int dy) const
+void Canvas::Scroll(int dy)
+{
+	if (dy == 0 || dy >= m_h || -dy >= m_h)
+		return;
+	size_t rows = (size_t) (m_h - (dy > 0 ? dy : -dy));
+	if (dy > 0)
+		memmove(&m_px[0], &m_px[(size_t) dy * m_w], rows * m_w * sizeof(Rgb));
+	else
+		memmove(&m_px[(size_t) -dy * m_w], &m_px[0], rows * m_w * sizeof(Rgb));
+}
+
+void Canvas::Present(const PixelFormat& fmt, Drawable dr, GC gc, int x, int y, int w, int h, int dx, int dy, int ditherDy) const
 {
 	if (x < 0) { w += x; dx -= x; x = 0; }
 	if (y < 0) { h += y; dy -= y; y = 0; }
@@ -503,7 +514,7 @@ void Canvas::Present(const PixelFormat& fmt, Drawable dr, GC gc, int x, int y, i
 			m_upload = u;
 	}
 	if (m_upload) {
-		fmt.Convert(m_upload->img, &m_px[(size_t) y * m_w + x], m_w, w, h, dx, dy);
+		fmt.Convert(m_upload->img, &m_px[(size_t) y * m_w + x], m_w, w, h, dx, dy + ditherDy);
 		XShmPutImage(dpy, dr, gc, m_upload->img, 0, 0, dx, dy, w, h, False);
 		XSync(dpy, False); // the server has read the pixels before they change again
 		return;
@@ -514,7 +525,7 @@ void Canvas::Present(const PixelFormat& fmt, Drawable dr, GC gc, int x, int y, i
 	for (int by = 0; by < h; by += band)
 	{
 		int bh = std::min(band, h - by);
-		XImage* img = fmt.MakeImage(&m_px[(size_t) (y + by) * m_w + x], m_w, w, bh, dx, dy + by);
+		XImage* img = fmt.MakeImage(&m_px[(size_t) (y + by) * m_w + x], m_w, w, bh, dx, dy + by + ditherDy);
 		if (!img)
 			return;
 		XPutImage(fmt.GetDisplay(), dr, gc, img, 0, 0, dx, dy + by, w, bh);

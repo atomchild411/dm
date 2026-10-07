@@ -7,6 +7,7 @@
 
 #include <cstdio>
 #include <ctime>
+#include <list>
 #include <string>
 #include <vector>
 
@@ -51,7 +52,8 @@ namespace
 	Message MakeMessage(int k, time_t when)
 	{
 		Message m;
-		m.m_snowflake = ++g_nextId;
+		g_nextId += 4; // room for messages inserted between
+		m.m_snowflake = g_nextId;
 		int a = (k * 7 + k / 3) % 12;
 		m.m_author_snowflake = (Snowflake) (1001 + a) << 22;
 		m.m_author = g_authors[a];
@@ -167,6 +169,47 @@ namespace
 			Sync();
 		}
 		results.push_back({ "repaint the three lists", 50, Perf::Now() - t });
+
+		// edits and deletions (and a message from the past) here and there;
+		// then the items, as updated one change at a time, must match ones
+		// made afresh
+		{
+			std::list<MessagePtr> msgs;
+			GetMessageCache()->GetLoadedMessages(BENCH_CHANNEL, 0, msgs);
+			std::vector<Snowflake> ids;
+			for (auto& m : msgs)
+				ids.push_back(m->m_snowflake);
+			t = Perf::Now();
+			for (int i = 0; i < 60; i++) {
+				Snowflake id = ids[(i * 97) % ids.size()];
+				if (i % 3 == 0) {
+					GetMessageCache()->DeleteMessage(BENCH_CHANNEL, id);
+				}
+				else if (i % 3 == 1) {
+					for (auto& m : msgs) {
+						if (m->m_snowflake == id) {
+							Message e = *m;
+							e.m_message = std::string(g_texts[(i + 3) % (sizeof g_texts / sizeof g_texts[0])]) + " (edited)";
+							GetMessageCache()->EditMessage(BENCH_CHANNEL, e);
+							break;
+						}
+					}
+				}
+				else {
+					Message old = MakeMessage(i, g_now - MESSAGES * 150 + i * 40);
+					old.m_snowflake = id - 1; // between two others
+					GetMessageCache()->AddMessage(BENCH_CHANNEL, old);
+				}
+				mv->Refresh();
+				Sync();
+			}
+			results.push_back({ "edit/delete/insert earlier", 60, Perf::Now() - t });
+			std::string updated = mv->LayoutSignature();
+			mv->SetChannel(0, BENCH_CHANNEL);
+			Sync();
+			printf("dm bench: items after the changes match a fresh layout: %s\n",
+				updated == mv->LayoutSignature() ? "yes" : "NO");
+		}
 
 		// text alone: measuring and eliding names
 		t = Perf::Now();

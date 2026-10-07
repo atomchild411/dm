@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 
 #include <Xm/DrawingA.h>
@@ -161,6 +162,8 @@ MessageView::MessageView(Widget parent, const PixelFormat& fmt) : m_fmt(fmt)
 	XtAddCallback(m_scroll, XmNvalueChangedCallback, ScrollCB, this);
 	XtAddCallback(m_scroll, XmNdragCallback, ScrollCB, this);
 	XtAddEventHandler(m_area, ButtonPressMask, False, InputEH, this);
+	XtAddEventHandler(m_area, VisibilityChangeMask, False, VisibilityEH, this);
+	XtAddEventHandler(m_area, NoEventMask, True, GraphicsExposeEH, this);
 
 	XtManageChild(m_form);
 	ApplyTheme(m_ctx);
@@ -179,6 +182,7 @@ void MessageView::SetChannel(Snowflake guild, Snowflake channel)
 	m_requestedGaps.clear();
 	m_scrollY = 0;
 	m_stickToBottom = true;
+	m_canvasValid = false;
 	Refresh();
 }
 
@@ -197,8 +201,14 @@ void MessageView::Refresh()
 		}
 	}
 
-	Rebuild();
+	int oldEnd = m_items.empty() ? 0 : m_items.back().y + m_items.back().height;
+	bool appendOnly = Rebuild();
 	LayoutAll();
+	// what is on screen stays valid when messages only came after it
+	if (!appendOnly)
+		m_canvasValid = false;
+	else if (m_dirtyFromY < 0 || oldEnd < m_dirtyFromY)
+		m_dirtyFromY = oldEnd;
 
 	if (atBottom) {
 		ScrollToBottom();
@@ -216,6 +226,7 @@ void MessageView::Refresh()
 
 void MessageView::Relayout()
 {
+	m_canvasValid = false;
 	ApplyTheme(m_ctx);
 	for (auto& it : m_items) {
 		it.text.Clear();
@@ -224,7 +235,7 @@ void MessageView::Relayout()
 	Refresh();
 }
 
-void MessageView::Rebuild()
+bool MessageView::Rebuild()
 {
 	std::list<MessagePtr> msgs;
 	if (m_channel)
@@ -234,49 +245,45 @@ void MessageView::Rebuild()
 	Channel* pChan = pInst ? pInst->GetChannelGlobally(m_channel) : nullptr;
 	std::string chanName = pChan ? pChan->m_name : "";
 
-	// Items of messages that did not change keep their parsed text and
-	// their layout (an edited message is a new object in the cache).
-	std::map<Snowflake, Item*> old;
-	for (auto& it : m_items)
-		old[it.msg->m_snowflake] = &it;
-
-	std::list<Item> items;
+	// The cache lists a channel's messages in snowflake order, and the items
+	// follow it: walking both, the items of messages still there stay where
+	// they are with their parsed text and layout (an edited message is a new
+	// object in the cache, and gets a new item).
+	bool appendOnly = true;
+	auto cur = m_items.begin();
 	const Message* prev = nullptr;
+	bool prevSystem = false;
 	int prevDay = -1;
 	for (auto& mp : msgs)
 	{
-		items.emplace_back();
-		Item& item = items.back();
-		auto o = old.find(mp->m_snowflake);
-		bool reuse = o != old.end() && o->second->msg == mp;
-
-		if (reuse) {
-			Item& o2 = *o->second;
-			std::swap(item.text, o2.text);
-			std::swap(item.interactables, o2.interactables);
-			std::swap(item.reply, o2.reply);
-			item.extra = o2.extra;
-			item.height = o2.height;
-			item.textTop = o2.textTop;
-			item.day = o2.day;
-			item.laidOutWidth = o2.laidOutWidth;
-			item.laidOutPx = o2.laidOutPx;
-			item.laidOutGrouped = o2.laidOutGrouped;
-			item.laidOutDateSep = o2.laidOutDateSep;
+		while (cur != m_items.end() && cur->msg->m_snowflake < mp->m_snowflake) {
+			cur = m_items.erase(cur);
+			appendOnly = false;
 		}
-		else {
+		bool isNew = true;
+		if (cur != m_items.end() && cur->msg->m_snowflake == mp->m_snowflake) {
+			if (cur->msg == mp)
+				isNew = false;
+			else
+				cur = m_items.erase(cur); // edited
+		}
+		if (isNew && cur != m_items.end())
+			appendOnly = false; // not at the end
+		Item& item = isNew ? *m_items.emplace(cur) : *cur++;
+
+		bool isGap = mp->IsLoadGap();
+		if (isNew) {
+			item.msg = mp;
 			item.extra = std::make_shared<ItemExtra>();
-			if (!mp->IsLoadGap())
+			item.systemText = SystemText(*mp, chanName);
+			item.systemLine = !item.systemText.empty();
+			if (!isGap)
 				item.day = DayNumber(mp->m_dateTime);
 		}
 
-		item.msg = mp;
-		item.systemText = SystemText(*mp, chanName);
-		item.systemLine = !item.systemText.empty();
-
-		bool isGap = mp->IsLoadGap();
-		int day = isGap ? prevDay : item.day;
 		ItemExtra& ex = *item.extra;
+		int day = isGap ? prevDay : item.day;
+		bool hadSep = !ex.dateSep.empty(), wasGrouped = item.grouped;
 		if (!isGap && day != prevDay && mp->m_dateTime) {
 			if (ex.dateSep.empty())
 				ex.dateSep = DayOf(mp->m_dateTime);
@@ -286,18 +293,33 @@ void MessageView::Rebuild()
 
 		item.grouped = prev && !item.systemLine && !prev->IsLoadGap() &&
 			ex.dateSep.empty() &&
-			SystemText(*prev, chanName).empty() &&
+			!prevSystem &&
 			prev->m_author_snowflake == mp->m_author_snowflake &&
 			prev->m_author == mp->m_author &&
 			!mp->IsReply() &&
 			mp->m_dateTime - prev->m_dateTime < GROUP_SECONDS;
+		if (!isNew && (item.grouped != wasGrouped || ex.dateSep.empty() == hadSep))
+			appendOnly = false; // an old message looks different
 
 		if (!isGap)
 			prevDay = day;
 		prev = mp.get();
+		prevSystem = item.systemLine;
 	}
+	if (cur != m_items.end()) {
+		m_items.erase(cur, m_items.end());
+		appendOnly = false;
+	}
+	return appendOnly;
+}
 
-	m_items.swap(items);
+std::string MessageView::LayoutSignature() const
+{
+	std::string s;
+	for (auto& it : m_items)
+		s += std::to_string(it.msg->m_snowflake) + ":" + std::to_string(it.y) + "+" + std::to_string(it.height) +
+			(it.grouped ? "g" : "") + (it.extra->dateSep.empty() ? "" : "d") + ";";
+	return s;
 }
 
 void MessageView::LayoutAll()
@@ -487,7 +509,7 @@ void MessageView::SetScroll(int y)
 	m_scrollY = std::min(std::max(0, y), maxY);
 	m_stickToBottom = m_scrollY >= maxY;
 	UpdateScrollbar();
-	Paint();
+	Update();
 }
 
 void MessageView::ScrollToBottom()
@@ -527,7 +549,20 @@ void MessageView::ScrollCB(Widget, XtPointer client, XtPointer call)
 	XmScrollBarCallbackStruct* cbs = (XmScrollBarCallbackStruct*) call;
 	self->m_scrollY = cbs->value;
 	self->m_stickToBottom = self->m_scrollY >= self->m_contentHeight - self->m_viewH;
-	self->Paint();
+	self->Update();
+}
+
+void MessageView::VisibilityEH(Widget, XtPointer client, XEvent* ev, Boolean*)
+{
+	if (ev->type == VisibilityNotify)
+		((MessageView*) client)->m_unobscured = ev->xvisibility.state == VisibilityUnobscured;
+}
+
+// A copy that found part of its source hidden after all: draw it all.
+void MessageView::GraphicsExposeEH(Widget, XtPointer client, XEvent* ev, Boolean*)
+{
+	if (ev->type == GraphicsExpose && ev->xgraphicsexpose.count == 0)
+		((MessageView*) client)->Paint();
 }
 
 void MessageView::InputEH(Widget, XtPointer client, XEvent* ev, Boolean*)
@@ -803,20 +838,12 @@ void MessageView::PaintItem(Item& item, int top)
 	}
 }
 
-void MessageView::Paint()
+bool MessageView::CheckSize()
 {
-	if (!XtIsRealized(m_area))
-		return;
-	Perf::Scope perf(Perf::MV_PAINT);
-
-	Display* dpy = XtDisplay(m_area);
-	Window win = XtWindow(m_area);
-	if (!m_gc)
-		m_gc = XCreateGC(dpy, win, 0, NULL);
-
 	// the first exposure can come before any resize callback
 	Dimension width = 0, height = 0;
 	XtVaGetValues(m_area, XmNwidth, &width, XmNheight, &height, NULL);
+	bool changed = false;
 	if (width != m_viewW || height != m_viewH) {
 		bool widthChanged = width != m_viewW;
 		m_viewW = width;
@@ -828,12 +855,27 @@ void MessageView::Paint()
 			m_scrollY = maxY;
 		}
 		UpdateScrollbar();
+		changed = true;
 	}
-
-	if (m_canvas.Width() != m_viewW || m_canvas.Height() != m_viewH)
+	if (m_canvas.Width() != m_viewW || m_canvas.Height() != m_viewH) {
 		m_canvas.Resize(m_viewW, m_viewH);
+		changed = true;
+	}
+	if (changed)
+		m_canvasValid = false;
+	return changed;
+}
 
-	m_canvas.Fill(0, 0, m_viewW, m_viewH, m_ctx.bg);
+// Draws window rows y0..y1 into the canvas and shows them.
+void MessageView::PaintBand(int y0, int y1)
+{
+	Display* dpy = XtDisplay(m_area);
+	Window win = XtWindow(m_area);
+	if (!m_gc)
+		m_gc = XCreateGC(dpy, win, 0, NULL);
+
+	m_canvas.SetClip(0, y0, m_viewW, y1 - y0);
+	m_canvas.Fill(0, y0, m_viewW, y1 - y0, m_ctx.bg);
 	m_ctx.canvas = &m_canvas;
 
 	if (!m_channel) {
@@ -844,12 +886,99 @@ void MessageView::Paint()
 
 	for (auto& it : m_items) {
 		int top = it.y - m_scrollY;
-		if (top + it.height < 0 || top > m_viewH)
+		if (top + it.height < y0 || top > y1)
 			continue;
 		PaintItem(it, top);
 	}
 
 	m_ctx.canvas = nullptr;
-	m_canvas.Present(m_fmt, win, m_gc, 0, 0, m_viewW, m_viewH, 0, 0);
+	m_canvas.ClearClip();
+	// the dither pattern follows the content, so moved rows still match
+	m_canvas.Present(m_fmt, win, m_gc, 0, y0, m_viewW, y1 - y0, 0, y0, m_scrollY);
+}
+
+void MessageView::Paint()
+{
+	if (!XtIsRealized(m_area))
+		return;
+	Perf::Scope perf(Perf::MV_PAINT);
+	double t0 = Perf::Now();
+	CheckSize();
+	PaintBand(0, m_viewH);
+	double ms = (Perf::Now() - t0) * 1e3;
+	m_fullMs = m_fullMs > 0 ? m_fullMs * 0.75 + ms * 0.25 : ms;
+	m_canvasValid = true;
+	m_paintedScrollY = m_scrollY;
+	m_dirtyFromY = -1;
+	RequestVisibleGaps();
+}
+
+// DM_NO_SCROLLCOPY: always draw the whole view (to compare).
+static bool ScrollCopyOff()
+{
+	static int off = -1;
+	if (off < 0)
+		off = getenv("DM_NO_SCROLLCOPY") != nullptr;
+	return off != 0;
+}
+
+void MessageView::Update()
+{
+	if (!XtIsRealized(m_area))
+		return;
+	if (CheckSize() || !m_canvasValid || !m_unobscured || ScrollCopyOff()) {
+		Paint();
+		return;
+	}
+	int dy = m_scrollY - m_paintedScrollY; // > 0: the content moves up
+	if (dy >= m_viewH || -dy >= m_viewH) {
+		Paint();
+		return;
+	}
+
+	// the rows scrolling uncovers, and from where messages were added
+	int y0 = m_viewH, y1 = 0;
+	if (dy > 0) {
+		y0 = m_viewH - dy;
+		y1 = m_viewH;
+	}
+	else if (dy < 0) {
+		y0 = 0;
+		y1 = -dy;
+	}
+	if (m_dirtyFromY >= 0 && m_dirtyFromY - m_scrollY < m_viewH) {
+		y0 = std::min(y0, std::max(0, m_dirtyFromY - m_scrollY));
+		y1 = m_viewH;
+	}
+	if (dy == 0 && y0 >= y1)
+		return;
+
+	// Moving pixels is a blit on a real board, but an emulated one can take
+	// longer over it than over drawing and sending every pixel again: each
+	// way's recent cost decides, and the other is tried every 16 updates.
+	bool copy = m_copyMs <= 0 || m_fullMs <= 0 || m_copyMs <= m_fullMs;
+	if (++m_updatesSinceProbe >= 16) {
+		m_updatesSinceProbe = 0;
+		copy = !copy;
+	}
+	if (!copy) {
+		Paint();
+		return;
+	}
+
+	Perf::Scope perf(Perf::MV_PAINT);
+	double t0 = Perf::Now();
+	if (dy) {
+		m_canvas.Scroll(dy);
+		int h = m_viewH - std::abs(dy);
+		XCopyArea(XtDisplay(m_area), XtWindow(m_area), XtWindow(m_area), m_gc,
+			0, std::max(dy, 0), m_viewW, h, 0, std::max(-dy, 0));
+	}
+	if (y0 < y1)
+		PaintBand(y0, y1);
+	double ms = (Perf::Now() - t0) * 1e3;
+	m_copyMs = m_copyMs > 0 ? m_copyMs * 0.75 + ms * 0.25 : ms;
+	m_paintedScrollY = m_scrollY;
+	m_dirtyFromY = -1;
 	RequestVisibleGaps();
 }
