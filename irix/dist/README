@@ -33,6 +33,14 @@ Files:   ~/.discordmessenger: settings.json, motif.conf (text size) and
          roots of trust; DM_CA_FILE names another file), licenses/.
 Links:   open in the browser that DM_BROWSER or BROWSER names.
 Debugging: DM_DEBUG=1 prints the client's log on stderr.
+Speed:   DM_PERF=1 prints how often and how long its drawing and network
+         handling took, every minute and at exit (stderr).
+         discord-messenger --bench runs a fixed workload without logging
+         in and prints the time of each step, to compare machines or
+         releases.  DM_VISUAL=default draws on the screen's default visual
+         (8-bit dithered on most boards), DM_VISUAL=0x2b on the visual with
+         that id (xdpyinfo lists them).  DM_NO_SHM=1 sends pixels over the
+         X connection instead of shared memory.
 
 Source, and how it was built: https://github.com/atomchild411/dm
 (branch irix; irix/dist has this package's recipe).
