@@ -56,6 +56,7 @@ bool PixelFormat::Init(Display* dpy, Visual* visual, int depth, Colormap cmap)
 			m_bits[i] = BitCount(masks[i]);
 			m_shift[i] = HighBit(masks[i]); // position of the top bit
 		}
+		MakeDitherTables();
 		return true;
 	}
 
@@ -82,6 +83,7 @@ bool PixelFormat::Init(Display* dpy, Visual* visual, int depth, Colormap cmap)
 		if (ok) {
 			m_levels = levels;
 			m_cube.swap(cube);
+			MakeDitherTables();
 			return true;
 		}
 		if (!cube.empty())
@@ -92,7 +94,43 @@ bool PixelFormat::Init(Display* dpy, Visual* visual, int depth, Colormap cmap)
 	m_levels = 2;
 	m_cube.assign(8, BlackPixel(dpy, DefaultScreen(dpy)));
 	m_cube[7] = WhitePixel(dpy, DefaultScreen(dpy));
+	MakeDitherTables();
 	return false;
+}
+
+void PixelFormat::MakeDitherTables()
+{
+	m_dither.assign(3 * 16 * 256, 0);
+	for (int i = 0; i < 3; i++)
+	for (int t = 0; t < 16; t++)
+	for (int q = 0; q < 256; q++)
+	{
+		uint32_t v;
+		if (m_trueColor) {
+			int bits = m_bits[i];
+			if (bits < 8) {
+				// ordered dither between the two nearest levels
+				int top = (1 << bits) - 1;
+				int f = q * top * 16 / 255;
+				int l = f / 16 + ((f & 15) > t ? 1 : 0);
+				if (l > top) l = top;
+				v = (uint32_t) (((unsigned long) l << (m_shift[i] - bits + 1)) & m_mask[i]);
+			}
+			else {
+				int sft = m_shift[i] - 7;
+				v = (uint32_t) ((sft >= 0 ? (unsigned long) q << sft : (unsigned long) q >> -sft) & m_mask[i]);
+			}
+		}
+		else {
+			// scale to 0..(n-1)*16, then threshold; weighted for the cube
+			int n = m_levels;
+			int f = q * (n - 1) * 16 / 255;
+			int l = f / 16 + ((f & 15) > t ? 1 : 0);
+			if (l > n - 1) l = n - 1;
+			v = (uint32_t) (l * (i == 0 ? n * n : i == 1 ? n : 1));
+		}
+		m_dither[(i * 16 + t) * 256 + q] = v;
+	}
 }
 
 unsigned long PixelFormat::PixelOf(Rgb c) const
@@ -160,43 +198,14 @@ void PixelFormat::Convert(XImage* img, const Rgb* px, int stride, int w, int h, 
 	{
 		const Rgb* s = px + (size_t) y * stride;
 		uint8_t* row = (uint8_t*) img->data + (size_t) y * img->bytes_per_line;
+		const int* bayer = g_bayer[(y + originY) & 3];
 		for (int x = 0; x < w; x++)
 		{
 			Rgb c = s[x];
-			int t = g_bayer[(y + originY) & 3][(x + originX) & 3]; // 0..15
-			int v[3] = { RgbR(c), RgbG(c), RgbB(c) };
-			unsigned long p = 0;
-
-			if (m_trueColor) {
-				for (int i = 0; i < 3; i++) {
-					int bits = m_bits[i];
-					int q = v[i];
-					if (bits < 8) {
-						// ordered dither between the two nearest levels
-						int top = (1 << bits) - 1;
-						int f = q * top * 16 / 255;
-						q = f / 16 + ((f & 15) > t ? 1 : 0);
-						if (q > top) q = top;
-						p |= ((unsigned long) q << (m_shift[i] - bits + 1)) & m_mask[i];
-					}
-					else {
-						int sft = m_shift[i] - 7;
-						p |= (sft >= 0 ? (unsigned long) q << sft : (unsigned long) q >> -sft) & m_mask[i];
-					}
-				}
-			}
-			else {
-				int n = m_levels;
-				int idx[3];
-				for (int i = 0; i < 3; i++) {
-					// scale to 0..(n-1)*16, then threshold
-					int f = v[i] * (n - 1) * 16 / 255;
-					int lo = f / 16;
-					idx[i] = lo + ((f & 15) > t ? 1 : 0);
-					if (idx[i] > n - 1) idx[i] = n - 1;
-				}
-				p = m_cube[(idx[0] * n + idx[1]) * n + idx[2]];
-			}
+			int t = bayer[(x + originX) & 3]; // 0..15
+			const uint32_t* d = &m_dither[t * 256];
+			uint32_t a = d[RgbR(c)], b = d[16 * 256 + RgbG(c)], e = d[32 * 256 + RgbB(c)];
+			unsigned long p = m_trueColor ? (unsigned long) (a | b | e) : m_cube[a + b + e];
 			switch (bpp) {
 				case 8:
 					row[x] = (uint8_t) p;

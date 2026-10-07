@@ -44,6 +44,10 @@ private:
 	// colour cube for PseudoColor
 	int m_levels = 0;
 	std::vector<unsigned long> m_cube;
+	// [channel][dither threshold 0..15][value 0..255]: a TrueColor pixel's
+	// bits for that channel, or a PseudoColor cube index's share
+	std::vector<uint32_t> m_dither;
+	void MakeDitherTables();
 };
 
 // A client-side RGB image that the UI draws into, then shows in a window.

@@ -368,7 +368,8 @@ static void WmDeleteCB(Widget, XtPointer, XtPointer)
 
 // The visual to draw on: the default one when it is TrueColor, else a
 // 24-bit (or deeper) TrueColor one when the screen has it, else the default
-// (8-bit colour is dithered).  DM_VISUAL=default keeps the default visual.
+// (8-bit colour is dithered).  DM_VISUAL=default keeps the default visual;
+// DM_VISUAL=0x2b (an id xdpyinfo lists) picks that one.
 static void PickVisual(Display* dpy)
 {
 	int scr = DefaultScreen(dpy);
@@ -377,6 +378,22 @@ static void PickVisual(Display* dpy)
 	g_colormap = DefaultColormap(dpy, scr);
 
 	const char* pref = getenv("DM_VISUAL");
+	if (pref && !strncmp(pref, "0x", 2)) {
+		XVisualInfo tmpl;
+		int n = 0;
+		tmpl.visualid = strtoul(pref, NULL, 16);
+		tmpl.screen = scr;
+		XVisualInfo* vi = XGetVisualInfo(dpy, VisualIDMask | VisualScreenMask, &tmpl, &n);
+		if (vi && n > 0) {
+			g_visual = vi[0].visual;
+			g_depth = vi[0].depth;
+			if (g_visual != DefaultVisual(dpy, scr))
+				g_colormap = XCreateColormap(dpy, RootWindow(dpy, scr), g_visual, AllocNone);
+		}
+		if (vi)
+			XFree(vi);
+		return;
+	}
 	if ((pref && !strcmp(pref, "default")) || g_visual->c_class == TrueColor)
 		return;
 
