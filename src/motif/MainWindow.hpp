@@ -38,6 +38,8 @@ public:
 	// Whether a change to this user shows in the member list.
 	bool ShowsMember(Snowflake user) const;
 	void UpdateHeader();
+	// Shows and hides the server, channel and member lists as View says.
+	void ApplyPanes();
 	void UpdateTitle();
 
 	void OnTyping(Snowflake user, Snowflake guild, Snowflake channel, time_t when);
@@ -87,7 +89,6 @@ private:
 	XtIntervalId m_typingTimer = 0;
 	time_t m_lastTypingSent = 0;
 	std::string m_statusText;
-	bool m_memberListShown = true;
 };
 
 MainWindow* GetMainWindow();

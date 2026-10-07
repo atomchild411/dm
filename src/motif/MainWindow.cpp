@@ -43,6 +43,8 @@ enum
 	MI_QUIT,
 	MI_BIGGER,
 	MI_SMALLER,
+	MI_GUILDS,
+	MI_CHANNELS,
 	MI_MEMBERS,
 	MI_MARKREAD,
 	MI_ABOUT,
@@ -184,6 +186,7 @@ MainWindow::MainWindow(Widget toplevel, const PixelFormat& fmt)
 		XmNrightOffset, 6,
 		NULL);
 
+	ApplyPanes();
 	XtManageChild(m_form);
 	XmMainWindowSetAreas(m_main, menubar, NULL, NULL, NULL, m_form);
 
@@ -207,6 +210,8 @@ void MainWindow::BuildMenus(Widget menubar)
 			{ "Larger Text", MI_BIGGER, 'L' },
 			{ "Smaller Text", MI_SMALLER, 'S' },
 			{ "-", 0, 0 },
+			{ "Server List", MI_GUILDS, 'v' },
+			{ "Channel List", MI_CHANNELS, 'C' },
 			{ "Member List", MI_MEMBERS, 'M' },
 		} },
 		{ "Help", 'H', {
@@ -233,9 +238,10 @@ void MainWindow::BuildMenus(Widget menubar)
 				continue;
 			}
 			Widget b;
-			if (item.id == MI_MEMBERS) {
+			if (item.id == MI_GUILDS || item.id == MI_CHANNELS || item.id == MI_MEMBERS) {
+				Pane pane = item.id == MI_GUILDS ? PANE_GUILDS : item.id == MI_CHANNELS ? PANE_CHANNELS : PANE_MEMBERS;
 				b = XtVaCreateManagedWidget(item.label, xmToggleButtonWidgetClass, pulldown,
-					XmNset, True, XmNmnemonic, (KeySym) item.mnemonic, NULL);
+					XmNset, IsPaneShown(pane) ? True : False, XmNmnemonic, (KeySym) item.mnemonic, NULL);
 				XtAddCallback(b, XmNvalueChangedCallback, MenuCB, (XtPointer) (long) item.id);
 			}
 			else {
@@ -270,24 +276,18 @@ void MainWindow::MenuCB(Widget w, XtPointer client, XtPointer)
 			self->UpdateChannelList();
 			self->UpdateMemberList();
 			break;
-		case MI_MEMBERS:
-			self->m_memberListShown = XmToggleButtonGetState(w);
-			if (self->m_memberListShown) {
-				self->UpdateMemberList();
-				XtManageChild(self->m_memberPane);
-				XtVaSetValues(self->m_messages->GetWidget(), XmNrightAttachment, XmATTACH_WIDGET, XmNrightWidget, self->m_memberPane, NULL);
-				XtVaSetValues(self->m_header, XmNrightAttachment, XmATTACH_WIDGET, XmNrightWidget, self->m_memberPane, NULL);
-				XtVaSetValues(self->m_sendButton, XmNrightAttachment, XmATTACH_WIDGET, XmNrightWidget, self->m_memberPane, NULL);
-				XtVaSetValues(self->m_status, XmNrightAttachment, XmATTACH_WIDGET, XmNrightWidget, self->m_memberPane, NULL);
-			}
-			else {
-				XtUnmanageChild(self->m_memberPane);
-				XtVaSetValues(self->m_messages->GetWidget(), XmNrightAttachment, XmATTACH_FORM, NULL);
-				XtVaSetValues(self->m_header, XmNrightAttachment, XmATTACH_FORM, NULL);
-				XtVaSetValues(self->m_sendButton, XmNrightAttachment, XmATTACH_FORM, NULL);
-				XtVaSetValues(self->m_status, XmNrightAttachment, XmATTACH_FORM, NULL);
-			}
+		case MI_GUILDS:
+		case MI_CHANNELS:
+		case MI_MEMBERS: {
+			int id = (int) (long) client;
+			Pane pane = id == MI_GUILDS ? PANE_GUILDS : id == MI_CHANNELS ? PANE_CHANNELS : PANE_MEMBERS;
+			SetPaneShown(pane, XmToggleButtonGetState(w));
+			SaveMotifConfig();
+			if (pane == PANE_MEMBERS && IsPaneShown(PANE_MEMBERS))
+				self->UpdateMemberList(); // not kept up to date while hidden
+			self->ApplyPanes();
 			break;
+		}
 		case MI_MARKREAD: {
 			DiscordInstance* pInst = GetDiscordInstance();
 			if (pInst && pInst->GetCurrentChannelID())
@@ -298,6 +298,49 @@ void MainWindow::MenuCB(Widget w, XtPointer client, XtPointer)
 			self->ShowError("Discord Messenger for IRIX\n\nA Discord-compatible messenger by iProgramInCpp and contributors,\nported to IRIX with Motif.\n\nNote: third-party clients are against Discord's terms of service.");
 			break;
 	}
+}
+
+void MainWindow::ApplyPanes()
+{
+	bool guilds = IsPaneShown(PANE_GUILDS), channels = IsPaneShown(PANE_CHANNELS), members = IsPaneShown(PANE_MEMBERS);
+	struct { Widget w; bool shown; } panes[] = {
+		{ m_guildList, guilds }, { m_channelList, channels }, { m_memberPane, members },
+	};
+
+	// The form lays its children out again at every change, and an
+	// attachment to a widget it is not managing confuses it ("Bailed out
+	// of edge synchronization"): so the panes that show are managed first,
+	// then attached to, and those that hide are let go of last.
+	for (auto& p : panes)
+		if (p.shown)
+			XtManageChild(p.w);
+
+	// left to right: servers, channels, the middle, members; each attaches
+	// to the one before it that shows, or to the window's edge
+	if (guilds)
+		XtVaSetValues(m_channelList, XmNleftAttachment, XmATTACH_WIDGET, XmNleftWidget, m_guildList, XmNleftOffset, 2, NULL);
+	else
+		XtVaSetValues(m_channelList, XmNleftAttachment, XmATTACH_FORM, XmNleftOffset, 4, NULL);
+
+	Widget left = channels ? m_channelList : guilds ? m_guildList : NULL;
+	Widget middle[] = { m_header, m_messages->GetWidget(), XtParent(m_editor), m_status };
+	for (Widget mw : middle) {
+		if (left)
+			XtVaSetValues(mw, XmNleftAttachment, XmATTACH_WIDGET, XmNleftWidget, left, XmNleftOffset, 6, NULL);
+		else
+			XtVaSetValues(mw, XmNleftAttachment, XmATTACH_FORM, XmNleftOffset, 4, NULL);
+	}
+	Widget right[] = { m_header, m_messages->GetWidget(), m_sendButton, m_status };
+	for (Widget rw : right) {
+		if (members)
+			XtVaSetValues(rw, XmNrightAttachment, XmATTACH_WIDGET, XmNrightWidget, m_memberPane, XmNrightOffset, 6, NULL);
+		else
+			XtVaSetValues(rw, XmNrightAttachment, XmATTACH_FORM, XmNrightOffset, 4, NULL);
+	}
+
+	for (auto& p : panes)
+		if (!p.shown)
+			XtUnmanageChild(p.w);
 }
 
 void MainWindow::ShowError(const std::string& text)
@@ -537,7 +580,7 @@ Rgb RoleColor(Snowflake user, Snowflake guild)
 
 void MainWindow::UpdateMemberList()
 {
-	if (!m_memberListShown)
+	if (!IsPaneShown(PANE_MEMBERS))
 		return; // made when it is shown
 	Perf::Scope perf(Perf::MEMBERS);
 	DiscordInstance* pInst = GetDiscordInstance();
@@ -664,7 +707,7 @@ void MainWindow::ListUpdateCB(XtPointer client, XtIntervalId*)
 
 bool MainWindow::ShowsMember(Snowflake user) const
 {
-	if (!m_memberListShown)
+	if (!IsPaneShown(PANE_MEMBERS))
 		return false;
 	Guild* pGuild = GetDiscordInstance()->GetCurrentGuild();
 	if (!pGuild || pGuild->m_snowflake == 0)

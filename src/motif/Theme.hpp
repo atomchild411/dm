@@ -20,12 +20,15 @@ struct Palette
 void InitPalette(Widget w);
 const Palette& GetPalette();
 
-// The text size, kept in ~/.discordmessenger/motif.conf (DM_TEXT_SIZE
-// overrides it for one run).
+// The text size and which panes show, kept in ~/.discordmessenger/motif.conf
+// (DM_TEXT_SIZE overrides the size for one run).
 void LoadMotifConfig();
 void SaveMotifConfig();
 int GetTextSize();
 void SetTextSize(int px);
+enum Pane { PANE_GUILDS, PANE_CHANNELS, PANE_MEMBERS, PANE_COUNT };
+bool IsPaneShown(Pane p);
+void SetPaneShown(Pane p, bool shown);
 void ApplyTheme(DrawingContext& ctx);
 
 // UTF-8 text for Motif widgets, which show ISO 8859-1: characters outside

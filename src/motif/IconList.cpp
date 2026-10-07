@@ -391,8 +391,8 @@ void IconList::PaintRow(const IconRow& r, int y, int h, bool selected, bool curs
 
 void IconList::Repaint()
 {
-	if (!XtIsRealized(m_area))
-		return;
+	if (!XtIsRealized(m_area) || !XtIsManaged(m_form))
+		return; // a hidden list draws when it shows again (Expose)
 	Perf::Scope perf(Perf::LIST_PAINT);
 	Display* dpy = XtDisplay(m_area);
 	Window win = XtWindow(m_area);
