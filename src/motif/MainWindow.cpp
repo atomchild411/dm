@@ -21,6 +21,7 @@
 #include "DiscordInstance.hpp"
 #include "Frontend.hpp"
 #include "config/LocalSettings.hpp"
+#include "state/MessageCache.hpp"
 #include "state/ProfileCache.hpp"
 #include "MessageView.hpp"
 #include "Theme.hpp"
@@ -547,6 +548,8 @@ void MainWindow::UpdateSelectedChannel()
 	UpdateTitle();
 	UpdateTypingStatus();
 
+	// the channel's saved messages show at once; its newest are fetched as usual
+	GetMessageCache()->LoadCachedChannel(pInst->GetCurrentChannelID(), pInst->GetCurrentGuildID());
 	m_messages->SetChannel(pInst->GetCurrentGuildID(), pInst->GetCurrentChannelID());
 	if (pInst->GetCurrentChannel())
 		pInst->HandledChannelSwitch();

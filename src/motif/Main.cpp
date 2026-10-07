@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <sys/stat.h>
 
 #include <X11/Xutil.h>
 #include <Xm/Protocols.h>
@@ -17,6 +18,7 @@
 #include "posix/Frontend_Posix.hpp"
 #include "posix/MainQueue.hpp"
 #include "posix/NetworkerThread.hpp"
+#include "utils/Util.hpp"
 
 #include "Canvas.hpp"
 #include "Fonts.hpp"
@@ -256,6 +258,9 @@ void RequestLogout()
 {
 	if (g_pDiscordInstance)
 		g_pDiscordInstance->CloseGatewaySession();
+	// the account's messages and pictures do not stay behind it
+	GetMessageCache()->ClearDiskCache();
+	ImageCache::ClearDisk();
 	GetLocalSettings()->SetToken("");
 	GetLocalSettings()->Save();
 	ShowLogon("");
@@ -347,6 +352,21 @@ static void LoadDemo()
 	GetMainWindow()->GetMessageView()->SetChannel(0, chan);
 	GetMainWindow()->ShowDemoLists();
 	GetMainWindow()->SetStatus("Demo: sample messages, not connected.");
+}
+
+// Size limits of the caches, in megabytes: name's value, else def.
+static size_t CacheLimit(const char* name, size_t def)
+{
+	const char* v = getenv(name);
+	long mb = v ? atol(v) : 0;
+	return (mb > 0 ? (size_t) mb : def) * 1024 * 1024;
+}
+
+// The message history goes to disk every half minute (and at exit).
+static void SaveHistoryCB(XtPointer, XtIntervalId*)
+{
+	GetMessageCache()->SaveDirty();
+	XtAppAddTimeOut(g_app, 30000, SaveHistoryCB, NULL);
 }
 
 // DM_PERF: the timings so far, every minute.
@@ -505,6 +525,16 @@ int main(int argc, char** argv)
 	g_pHTTPClient = new NetworkerThreadManager;
 	GetLocalSettings()->Load();
 
+	// Caches in ~/.discordmessenger/cache: pictures (DM_CACHE_MB, 64 MB) and
+	// the newest messages of the channels opened (DM_HISTORY_MB, 32 MB;
+	// DM_NO_HISTORY=1 keeps none).
+	ImageCache::SetDiskLimit(CacheLimit("DM_CACHE_MB", 64));
+	if (!getenv("DM_NO_HISTORY")) {
+		std::string dir = GetCachePath() + "/messages";
+		mkdir(dir.c_str(), 0700);
+		GetMessageCache()->SetDiskCache(dir, CacheLimit("DM_HISTORY_MB", 32));
+	}
+
 	new MainWindow(g_toplevel, g_pixelFormat);
 	ImageCache::SetChangedCallback([] { GetMainWindow()->OnImagesChanged(); });
 
@@ -529,6 +559,8 @@ int main(int argc, char** argv)
 	g_pDiscordInstance = new DiscordInstance(demo || bench ? "" : token);
 	if (Perf::Enabled() && !bench)
 		XtAppAddTimeOut(g_app, 60000, PerfReportCB, NULL);
+	if (!demo && !bench)
+		XtAppAddTimeOut(g_app, 30000, SaveHistoryCB, NULL);
 	if (bench)
 		Bench::Start(g_app, [] { g_bQuit = true; });
 	else if (demo)
@@ -540,6 +572,8 @@ int main(int argc, char** argv)
 
 	while (!g_bQuit)
 		XtAppProcessEvent(g_app, XtIMAll);
+	if (!demo && !bench)
+		GetMessageCache()->SaveDirty();
 	if (Perf::Enabled() && !bench)
 		Perf::Report(stderr, "at exit");
 

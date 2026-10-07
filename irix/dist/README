@@ -26,8 +26,12 @@ messages, with Discord's formatting, replies, embeds, image attachments,
 avatars and colour emoji (Noto Color Emoji).  Colours follow your desktop's
 Motif scheme.  View > Larger/Smaller Text sets the text size.
 
-Files:   ~/.discordmessenger: settings.json, motif.conf (text size) and
-         cache/ (images, kept between runs).
+Files:   ~/.discordmessenger: settings.json, motif.conf (text size and
+         the lists View shows) and cache/: pictures (64 MB at most,
+         DM_CACHE_MB changes that) and messages/, the newest 200 messages
+         of each channel opened (32 MB at most, DM_HISTORY_MB; DM_NO_HISTORY=1
+         keeps none).  A channel shows its saved messages at once while its
+         newest are fetched.  File > Log Out empties both.
          /usr/local/lib/discord-messenger: fonts/ (DejaVu, Noto Color
          Emoji; DM_FONT_DIR names another directory), cacert.pem (the
          roots of trust; DM_CA_FILE names another file), licenses/.

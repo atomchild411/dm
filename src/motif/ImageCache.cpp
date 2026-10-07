@@ -7,6 +7,9 @@
 #include <map>
 #include <unordered_map>
 #include <sys/stat.h>
+#include <dirent.h>
+#include <utime.h>
+#include <vector>
 
 #include <md5/MD5.h>
 
@@ -55,6 +58,44 @@ namespace
 	std::list<std::string> g_lru;               // front: most recent
 	std::function<void()> g_changed;
 	bool g_offline = false;
+	size_t g_diskLimit = 0;        // 0: no limit
+	size_t g_writtenSinceTrim = 0;
+	const size_t TRIM_EVERY = 4 * 1024 * 1024;
+
+	// The cache directory down to 90% of the limit, oldest use first (a
+	// file's time is set when it is read: see Get).  Only plain files at its
+	// top: the message history has a directory of its own in there.
+	void TrimDisk()
+	{
+		g_writtenSinceTrim = 0;
+		if (!g_diskLimit)
+			return;
+		struct Entry { std::string path; off_t size; time_t mtime; };
+		std::vector<Entry> files;
+		size_t total = 0;
+		std::string dir = GetCachePath();
+		DIR* d = opendir(dir.c_str());
+		if (!d)
+			return;
+		while (struct dirent* de = readdir(d)) {
+			std::string path = dir + "/" + de->d_name;
+			struct stat st;
+			if (de->d_name[0] == '.' || stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+				continue;
+			files.push_back({ path, st.st_size, st.st_mtime });
+			total += st.st_size;
+		}
+		closedir(d);
+		if (total <= g_diskLimit)
+			return;
+		std::sort(files.begin(), files.end(), [](const Entry& a, const Entry& b) { return a.mtime < b.mtime; });
+		for (auto& e : files) {
+			if (total <= g_diskLimit / 10 * 9)
+				break;
+			if (remove(e.path.c_str()) == 0)
+				total -= e.size;
+		}
+	}
 	bool g_changedPending = false;
 
 	int NearestPowerOfTwo(int x)
@@ -281,6 +322,7 @@ const Image* ImageCache::Get(Kind kind, const std::string& place, Snowflake sf, 
 	// on disk already?
 	std::string data;
 	if (ReadFile(CacheFile(id), data)) {
+		utime(CacheFile(id).c_str(), NULL); // used now: trimmed last
 		if (Deliver(id, (const uint8_t*) data.data(), data.size(), false)) {
 			Entry& e = g_entries[key];
 			return e.state == READY ? &e.image : nullptr;
@@ -325,6 +367,8 @@ void ImageCache::Downloaded(const std::string& id, const uint8_t* data, size_t s
 			ok = fclose(f) == 0 && ok;
 			if (!ok || rename(tmp.c_str(), path.c_str()) != 0)
 				remove(tmp.c_str());
+			else if ((g_writtenSinceTrim += size) >= TRIM_EVERY)
+				TrimDisk();
 		}
 	}
 	NotifyChanged();
@@ -340,6 +384,20 @@ void ImageCache::DownloadFailed(const std::string& id)
 		g_entries[EntryKey(id, sz.first, sz.second)].state = FAILED;
 	sit->second.sizes.clear();
 	NotifyChanged();
+}
+
+void ImageCache::SetDiskLimit(size_t maxBytes)
+{
+	g_diskLimit = maxBytes;
+	TrimDisk();
+}
+
+void ImageCache::ClearDisk()
+{
+	size_t limit = g_diskLimit;
+	g_diskLimit = 1; // everything goes
+	TrimDisk();
+	g_diskLimit = limit;
 }
 
 void ImageCache::SetOffline(bool offline)

@@ -99,6 +99,10 @@ public:
 	std::string m_avatar = "";
 	Snowflake m_anchor = 0; // for gap messages
 	Snowflake m_nonce = 0; // to create messages
+	// The object Discord sent, with later updates merged in: kept when the
+	// message cache stores history on disk (s_keepJson), empty otherwise.
+	std::string m_rawJson;
+	static bool s_keepJson;
 	std::vector<Attachment> m_attachments;
 	std::string m_dateFull = "";
 	std::string m_dateCompact = "";
@@ -152,6 +156,9 @@ public:
 	bool CheckWasMentioned(Snowflake user, Snowflake guild, bool bSuppressEveryone = false, bool bSuppressRoles = false) const;
 
 	void Load(nlohmann::json& j, Snowflake guild);
+private:
+	void LoadFields(nlohmann::json& j, Snowflake guild);
+public:
 };
 
 typedef std::shared_ptr<Message> MessagePtr;

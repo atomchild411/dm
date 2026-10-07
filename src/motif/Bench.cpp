@@ -13,6 +13,7 @@
 
 #include "DiscordInstance.hpp"
 #include "state/MessageCache.hpp"
+#include "utils/Util.hpp"
 
 #include "Fonts.hpp"
 #include "IconList.hpp"
@@ -98,6 +99,74 @@ namespace
 		int ops;
 		double seconds;
 	};
+
+	// The message history on disk: a channel's newest messages fetched and
+	// saved; read back by a new session; then the newest fetched over them,
+	// one message deleted and one edited on the server meanwhile.  "" when
+	// all is as it should be.
+	std::string HistoryCheck()
+	{
+		using nlohmann::json;
+		const Snowflake ch = 777;
+		MessageCache* mc = GetMessageCache();
+		auto message = [](Snowflake id, const std::string& text) {
+			json m;
+			m["id"] = std::to_string(id);
+			m["channel_id"] = "777";
+			m["type"] = 0;
+			m["content"] = text;
+			m["timestamp"] = "2026-10-07T12:00:00.000000+00:00";
+			m["author"]["id"] = "4242";
+			m["author"]["username"] = "bench";
+			return m;
+		};
+		// newest first, as Discord sends them
+		auto page = [&](Snowflake from, Snowflake to, Snowflake deleted, Snowflake edited) {
+			json j = json::array();
+			for (Snowflake id = to; id >= from; id--)
+				if (id != deleted)
+					j.push_back(message(id, id == edited ? "edited" : "message " + std::to_string(id)));
+			return j;
+		};
+		auto loaded = [&](std::vector<Snowflake>& ids, std::vector<Snowflake>& gaps) {
+			std::list<MessagePtr> l;
+			mc->GetLoadedMessages(ch, 0, l);
+			ids.clear();
+			gaps.clear();
+			for (auto& m : l)
+				(m->IsLoadGap() ? gaps : ids).push_back(m->m_snowflake);
+		};
+		std::vector<Snowflake> ids, gaps;
+
+		json first = page(1010, 1059, 0, 0);
+		mc->ProcessRequest(ch, ScrollDir::BEFORE, 0, first, "#bench");
+		mc->SaveDirty();
+
+		mc->ClearAllChannels();
+		mc->LoadCachedChannel(ch, 0);
+		loaded(ids, gaps);
+		if (ids.size() != 50 || ids.front() != 1010 || ids.back() != 1059)
+			return "the saved messages did not come back (" + std::to_string(ids.size()) + ")";
+		if (gaps.size() != 2 || gaps.back() != 1060)
+			return "the gaps around the saved messages are wrong";
+
+		json newest = page(1030, 1080, 1040, 1050);
+		mc->ProcessRequest(ch, ScrollDir::BEFORE, 1060, newest, "#bench");
+		loaded(ids, gaps);
+		if (ids.size() != 70 || ids.front() != 1010 || ids.back() != 1080)
+			return "after the newest were fetched: " + std::to_string(ids.size()) + " messages";
+		for (Snowflake id : ids)
+			if (id == 1040)
+				return "a message deleted meanwhile is still shown";
+		MessagePtr e = mc->GetLoadedMessage(ch, 1050);
+		if (!e || e->m_message != "edited")
+			return "a message edited meanwhile is not";
+		if (gaps.size() != 1 || gaps.front() != 1009)
+			return "there is a gap between the saved and the fetched messages";
+
+		remove((GetCachePath() + "/messages/777.json").c_str());
+		return "";
+	}
 
 	void Sync()
 	{
@@ -209,6 +278,12 @@ namespace
 			Sync();
 			printf("dm bench: items after the changes match a fresh layout: %s\n",
 				updated == mv->LayoutSignature() ? "yes" : "NO");
+		}
+
+		{
+			std::string err = HistoryCheck();
+			printf("dm bench: message history saved, read back and brought up to date: %s\n",
+				err.empty() ? "yes" : ("NO: " + err).c_str());
 		}
 
 		// text alone: measuring and eliding names

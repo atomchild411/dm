@@ -46,6 +46,12 @@ namespace ImageCache
 	// Runs (on the UI thread, soon after) when images became available.
 	void SetChangedCallback(std::function<void()> fn);
 
+	// The cache directory is kept to maxBytes: the images used longest ago
+	// go first.  Checked now, and after every few megabytes written.
+	void SetDiskLimit(size_t maxBytes);
+	// Removes every cached image (logging out).
+	void ClearDisk();
+
 	// Offline: no image is read or fetched (the benchmark draws placeholders).
 	void SetOffline(bool offline);
 

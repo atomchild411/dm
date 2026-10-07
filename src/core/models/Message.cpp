@@ -227,7 +227,33 @@ void RichEmbed::Load(Json& j)
 	// video
 }
 
+bool Message::s_keepJson = false;
+
 void Message::Load(Json& data, Snowflake guild)
+{
+	LoadFields(data, guild);
+	if (!s_keepJson)
+		return;
+
+	// An update may carry only what changed: merged into what was kept.
+	// (Fields LoadFields looked up and found missing read as null; those do
+	// not overwrite what the earlier object had.)
+	if (m_rawJson.empty()) {
+		m_rawJson = data.dump();
+		return;
+	}
+	Json merged = Json::parse(m_rawJson, nullptr, false);
+	if (!merged.is_object()) {
+		m_rawJson = data.dump();
+		return;
+	}
+	for (auto& field : data.items())
+		if (!field.value().is_null() || !merged.contains(field.key()))
+			merged[field.key()] = field.value();
+	m_rawJson = merged.dump();
+}
+
+void Message::LoadFields(Json& data, Snowflake guild)
 {
 	Json& author = data["author"];
 
