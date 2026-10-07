@@ -5,6 +5,8 @@
 #include <cstring>
 #include <X11/Xutil.h>
 
+#include "Perf.hpp"
+
 Rgb LerpRgb(Rgb a, Rgb b, int num, int den)
 {
 	int r = RgbR(a) + (RgbR(b) - RgbR(a)) * num / den;
@@ -331,6 +333,7 @@ void Canvas::Present(const PixelFormat& fmt, Drawable dr, GC gc, int x, int y, i
 	if (y + h > m_h) h = m_h - y;
 	if (w <= 0 || h <= 0)
 		return;
+	Perf::Scope perf(Perf::PRESENT);
 
 	// In bands, so a full-window update never needs one huge image.
 	const int band = 64;

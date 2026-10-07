@@ -30,6 +30,8 @@ public:
 	// place (or the bottom in view, when it was).
 	void Refresh();
 	void ScrollToBottom();
+	void ScrollTo(int y) { SetScroll(y); }
+	int GetScroll() const { return m_scrollY; }
 
 	// The text size changed, or the colours: lay everything out again.
 	void Relayout();

@@ -9,6 +9,7 @@
 
 #include "Fonts.hpp"
 #include "Theme.hpp"
+#include "Perf.hpp"
 
 static const int PAD = 6;
 
@@ -97,6 +98,7 @@ void IconList::Layout()
 
 void IconList::SetRows(const std::vector<IconRow>& rows, Snowflake selected)
 {
+	Perf::Scope perf(Perf::LIST_SETROWS);
 	Snowflake cursorId = m_cursor >= 0 && m_cursor < (int) m_rows.size() ? m_rows[m_cursor].id : 0;
 	m_rows = rows;
 	m_selected = m_cursor = -1;
@@ -353,6 +355,7 @@ void IconList::Repaint()
 {
 	if (!XtIsRealized(m_area))
 		return;
+	Perf::Scope perf(Perf::LIST_PAINT);
 	Display* dpy = XtDisplay(m_area);
 	Window win = XtWindow(m_area);
 	if (!m_gc)

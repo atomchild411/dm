@@ -14,6 +14,7 @@
 #include "state/MessageCache.hpp"
 #include "Theme.hpp"
 #include "ImageCache.hpp"
+#include "Perf.hpp"
 
 // Geometry, in pixels
 static const int MARGIN = 16;        // left and right
@@ -183,6 +184,7 @@ void MessageView::SetChannel(Snowflake guild, Snowflake channel)
 
 void MessageView::Refresh()
 {
+	Perf::Scope perf(Perf::MV_REFRESH);
 	// remember what is on screen: the first message whose top is visible
 	Snowflake anchor = 0;
 	int anchorOffset = 0;
@@ -283,6 +285,7 @@ void MessageView::Rebuild()
 
 void MessageView::LayoutAll()
 {
+	Perf::Scope perf(Perf::MV_LAYOUT);
 	int width = ContentWidth();
 	int y = 8;
 	for (auto& it : m_items) {
@@ -783,6 +786,7 @@ void MessageView::Paint()
 {
 	if (!XtIsRealized(m_area))
 		return;
+	Perf::Scope perf(Perf::MV_PAINT);
 
 	Display* dpy = XtDisplay(m_area);
 	Window win = XtWindow(m_area);

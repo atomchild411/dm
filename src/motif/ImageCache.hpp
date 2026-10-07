@@ -46,6 +46,9 @@ namespace ImageCache
 	// Runs (on the UI thread, soon after) when images became available.
 	void SetChangedCallback(std::function<void()> fn);
 
+	// Offline: no image is read or fetched (the benchmark draws placeholders).
+	void SetOffline(bool offline);
+
 	// Decodes PNG, JPEG, GIF (first frame) and WebP.
 	bool Decode(const uint8_t* data, size_t size, Image& out);
 }

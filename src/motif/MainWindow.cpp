@@ -25,6 +25,7 @@
 #include "MessageView.hpp"
 #include "Theme.hpp"
 #include "IconList.hpp"
+#include "Perf.hpp"
 #include "models/ActiveStatus.hpp"
 
 static MainWindow* g_pMainWindow;
@@ -326,6 +327,7 @@ bool MainWindow::IsIconic() const
 
 void MainWindow::UpdateGuildList()
 {
+	Perf::Scope perf(Perf::GUILDS);
 	DiscordInstance* pInst = GetDiscordInstance();
 	std::vector<Snowflake> ids;
 	pInst->GetGuildIDsOrdered(ids, true);
@@ -409,6 +411,7 @@ static bool IsTextChannel(const Channel& ch)
 
 void MainWindow::UpdateChannelList()
 {
+	Perf::Scope perf(Perf::CHANNELS);
 	DiscordInstance* pInst = GetDiscordInstance();
 	Guild* pGuild = pInst->GetCurrentGuild();
 	std::vector<IconRow> rows;
@@ -533,6 +536,7 @@ Rgb RoleColor(Snowflake user, Snowflake guild)
 
 void MainWindow::UpdateMemberList()
 {
+	Perf::Scope perf(Perf::MEMBERS);
 	DiscordInstance* pInst = GetDiscordInstance();
 	Guild* pGuild = pInst->GetCurrentGuild();
 	std::vector<IconRow> rows;

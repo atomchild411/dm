@@ -53,6 +53,7 @@ namespace
 	std::map<std::string, Source> g_sources;    // key: source id
 	std::list<std::string> g_lru;               // front: most recent
 	std::function<void()> g_changed;
+	bool g_offline = false;
 	bool g_changedPending = false;
 
 	int NearestPowerOfTwo(int x)
@@ -249,7 +250,7 @@ bool ImageCache::Decode(const uint8_t* data, size_t size, Image& out)
 
 const Image* ImageCache::Get(Kind kind, const std::string& place, Snowflake sf, int w, int h)
 {
-	if (w <= 0 || h <= 0 || (kind == URL && place.empty()))
+	if (w <= 0 || h <= 0 || (kind == URL && place.empty()) || g_offline)
 		return nullptr;
 
 	std::string id = SourceId(kind, place, sf);
@@ -331,6 +332,11 @@ void ImageCache::DownloadFailed(const std::string& id)
 		g_entries[EntryKey(id, sz.first, sz.second)].state = FAILED;
 	sit->second.sizes.clear();
 	NotifyChanged();
+}
+
+void ImageCache::SetOffline(bool offline)
+{
+	g_offline = offline;
 }
 
 void ImageCache::SetChangedCallback(std::function<void()> fn)

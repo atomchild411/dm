@@ -21,6 +21,9 @@ public:
 
 	Widget GetShell() const { return m_shell; }
 	MessageView* GetMessageView() const { return m_messages; }
+	IconList* GetGuildList() const { return m_guilds; }
+	IconList* GetChannelList() const { return m_channels; }
+	IconList* GetMemberList() const { return m_members; }
 
 	void UpdateGuildList();
 	void UpdateSelectedGuild();

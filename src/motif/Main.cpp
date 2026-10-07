@@ -22,10 +22,12 @@
 #include "Fonts.hpp"
 #include "ImageCache.hpp"
 #include "AppIcon.hpp"
+#include "Bench.hpp"
 #include "LogonDialog.hpp"
 #include "QrLogin.hpp"
 #include "MainWindow.hpp"
 #include "MessageView.hpp"
+#include "Perf.hpp"
 #include "Theme.hpp"
 
 static XtAppContext g_app;
@@ -118,7 +120,13 @@ public:
 			MainQueue::Post([payload] { QrLogin::OnGatewayMessage(payload); });
 			return;
 		}
-		Frontend_Posix::OnWebsocketMessage(gatewayID, payload);
+		MainQueue::Post([gatewayID, payload] {
+			DiscordInstance* pInst = GetDiscordInstance();
+			if (pInst->GetGatewayID() == gatewayID) {
+				Perf::Scope perf(Perf::GATEWAY);
+				pInst->HandleGatewayMessage(payload);
+			}
+		});
 	}
 	void OnWebsocketClose(int gatewayID, int errorCode, const std::string& message) override {
 		if (gatewayID >= 0 && gatewayID == QrLogin::GatewayId()) {
@@ -331,6 +339,13 @@ static void LoadDemo()
 	GetMainWindow()->SetStatus("Demo: sample messages, not connected.");
 }
 
+// DM_PERF: the timings so far, every minute.
+static void PerfReportCB(XtPointer, XtIntervalId*)
+{
+	Perf::Report(stderr, "since the start");
+	XtAppAddTimeOut(g_app, 60000, PerfReportCB, NULL);
+}
+
 static void WakeCB(XtPointer, int*, XtInputId*)
 {
 	MainQueue::Drain();
@@ -483,8 +498,13 @@ int main(int argc, char** argv)
 		token = envToken;
 
 	bool demo = argc > 1 && !strcmp(argv[1], "--demo");
-	g_pDiscordInstance = new DiscordInstance(demo ? "" : token);
-	if (demo)
+	bool bench = argc > 1 && !strcmp(argv[1], "--bench");
+	g_pDiscordInstance = new DiscordInstance(demo || bench ? "" : token);
+	if (Perf::Enabled() && !bench)
+		XtAppAddTimeOut(g_app, 60000, PerfReportCB, NULL);
+	if (bench)
+		Bench::Start(g_app, [] { g_bQuit = true; });
+	else if (demo)
 		LoadDemo();
 	else if (token.empty())
 		ShowLogon("");
@@ -493,6 +513,8 @@ int main(int argc, char** argv)
 
 	while (!g_bQuit)
 		XtAppProcessEvent(g_app, XtIMAll);
+	if (Perf::Enabled() && !bench)
+		Perf::Report(stderr, "at exit");
 
 	GetLocalSettings()->Save();
 	XtUnrealizeWidget(g_toplevel);
