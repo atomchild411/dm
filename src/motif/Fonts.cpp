@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
+#include <unordered_map>
 #include <vector>
 #include <sys/stat.h>
 
@@ -73,6 +75,37 @@ namespace
 	};
 
 	std::map<GlyphKey, Glyph> g_glyphs;
+
+	// The glyphs of one face at one size, by glyph index: Render's fast path.
+	struct Strike
+	{
+		const void* face;
+		int px;
+		std::vector<const Glyph*> glyphs;
+	};
+	std::vector<std::unique_ptr<Strike>> g_strikes;
+	Strike* g_lastStrike = nullptr;
+
+	Strike* FindStrike(FT_Face face, int px)
+	{
+		if (g_lastStrike && g_lastStrike->face == face && g_lastStrike->px == px)
+			return g_lastStrike;
+		for (auto& s : g_strikes)
+			if (s->face == face && s->px == px)
+				return g_lastStrike = s.get();
+		g_strikes.emplace_back(new Strike{ face, px, std::vector<const Glyph*>((size_t) std::max(1L, (long) face->num_glyphs), nullptr) });
+		return g_lastStrike = g_strikes.back().get();
+	}
+
+	// Which face and glyph draw a code point in a style: Lookup's cache.
+	struct CharGlyph
+	{
+		Face* face;
+		unsigned index;
+	};
+	const unsigned LOW_CHARS = 0x800; // Latin, Greek, Cyrillic, ...
+	std::vector<CharGlyph> g_lowChars[FS_COUNT];
+	std::unordered_map<unsigned, CharGlyph> g_highChars[FS_COUNT];
 	std::map<std::pair<int, int>, std::pair<int, int>> g_metrics; // (style, px) -> (ascent, descent)
 
 	// A glyph to draw and the text it stands for.
@@ -224,8 +257,27 @@ namespace
 			(cp >= 0x1f3fb && cp <= 0x1f3ff) || (cp >= 0xe0020 && cp <= 0xe007f);
 	}
 
+	Face* LookupUncached(FontStyle st, unsigned cp, unsigned& index);
+
 	// The face and glyph index that draw code point cp in style st.
 	Face* Lookup(FontStyle st, unsigned cp, unsigned& index)
+	{
+		CharGlyph* cg;
+		if (cp < LOW_CHARS) {
+			auto& v = g_lowChars[st];
+			if (v.empty())
+				v.assign(LOW_CHARS, CharGlyph{ nullptr, 0 });
+			cg = &v[cp];
+		}
+		else
+			cg = &g_highChars[st].insert(std::make_pair(cp, CharGlyph{ nullptr, 0 })).first->second;
+		if (!cg->face)
+			cg->face = LookupUncached(st, cp, cg->index);
+		index = cg->index;
+		return cg->face;
+	}
+
+	Face* LookupUncached(FontStyle st, unsigned cp, unsigned& index)
 	{
 		Face* f = &g_style[st];
 		index = FT_Get_Char_Index(f->face, cp);
@@ -269,9 +321,10 @@ namespace
 				const char* q = p;
 				next = DecodeUtf8(q, end);
 			}
-			bool emoji = g_emoji.face && FT_Get_Char_Index(g_emoji.face, cp) &&
-				(EmojiPresentation(cp) || next == 0xfe0f || next == 0x20e3 ||
-				 (IsRegional(cp) && IsRegional(next)));
+			// (the cheap tests first: most text is not emoji)
+			bool emoji = (EmojiPresentation(cp) || next == 0xfe0f || next == 0x20e3 ||
+				 (IsRegional(cp) && IsRegional(next))) &&
+				g_emoji.face && FT_Get_Char_Index(g_emoji.face, cp);
 
 			if (!emoji) {
 				if (cp == 0xfe0f || cp == 0xfe0e || cp == 0x200d) {
@@ -417,7 +470,20 @@ namespace
 		}
 	}
 
+	const Glyph& RenderNew(Face* f, unsigned index, int px);
+
 	const Glyph& Render(Face* f, unsigned index, int px)
+	{
+		Strike* s = FindStrike(f->face, px);
+		if (index < s->glyphs.size()) {
+			if (!s->glyphs[index])
+				s->glyphs[index] = &RenderNew(f, index, px);
+			return *s->glyphs[index];
+		}
+		return RenderNew(f, index, px);
+	}
+
+	const Glyph& RenderNew(Face* f, unsigned index, int px)
 	{
 		GlyphKey key{ f->face, px, index };
 		auto it = g_glyphs.find(key);
@@ -564,9 +630,10 @@ int Fonts::Descent(FontStyle st, int px)
 	return g_metrics[std::make_pair((int) st, px)].second;
 }
 
+// The UI draws on one thread: each function keeps its glyph buffer.
 int Fonts::Measure(const char* s, size_t n, FontStyle st, int px)
 {
-	std::vector<Shaped> glyphs;
+	static std::vector<Shaped> glyphs;
 	Shape(s, n, st, glyphs);
 	int w = 0;
 	for (auto& g : glyphs)
@@ -581,7 +648,7 @@ int Fonts::Measure(const std::string& s, FontStyle st, int px)
 
 int Fonts::Draw(Canvas& c, int x, int y, const char* s, size_t n, FontStyle st, int px, Rgb color)
 {
-	std::vector<Shaped> glyphs;
+	static std::vector<Shaped> glyphs;
 	Shape(s, n, st, glyphs);
 	int x0 = x;
 	for (auto& sg : glyphs)
@@ -607,7 +674,7 @@ size_t Fonts::FitBytes(const char* s, size_t n, FontStyle st, int px, int maxWid
 	const char* nl = (const char*) memchr(s, '\n', n);
 	size_t len = nl ? (size_t) (nl - s) : n;
 
-	std::vector<Shaped> glyphs;
+	static std::vector<Shaped> glyphs;
 	Shape(s, len, st, glyphs);
 	const char* lastSpace = nullptr;
 	int w = 0;
@@ -632,7 +699,7 @@ std::string Fonts::Elide(const std::string& s, FontStyle st, int px, int maxWidt
 		return s;
 	static const std::string dots = "\xe2\x80\xa6"; // U+2026
 	int room = maxWidth - Measure(dots, st, px);
-	std::vector<Shaped> glyphs;
+	static std::vector<Shaped> glyphs;
 	Shape(s.data(), s.size(), st, glyphs);
 	int w = 0;
 	for (auto& g : glyphs) {

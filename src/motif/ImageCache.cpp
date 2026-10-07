@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <list>
 #include <map>
+#include <unordered_map>
 #include <sys/stat.h>
 
 #include <md5/MD5.h>
@@ -84,10 +85,17 @@ namespace
 		}
 	}
 
+	// The name of a source's cache file; worked out once (every paint asks).
 	std::string SourceId(ImageCache::Kind kind, const std::string& place, Snowflake sf)
 	{
+		static std::unordered_map<std::string, std::string> ids;
 		std::string what = std::to_string((int) kind) + ":" + place + ":" + std::to_string(sf);
-		return MD5(what).finalize().hexdigest();
+		auto it = ids.find(what);
+		if (it != ids.end())
+			return it->second;
+		std::string id = MD5(what).finalize().hexdigest();
+		ids.emplace(what, id);
+		return id;
 	}
 
 	std::string EntryKey(const std::string& id, int w, int h)

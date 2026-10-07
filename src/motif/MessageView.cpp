@@ -234,7 +234,8 @@ void MessageView::Rebuild()
 	Channel* pChan = pInst ? pInst->GetChannelGlobally(m_channel) : nullptr;
 	std::string chanName = pChan ? pChan->m_name : "";
 
-	// keep the laid-out items of messages that did not change
+	// Items of messages that did not change keep their parsed text and
+	// their layout (an edited message is a new object in the cache).
 	std::map<Snowflake, Item*> old;
 	for (auto& it : m_items)
 		old[it.msg->m_snowflake] = &it;
@@ -249,16 +250,39 @@ void MessageView::Rebuild()
 		auto o = old.find(mp->m_snowflake);
 		bool reuse = o != old.end() && o->second->msg == mp;
 
+		if (reuse) {
+			Item& o2 = *o->second;
+			std::swap(item.text, o2.text);
+			std::swap(item.interactables, o2.interactables);
+			std::swap(item.reply, o2.reply);
+			item.extra = o2.extra;
+			item.height = o2.height;
+			item.textTop = o2.textTop;
+			item.day = o2.day;
+			item.laidOutWidth = o2.laidOutWidth;
+			item.laidOutPx = o2.laidOutPx;
+			item.laidOutGrouped = o2.laidOutGrouped;
+			item.laidOutDateSep = o2.laidOutDateSep;
+		}
+		else {
+			item.extra = std::make_shared<ItemExtra>();
+			if (!mp->IsLoadGap())
+				item.day = DayNumber(mp->m_dateTime);
+		}
+
 		item.msg = mp;
 		item.systemText = SystemText(*mp, chanName);
 		item.systemLine = !item.systemText.empty();
 
 		bool isGap = mp->IsLoadGap();
-		int day = isGap ? prevDay : DayNumber(mp->m_dateTime);
-		item.extra = std::make_shared<ItemExtra>();
+		int day = isGap ? prevDay : item.day;
 		ItemExtra& ex = *item.extra;
-		if (!isGap && day != prevDay && mp->m_dateTime)
-			ex.dateSep = DayOf(mp->m_dateTime);
+		if (!isGap && day != prevDay && mp->m_dateTime) {
+			if (ex.dateSep.empty())
+				ex.dateSep = DayOf(mp->m_dateTime);
+		}
+		else
+			ex.dateSep.clear();
 
 		item.grouped = prev && !item.systemLine && !prev->IsLoadGap() &&
 			ex.dateSep.empty() &&
@@ -267,13 +291,6 @@ void MessageView::Rebuild()
 			prev->m_author == mp->m_author &&
 			!mp->IsReply() &&
 			mp->m_dateTime - prev->m_dateTime < GROUP_SECONDS;
-
-		if (reuse && !o->second->text.Empty()) {
-			// the formatted text parses once per message
-			std::swap(item.text, o->second->text);
-			std::swap(item.interactables, o->second->interactables);
-			std::swap(item.reply, o->second->reply);
-		}
 
 		if (!isGap)
 			prevDay = day;
@@ -289,7 +306,16 @@ void MessageView::LayoutAll()
 	int width = ContentWidth();
 	int y = 8;
 	for (auto& it : m_items) {
-		LayoutItem(it, width);
+		bool dateSep = !it.extra->dateSep.empty();
+		if (it.laidOutWidth != width || it.laidOutPx != m_ctx.px ||
+			it.laidOutGrouped != it.grouped || it.laidOutDateSep != dateSep)
+		{
+			LayoutItem(it, width);
+			it.laidOutWidth = width;
+			it.laidOutPx = m_ctx.px;
+			it.laidOutGrouped = it.grouped;
+			it.laidOutDateSep = dateSep;
+		}
 		it.y = y;
 		y += it.height;
 	}
@@ -347,7 +373,6 @@ void MessageView::LayoutItem(Item& item, int width)
 		item.text.Layout(&m_ctx, Rect(TEXT_X, y, right, y + 100000));
 		Rect ext = item.text.GetExtent();
 		y = std::max(y, ext.bottom);
-		item.laidOutWidth = width;
 	}
 
 	// attachments: images as previews, other files a line each
@@ -670,14 +695,10 @@ void MessageView::PaintItem(Item& item, int top)
 		const Image* av = m.m_avatar.empty() ?
 			ImageCache::Get(ImageCache::DEFAULT_AVATAR, "", m.m_author_snowflake, AVATAR, AVATAR) :
 			ImageCache::Get(ImageCache::AVATAR, m.m_avatar, m.m_author_snowflake, AVATAR, AVATAR);
-		Rgb ac = AvatarColor(m.m_author_snowflake);
-		std::vector<uint32_t> disc((size_t) AVATAR * AVATAR, 0xff000000u | ac);
-		if (av) {
+		if (av)
 			c.BlendArgbCircle(MARGIN + (AVATAR - av->w) / 2, y + (AVATAR - av->h) / 2, av->px.data(), av->w, av->h, av->w);
-		}
-		else {
-			c.BlendArgbCircle(MARGIN, y, disc.data(), AVATAR, AVATAR, AVATAR);
-		}
+		else
+			c.FillCircle(MARGIN, y, AVATAR, AVATAR, AvatarColor(m.m_author_snowflake));
 		if (!av && !m.m_author.empty()) {
 			const char* p = m.m_author.c_str();
 			const char* end = p + m.m_author.size();

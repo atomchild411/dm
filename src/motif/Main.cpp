@@ -102,17 +102,25 @@ public:
 	}
 	void UpdateSelectedGuild() override { GetMainWindow()->UpdateSelectedGuild(); }
 	void UpdateSelectedChannel() override { GetMainWindow()->UpdateSelectedChannel(); }
-	void UpdateChannelList() override { GetMainWindow()->UpdateChannelList(); }
-	void UpdateMemberList() override { GetMainWindow()->UpdateMemberList(); }
+	// List updates from the gateway come in bursts: the rows are made once
+	// for each burst (MainWindow::ScheduleListUpdate).
+	void UpdateChannelList() override { GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_CHANNELS); }
+	void UpdateMemberList() override { GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_MEMBERS); }
 	void UpdateChannelAcknowledge(Snowflake channelID, Snowflake messageID) override {
-		GetMainWindow()->UpdateChannelList();
+		GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_CHANNELS);
 	}
-	void RepaintGuildList() override { GetMainWindow()->UpdateGuildList(); }
+	void RepaintGuildList() override { GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_GUILDS); }
 	void RefreshMessages(ScrollDir::eScrollDir sd, Snowflake gapCulprit) override {
 		GetMainWindow()->GetMessageView()->Refresh();
 	}
 	void RefreshMembers(const std::set<Snowflake>& members) override {
-		GetMainWindow()->UpdateMemberList();
+		// only changes to the current server's list show
+		for (Snowflake sf : members) {
+			if (GetMainWindow()->ShowsMember(sf)) {
+				GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_MEMBERS);
+				return;
+			}
+		}
 	}
 	// the QR login's gateway is not the session's
 	void OnWebsocketMessage(int gatewayID, const std::string& payload) override {
@@ -143,10 +151,12 @@ public:
 		Frontend_Posix::OnWebsocketFail(gatewayID, errorCode, message, isTLSError, mayRetry);
 	}
 	void UpdateUserData(Snowflake userID) override {
-		GetMainWindow()->UpdateMemberList();
+		if (GetMainWindow()->ShowsMember(userID))
+			GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_MEMBERS);
 	}
 	void UpdateProfileAvatar(Snowflake userID, const std::string& resid) override {
-		GetMainWindow()->UpdateMemberList();
+		if (GetMainWindow()->ShowsMember(userID))
+			GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_MEMBERS);
 	}
 	void OnAttachmentDownloaded(bool bIsProfilePicture, const uint8_t* pData, size_t nSize, const std::string& additData) override {
 		ImageCache::Downloaded(additData, pData, nSize);

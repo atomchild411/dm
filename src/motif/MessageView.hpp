@@ -53,7 +53,12 @@ private:
 		int y = 0;              // top, in content coordinates
 		int height = 0;
 		int textTop = 0;        // offsets inside the item
+		int day = -1;           // DayNumber of the message
+		// what the layout was made for: it is kept while these hold
 		int laidOutWidth = -1;
+		int laidOutPx = 0;
+		bool laidOutGrouped = false;
+		bool laidOutDateSep = false;
 		std::shared_ptr<ItemExtra> extra;
 	};
 

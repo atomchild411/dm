@@ -30,6 +30,13 @@ public:
 	void UpdateChannelList();
 	void UpdateSelectedChannel();
 	void UpdateMemberList();
+
+	// The same, a little later: a burst of updates from the gateway (presence,
+	// member list changes, read marks) makes the rows once.
+	enum { LIST_GUILDS = 1, LIST_CHANNELS = 2, LIST_MEMBERS = 4 };
+	void ScheduleListUpdate(int lists);
+	// Whether a change to this user shows in the member list.
+	bool ShowsMember(Snowflake user) const;
 	void UpdateHeader();
 	void UpdateTitle();
 
@@ -52,6 +59,7 @@ private:
 	void OnGuildPicked(Snowflake sf);
 	void OnChannelPicked(Snowflake sf);
 	static void ListRepaintCB(XtPointer, XtIntervalId*);
+	static void ListUpdateCB(XtPointer, XtIntervalId*);
 	static void SendCB(Widget, XtPointer, XtPointer);
 	static void EditorChangedCB(Widget, XtPointer, XtPointer);
 	static void MenuCB(Widget, XtPointer, XtPointer);
@@ -70,6 +78,8 @@ private:
 	IconList* m_channels;
 	IconList* m_members;
 	XtIntervalId m_listRepaintTimer = 0;
+	XtIntervalId m_listUpdateTimer = 0;
+	int m_pendingLists = 0;
 
 
 	// typing: channel -> user -> when it expires

@@ -3,7 +3,11 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <X11/Xutil.h>
+#include <X11/extensions/XShm.h>
 
 #include "Perf.hpp"
 
@@ -118,7 +122,12 @@ XImage* PixelFormat::MakeImage(const Rgb* px, int stride, int w, int h, int orig
 		XDestroyImage(img);
 		return NULL;
 	}
+	Convert(img, px, stride, w, h, originX, originY);
+	return img;
+}
 
+void PixelFormat::Convert(XImage* img, const Rgb* px, int stride, int w, int h, int originX, int originY) const
+{
 	bool hostMSB;
 	{
 		uint16_t probe = 1;
@@ -140,12 +149,17 @@ XImage* PixelFormat::MakeImage(const Rgb* px, int stride, int w, int h, int orig
 				d[x] = (sr >= 0 ? r << sr : r >> -sr) | (sg >= 0 ? g << sg : g >> -sg) | (sb >= 0 ? b << sb : b >> -sb);
 			}
 		}
-		return img;
+		return;
 	}
 
+	// Other layouts: each pixel's value worked out, then stored directly
+	// for 8, 16 and 32 bits a pixel (XPutPixel, a call a pixel, otherwise).
+	int bpp = img->bits_per_pixel;
+	bool msb = img->byte_order == MSBFirst;
 	for (int y = 0; y < h; y++)
 	{
 		const Rgb* s = px + (size_t) y * stride;
+		uint8_t* row = (uint8_t*) img->data + (size_t) y * img->bytes_per_line;
 		for (int x = 0; x < w; x++)
 		{
 			Rgb c = s[x];
@@ -183,10 +197,27 @@ XImage* PixelFormat::MakeImage(const Rgb* px, int stride, int w, int h, int orig
 				}
 				p = m_cube[(idx[0] * n + idx[1]) * n + idx[2]];
 			}
-			XPutPixel(img, x, y, p);
+			switch (bpp) {
+				case 8:
+					row[x] = (uint8_t) p;
+					break;
+				case 16: {
+					uint8_t* q = row + 2 * x;
+					q[msb ? 0 : 1] = (uint8_t) (p >> 8);
+					q[msb ? 1 : 0] = (uint8_t) p;
+					break;
+				}
+				case 32: {
+					uint8_t* q = row + 4 * x;
+					for (int k = 0; k < 4; k++)
+						q[msb ? k : 3 - k] = (uint8_t) (p >> (24 - 8 * k));
+					break;
+				}
+				default:
+					XPutPixel(img, x, y, p);
+			}
 		}
 	}
-	return img;
 }
 
 void Canvas::Resize(int w, int h)
@@ -299,19 +330,19 @@ void Canvas::BlendArgb(int x, int y, const uint32_t* px, int w, int h, int strid
 	}
 }
 
-void Canvas::BlendArgbCircle(int x, int y, const uint32_t* px, int w, int h, int stride)
+// The coverage (0..16) of each pixel of a circle inscribed in w x h, 4x4
+// supersampled; made once for each size.
+static const uint8_t* CircleCoverage(int w, int h)
 {
-	int cx = x, cy = y, cw = w, ch = h;
-	if (!ClipRect(cx, cy, cw, ch))
-		return;
-	// coverage of a circle inscribed in w x h, 4x4 supersampled at the edge
+	static std::map<std::pair<int, int>, std::vector<uint8_t>> cache;
+	auto it = cache.find(std::make_pair(w, h));
+	if (it != cache.end())
+		return it->second.data();
+	std::vector<uint8_t>& cov = cache[std::make_pair(w, h)];
+	cov.resize((size_t) w * h);
 	float rx = w / 2.0f, ry = h / 2.0f;
-	for (int j = 0; j < ch; j++) {
-		int sy = cy - y + j;
-		const uint32_t* s = px + (size_t) sy * stride + (cx - x);
-		Rgb* d = &m_px[(size_t) (cy + j) * m_w + cx];
-		for (int i = 0; i < cw; i++) {
-			int sx = cx - x + i;
+	for (int sy = 0; sy < h; sy++)
+		for (int sx = 0; sx < w; sx++) {
 			int inside = 0;
 			for (int sj = 0; sj < 4; sj++)
 			for (int si = 0; si < 4; si++) {
@@ -319,10 +350,124 @@ void Canvas::BlendArgbCircle(int x, int y, const uint32_t* px, int w, int h, int
 				float fy = (sy + (sj + 0.5f) / 4 - ry) / ry;
 				inside += fx * fx + fy * fy <= 1.0f;
 			}
-			int a = (int) (s[i] >> 24) * inside / 16;
-			d[i] = Blend(d[i], s[i] & 0xffffff, a);
+			cov[(size_t) sy * w + sx] = (uint8_t) inside;
 		}
+	return cov.data();
+}
+
+void Canvas::BlendArgbCircle(int x, int y, const uint32_t* px, int w, int h, int stride)
+{
+	int cx = x, cy = y, cw = w, ch = h;
+	if (!ClipRect(cx, cy, cw, ch))
+		return;
+	const uint8_t* cov = CircleCoverage(w, h);
+	for (int j = 0; j < ch; j++) {
+		int sy = cy - y + j;
+		const uint32_t* s = px + (size_t) sy * stride + (cx - x);
+		const uint8_t* k = cov + (size_t) sy * w + (cx - x);
+		Rgb* d = &m_px[(size_t) (cy + j) * m_w + cx];
+		for (int i = 0; i < cw; i++)
+			if (k[i])
+				d[i] = Blend(d[i], s[i] & 0xffffff, (int) (s[i] >> 24) * k[i] / 16);
 	}
+}
+
+void Canvas::FillCircle(int x, int y, int w, int h, Rgb c, int alpha)
+{
+	int cx = x, cy = y, cw = w, ch = h;
+	if (!ClipRect(cx, cy, cw, ch))
+		return;
+	const uint8_t* cov = CircleCoverage(w, h);
+	for (int j = 0; j < ch; j++) {
+		const uint8_t* k = cov + (size_t) (cy - y + j) * w + (cx - x);
+		Rgb* d = &m_px[(size_t) (cy + j) * m_w + cx];
+		for (int i = 0; i < cw; i++)
+			if (k[i])
+				d[i] = Blend(d[i], c, alpha * k[i] / 16);
+	}
+}
+
+struct Canvas::Upload
+{
+	Display* dpy = nullptr;
+	Visual* visual = nullptr;
+	XImage* img = nullptr;
+	XShmSegmentInfo shm;
+	bool attached = false;
+
+	~Upload()
+	{
+		if (!img)
+			return;
+		if (attached) {
+			XShmDetach(dpy, &shm);
+			XSync(dpy, False);
+		}
+		if (attached || shm.shmaddr) {
+			shmdt(shm.shmaddr);
+			img->data = NULL; // not malloc'd: XDestroyImage must not free it
+		}
+		XDestroyImage(img);
+	}
+};
+
+// MIT-SHM: -1 not tried yet, 0 not available (or DM_NO_SHM), 1 working.
+static int g_shm = -1;
+static bool g_shmFailed;
+
+static int ShmErrorHandler(Display*, XErrorEvent*)
+{
+	g_shmFailed = true;
+	return 0;
+}
+
+// A w x h image in memory shared with the X server, or null when the server
+// cannot use it (another machine's display, no extension).
+static XImage* MakeShmImage(Display* dpy, Visual* visual, int depth, int w, int h, XShmSegmentInfo& shm, bool& attached)
+{
+	attached = false;
+	shm.shmaddr = NULL;
+	if (g_shm < 0)
+		g_shm = !getenv("DM_NO_SHM") && XShmQueryExtension(dpy) ? 1 : 0;
+	if (!g_shm)
+		return NULL;
+
+	XImage* img = XShmCreateImage(dpy, visual, depth, ZPixmap, NULL, &shm, w, h);
+	if (!img)
+		return NULL;
+	shm.shmid = shmget(IPC_PRIVATE, (size_t) img->bytes_per_line * h, IPC_CREAT | 0600);
+	if (shm.shmid < 0) {
+		XDestroyImage(img);
+		return NULL;
+	}
+	shm.shmaddr = img->data = (char*) shmat(shm.shmid, NULL, 0);
+	shm.readOnly = False;
+	if (shm.shmaddr == (char*) -1) {
+		shmctl(shm.shmid, IPC_RMID, NULL);
+		shm.shmaddr = NULL;
+		img->data = NULL;
+		XDestroyImage(img);
+		return NULL;
+	}
+
+	// a server on another machine answers the attach with an error
+	XSync(dpy, False);
+	g_shmFailed = false;
+	XErrorHandler old = XSetErrorHandler(ShmErrorHandler);
+	XShmAttach(dpy, &shm);
+	XSync(dpy, False);
+	XSetErrorHandler(old);
+	shmctl(shm.shmid, IPC_RMID, NULL); // freed once both sides detach
+	if (g_shmFailed) {
+		g_shm = 0;
+		shmdt(shm.shmaddr);
+		shm.shmaddr = NULL;
+		img->data = NULL;
+		XDestroyImage(img);
+		return NULL;
+	}
+	attached = true;
+	return img;
 }
 
 void Canvas::Present(const PixelFormat& fmt, Drawable dr, GC gc, int x, int y, int w, int h, int dx, int dy) const
@@ -334,6 +479,26 @@ void Canvas::Present(const PixelFormat& fmt, Drawable dr, GC gc, int x, int y, i
 	if (w <= 0 || h <= 0)
 		return;
 	Perf::Scope perf(Perf::PRESENT);
+	Display* dpy = fmt.GetDisplay();
+
+	// The canvas-sized shared image, made again when the canvas grew.
+	if (g_shm != 0 && (!m_upload || m_upload->dpy != dpy || m_upload->visual != fmt.GetVisual() ||
+		m_upload->img->width < w || m_upload->img->height < h))
+	{
+		m_upload.reset();
+		std::shared_ptr<Upload> u(new Upload);
+		u->dpy = dpy;
+		u->visual = fmt.GetVisual();
+		u->img = MakeShmImage(dpy, fmt.GetVisual(), fmt.GetDepth(), std::max(w, m_w), std::max(h, m_h), u->shm, u->attached);
+		if (u->img)
+			m_upload = u;
+	}
+	if (m_upload) {
+		fmt.Convert(m_upload->img, &m_px[(size_t) y * m_w + x], m_w, w, h, dx, dy);
+		XShmPutImage(dpy, dr, gc, m_upload->img, 0, 0, dx, dy, w, h, False);
+		XSync(dpy, False); // the server has read the pixels before they change again
+		return;
+	}
 
 	// In bands, so a full-window update never needs one huge image.
 	const int band = 64;

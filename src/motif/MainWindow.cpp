@@ -273,6 +273,7 @@ void MainWindow::MenuCB(Widget w, XtPointer client, XtPointer)
 		case MI_MEMBERS:
 			self->m_memberListShown = XmToggleButtonGetState(w);
 			if (self->m_memberListShown) {
+				self->UpdateMemberList();
 				XtManageChild(self->m_memberPane);
 				XtVaSetValues(self->m_messages->GetWidget(), XmNrightAttachment, XmATTACH_WIDGET, XmNrightWidget, self->m_memberPane, NULL);
 				XtVaSetValues(self->m_header, XmNrightAttachment, XmATTACH_WIDGET, XmNrightWidget, self->m_memberPane, NULL);
@@ -536,6 +537,8 @@ Rgb RoleColor(Snowflake user, Snowflake guild)
 
 void MainWindow::UpdateMemberList()
 {
+	if (!m_memberListShown)
+		return; // made when it is shown
 	Perf::Scope perf(Perf::MEMBERS);
 	DiscordInstance* pInst = GetDiscordInstance();
 	Guild* pGuild = pInst->GetCurrentGuild();
@@ -636,6 +639,37 @@ void MainWindow::OnImagesChanged()
 	m_messages->ImagesChanged();
 	if (!m_listRepaintTimer)
 		m_listRepaintTimer = XtAppAddTimeOut(XtWidgetToApplicationContext(m_shell), 100, ListRepaintCB, this);
+}
+
+void MainWindow::ScheduleListUpdate(int lists)
+{
+	m_pendingLists |= lists;
+	if (!m_listUpdateTimer)
+		m_listUpdateTimer = XtAppAddTimeOut(XtWidgetToApplicationContext(m_shell), 250, ListUpdateCB, this);
+}
+
+void MainWindow::ListUpdateCB(XtPointer client, XtIntervalId*)
+{
+	MainWindow* self = (MainWindow*) client;
+	self->m_listUpdateTimer = 0;
+	int lists = self->m_pendingLists;
+	self->m_pendingLists = 0;
+	if (lists & LIST_GUILDS)
+		self->UpdateGuildList();
+	if (lists & LIST_CHANNELS)
+		self->UpdateChannelList();
+	if (lists & LIST_MEMBERS)
+		self->UpdateMemberList();
+}
+
+bool MainWindow::ShowsMember(Snowflake user) const
+{
+	if (!m_memberListShown)
+		return false;
+	Guild* pGuild = GetDiscordInstance()->GetCurrentGuild();
+	if (!pGuild || pGuild->m_snowflake == 0)
+		return false;
+	return std::find(pGuild->m_members.begin(), pGuild->m_members.end(), user) != pGuild->m_members.end();
 }
 
 void MainWindow::ListRepaintCB(XtPointer client, XtIntervalId*)

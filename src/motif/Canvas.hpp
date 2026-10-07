@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 #include <X11/Xlib.h>
 
@@ -29,6 +30,8 @@ public:
 	// Converts w x h pixels (stride in pixels) into a new XImage, dithered
 	// when the visual needs it.  Free with XDestroyImage.
 	XImage* MakeImage(const Rgb* px, int stride, int w, int h, int originX, int originY) const;
+	// The same into the top left of an image of this visual.
+	void Convert(XImage* img, const Rgb* px, int stride, int w, int h, int originX, int originY) const;
 
 private:
 	Display* m_dpy = nullptr;
@@ -69,6 +72,8 @@ public:
 	void BlendArgb(int x, int y, const uint32_t* px, int w, int h, int stride);
 	// The same inside a circle of the image's size (avatars).
 	void BlendArgbCircle(int x, int y, const uint32_t* px, int w, int h, int stride);
+	// A disc of one colour filling w x h, at the given opacity (0..255).
+	void FillCircle(int x, int y, int w, int h, Rgb c, int alpha = 255);
 
 	// Shows the rectangle (x, y, w, h) of the canvas at (dx, dy) in a
 	// drawable.
@@ -76,6 +81,11 @@ public:
 
 private:
 	bool ClipRect(int& x, int& y, int& w, int& h) const;
+
+	// The image Present converts into: in memory shared with the X server
+	// (MIT-SHM) when it can be, so the pixels need not travel the socket.
+	struct Upload;
+	mutable std::shared_ptr<Upload> m_upload;
 
 	int m_w = 0, m_h = 0;
 	std::vector<Rgb> m_px;

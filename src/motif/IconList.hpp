@@ -34,6 +34,9 @@ struct IconRow
 	bool dim = false;          // muted text (voice channels, offline members)
 	int mentions = 0;          // a red badge
 	int status = -1;           // presence dot: eActiveStatus, -1 none
+
+	bool operator==(const IconRow& o) const;
+	bool operator!=(const IconRow& o) const { return !(*this == o); }
 };
 
 // A list drawn in a Canvas, with icons and any Unicode text, which Motif's
@@ -75,6 +78,7 @@ private:
 
 	std::vector<IconRow> m_rows;
 	std::vector<int> m_tops;
+	int m_layoutTextSize = 0; // GetTextSize() of the layout
 	int m_contentHeight = 0;
 	int m_scrollY = 0;
 	int m_viewW = 1, m_viewH = 1;

@@ -41,6 +41,16 @@ static std::string Initials(const std::string& s)
 	return out;
 }
 
+bool IconRow::operator==(const IconRow& o) const
+{
+	return type == o.type && id == o.id && selectable == o.selectable && text == o.text &&
+		indent == o.indent && hasImage == o.hasImage && imageKind == o.imageKind &&
+		imagePlace == o.imagePlace && imageSf == o.imageSf && roundImage == o.roundImage &&
+		glyph == o.glyph && initials == o.initials && colorSeed == o.colorSeed &&
+		textColor == o.textColor && unread == o.unread && dim == o.dim &&
+		mentions == o.mentions && status == o.status;
+}
+
 IconList::IconList(Widget parent, const char* name, const PixelFormat& fmt, int iconSize, bool darker) :
 	m_fmt(fmt), m_iconSize(iconSize), m_darker(darker)
 {
@@ -87,6 +97,7 @@ int IconList::RowHeight(const IconRow& r) const
 void IconList::Layout()
 {
 	m_tops.resize(m_rows.size());
+	m_layoutTextSize = GetTextSize();
 	int y = 4;
 	for (size_t i = 0; i < m_rows.size(); i++) {
 		m_tops[i] = y;
@@ -99,6 +110,36 @@ void IconList::Layout()
 void IconList::SetRows(const std::vector<IconRow>& rows, Snowflake selected)
 {
 	Perf::Scope perf(Perf::LIST_SETROWS);
+
+	// The same rows with some of them changed (a presence dot, a badge): no
+	// new layout, and a repaint only when a changed row is on screen.
+	if (rows.size() == m_rows.size() && m_layoutTextSize == GetTextSize()) {
+		bool sameShape = true, visibleChange = false;
+		int sel = -1;
+		for (size_t i = 0; i < rows.size() && sameShape; i++) {
+			const IconRow& a = rows[i];
+			const IconRow& b = m_rows[i];
+			if (a.type != b.type || a.id != b.id || a.selectable != b.selectable) {
+				sameShape = false;
+				break;
+			}
+			if (sel < 0 && a.type == IconRow::ITEM && a.selectable && a.id == selected)
+				sel = (int) i;
+			if (!visibleChange && a != b) {
+				int top = m_tops[i] - m_scrollY;
+				visibleChange = top + RowHeight(a) > 0 && top < m_viewH;
+			}
+		}
+		if (sameShape && sel == m_selected) {
+			for (size_t i = 0; i < rows.size(); i++)
+				if (rows[i] != m_rows[i])
+					m_rows[i] = rows[i];
+			if (visibleChange)
+				Repaint();
+			return;
+		}
+	}
+
 	Snowflake cursorId = m_cursor >= 0 && m_cursor < (int) m_rows.size() ? m_rows[m_cursor].id : 0;
 	m_rows = rows;
 	m_selected = m_cursor = -1;
@@ -304,8 +345,7 @@ void IconList::PaintRow(const IconRow& r, int y, int h, bool selected, bool curs
 		}
 	}
 	if (!drewIcon && (r.initials || r.hasImage)) {
-		std::vector<uint32_t> disc((size_t) s * s, 0xff000000u | DiscColor(r.colorSeed ? r.colorSeed : r.id));
-		c.BlendArgbCircle(x, iy, disc.data(), s, s, s);
+		c.FillCircle(x, iy, s, s, DiscColor(r.colorSeed ? r.colorSeed : r.id));
 		std::string ini = Initials(r.text);
 		int ipx = std::max(8, s * 2 / 5);
 		std::string fit = Fonts::Elide(ini, FS_BOLD, ipx, s - 2);
@@ -325,10 +365,8 @@ void IconList::PaintRow(const IconRow& r, int y, int h, bool selected, bool curs
 		int d = std::max(8, s / 3);
 		Rgb ring = selected ? p.selBg : bg;
 		Rgb col = r.status == 1 ? p.online : r.status == 2 ? p.idle : r.status == 3 ? p.dnd : p.offline;
-		std::vector<uint32_t> outer((size_t) (d + 4) * (d + 4), 0xff000000u | ring);
-		std::vector<uint32_t> inner((size_t) d * d, 0xff000000u | col);
-		c.BlendArgbCircle(x + s - d + 1 - 2, iy + s - d + 1 - 2, outer.data(), d + 4, d + 4, d + 4);
-		c.BlendArgbCircle(x + s - d + 1, iy + s - d + 1, inner.data(), d, d, d);
+		c.FillCircle(x + s - d + 1 - 2, iy + s - d + 1 - 2, d + 4, d + 4, ring);
+		c.FillCircle(x + s - d + 1, iy + s - d + 1, d, d, col);
 	}
 	int tx = drewIcon ? x + s + 8 : x + 2;
 
