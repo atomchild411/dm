@@ -35,6 +35,7 @@
 #include "shared/Perf.hpp"
 #include "shared/Lists.hpp"
 #include "shared/Demo.hpp"
+#include "shared/Typing.hpp"
 #include "models/ActiveStatus.hpp"
 
 static MainWindow* g_pMainWindow;
@@ -68,6 +69,8 @@ int AddVisualArgs(Arg* args, int n); // Main.cpp
 
 MainWindow::MainWindow(Widget toplevel, const PixelFormat& fmt)
 {
+	// who is typing shows in the status line (and in conversation windows)
+	Typing::SetChangedCallback([this] { UpdateTypingStatus(); });
 	g_pMainWindow = this;
 	m_shell = toplevel;
 	m_fmt = &fmt;
@@ -391,7 +394,7 @@ void MainWindow::MenuCB(Widget w, XtPointer client, XtPointer)
 		case MI_BIGGER:
 		case MI_SMALLER:
 			SetTextSize(GetTextSize() + ((int) (long) client == MI_BIGGER ? 1 : -1));
-			SaveMotifConfig();
+			SaveClientConfig();
 			self->m_messages->Relayout();
 			Conversations::Relayout();
 			self->UpdateGuildList();
@@ -401,7 +404,7 @@ void MainWindow::MenuCB(Widget w, XtPointer client, XtPointer)
 		case MI_NOTIFY_SOUND:
 		case MI_NOTIFY_POPUP:
 			SetNotifyOn((int) (long) client == MI_NOTIFY_SOUND ? NOTIFY_SOUND : NOTIFY_POPUP, XmToggleButtonGetState(w));
-			SaveMotifConfig();
+			SaveClientConfig();
 			break;
 		case MI_GUILDS:
 		case MI_CHANNELS:
@@ -409,7 +412,7 @@ void MainWindow::MenuCB(Widget w, XtPointer client, XtPointer)
 			int id = (int) (long) client;
 			Pane pane = id == MI_GUILDS ? PANE_GUILDS : id == MI_CHANNELS ? PANE_CHANNELS : PANE_MEMBERS;
 			SetPaneShown(pane, XmToggleButtonGetState(w));
-			SaveMotifConfig();
+			SaveClientConfig();
 			if (pane == PANE_MEMBERS && IsPaneShown(PANE_MEMBERS))
 				self->UpdateMemberList(); // not kept up to date while hidden
 			self->ApplyPanes();
@@ -625,7 +628,7 @@ void MainWindow::UpdateSelectedChannel()
 		GetLastChannel(g, c);
 		if (g != pInst->GetCurrentGuildID() || c != pInst->GetCurrentChannelID()) {
 			SetLastChannel(pInst->GetCurrentGuildID(), pInst->GetCurrentChannelID());
-			SaveMotifConfig();
+			SaveClientConfig();
 		}
 	}
 	UpdateChannelList();
@@ -766,23 +769,7 @@ void MainWindow::SetStatus(const std::string& text)
 
 std::string MainWindow::TypingText(Snowflake channel)
 {
-	DiscordInstance* pInst = GetDiscordInstance();
-	auto it = m_typing.find(channel);
-	if (!pInst || it == m_typing.end() || it->second.empty())
-		return "";
-	Channel* pChan = pInst->GetChannelGlobally(channel);
-	Snowflake guild = pChan ? pChan->m_parentGuild : 0;
-	std::vector<std::string> names;
-	for (auto& t : it->second) {
-		Profile* p = GetProfileCache()->LookupProfile(t.first, "", "", "", false);
-		names.push_back(p ? p->GetName(guild) : "Someone");
-	}
-	if (names.size() > 3)
-		return "Several people are typing...";
-	std::string who;
-	for (size_t i = 0; i < names.size(); i++)
-		who += (i ? (i + 1 == names.size() ? " and " : ", ") : "") + names[i];
-	return who + (names.size() == 1 ? " is typing..." : " are typing...");
+	return Typing::Text(channel);
 }
 
 void MainWindow::UpdateTypingStatus()
@@ -800,43 +787,12 @@ void MainWindow::UpdateTypingStatus()
 
 void MainWindow::OnTyping(Snowflake user, Snowflake guild, Snowflake channel, time_t when)
 {
-	DiscordInstance* pInst = GetDiscordInstance();
-	if (user == pInst->GetUserID())
-		return;
-	m_typing[channel][user] = time(NULL) + 10;
-	UpdateTypingStatus();
-	if (!m_typingTimer)
-		m_typingTimer = XtAppAddTimeOut(XtWidgetToApplicationContext(m_shell), 1000, TypingTimerCB, this);
+	Typing::Started(user, channel);
 }
 
 void MainWindow::OnStopTyping(Snowflake channel, Snowflake user)
 {
-	auto it = m_typing.find(channel);
-	if (it == m_typing.end())
-		return;
-	it->second.erase(user);
-	UpdateTypingStatus();
-}
-
-void MainWindow::TypingTimerCB(XtPointer client, XtIntervalId*)
-{
-	MainWindow* self = (MainWindow*) client;
-	self->m_typingTimer = 0;
-	time_t now = time(NULL);
-	bool any = false;
-	for (auto& ch : self->m_typing) {
-		for (auto it = ch.second.begin(); it != ch.second.end(); ) {
-			if (it->second <= now)
-				it = ch.second.erase(it);
-			else {
-				++it;
-				any = true;
-			}
-		}
-	}
-	self->UpdateTypingStatus();
-	if (any)
-		self->m_typingTimer = XtAppAddTimeOut(XtWidgetToApplicationContext(self->m_shell), 1000, TypingTimerCB, self);
+	Typing::Stopped(channel, user);
 }
 
 void MainWindow::OnGuildPicked(Snowflake sf)

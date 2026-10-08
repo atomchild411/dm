@@ -3,10 +3,6 @@
 
 #include <cstdlib>
 #include <string>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <fcntl.h>
-#include <unistd.h>
 
 #include <X11/Shell.h>
 #include <Xm/DrawingA.h>
@@ -16,6 +12,8 @@
 #include "Fonts.hpp"
 #include "shared/ImageCache.hpp"
 #include "shared/Perf.hpp"
+#include "shared/Sound.hpp"
+#include "shared/NotificationText.hpp"
 #include "Theme.hpp"
 #include "ConversationWindow.hpp"
 
@@ -23,15 +21,12 @@ int AddVisualArgs(Arg* args, int n); // Main.cpp
 
 namespace
 {
-	const char* const DEFAULT_SOUND = "/usr/share/data/sounds/soundscheme/soundfiles/08.ting.aifc";
-	const char* const PLAYER = "/usr/sbin/sfplay";
 	const int POPUP_W = 360, POPUP_H = 74, AVATAR = 42;
 	const unsigned long POPUP_MS = 6000;
 
 	Widget g_toplevel;
 	const PixelFormat* g_fmt;
 	bool g_focused = false;
-	double g_lastSound = 0;
 
 	// the popup
 	Widget g_popup, g_area;
@@ -41,43 +36,9 @@ namespace
 	Notification g_shown;
 	bool g_up = false;
 
-	bool Exists(const char* path)
-	{
-		struct stat st;
-		return path && stat(path, &st) == 0;
-	}
-
-	// sfplay in the background: forked twice, so nothing waits for it
 	void PlaySound()
 	{
-		double now = Perf::Now();
-		if (now - g_lastSound < 2.0)
-			return; // a burst of mentions: one sound
-		g_lastSound = now;
-
-		const char* file = getenv("DM_SOUND");
-		if (!file || !*file)
-			file = DEFAULT_SOUND;
-		if (!Exists(PLAYER) || !Exists(file)) {
-			XBell(XtDisplay(g_toplevel), 0);
-			return;
-		}
-		pid_t pid = fork();
-		if (pid == 0) {
-			if (fork() == 0) {
-				int null = open("/dev/null", O_RDWR);
-				if (null >= 0) {
-					dup2(null, 0);
-					dup2(null, 1);
-					dup2(null, 2);
-				}
-				execl(PLAYER, "sfplay", file, (char*) NULL);
-				_exit(127);
-			}
-			_exit(0);
-		}
-		if (pid > 0)
-			waitpid(pid, NULL, 0);
+		Sound::PlayNotification([] { XBell(XtDisplay(g_toplevel), 0); });
 	}
 
 	void Popdown()
@@ -94,20 +55,6 @@ namespace
 	{
 		g_popdownTimer = 0;
 		Popdown();
-	}
-
-	// "#channel, Server" or "Direct message"
-	std::string Where(const Notification& n)
-	{
-		DiscordInstance* pInst = GetDiscordInstance();
-		Channel* pChan = pInst ? pInst->GetChannelGlobally(n.m_sourceChannel) : nullptr;
-		Guild* pGuild = pInst && n.m_sourceGuild ? pInst->GetGuild(n.m_sourceGuild) : nullptr;
-		if (!pChan || pChan->IsDM())
-			return "direct message";
-		std::string s = "#" + pChan->m_name;
-		if (pGuild)
-			s += ", " + pGuild->m_name;
-		return s;
 	}
 
 	void Paint()
@@ -137,12 +84,9 @@ namespace
 		int tx = ax + AVATAR + 12, right = POPUP_W - 10;
 		int y1 = 12 + Fonts::Ascent(FS_BOLD, px);
 		int w = Fonts::Draw(c, tx, y1, Fonts::Elide(g_shown.m_author, FS_BOLD, px, (right - tx) / 2), FS_BOLD, px, p.msgFg);
-		Fonts::Draw(c, tx + w + 6, y1, Fonts::Elide(Where(g_shown), FS_REGULAR, px - 2, right - tx - w - 6), FS_REGULAR, px - 2, p.msgMuted);
+		Fonts::Draw(c, tx + w + 6, y1, Fonts::Elide(NotificationText::Where(g_shown), FS_REGULAR, px - 2, right - tx - w - 6), FS_REGULAR, px - 2, p.msgMuted);
 
-		std::string text = g_shown.m_contents.empty() ? std::string("(an attachment)") : g_shown.m_contents;
-		for (auto& ch : text)
-			if (ch == '\n' || ch == '\t')
-				ch = ' ';
+		std::string text = NotificationText::OneLine(g_shown);
 		int y2 = y1 + Fonts::LineHeight(FS_REGULAR, px) + 4;
 		Fonts::Draw(c, tx, y2, Fonts::Elide(text, FS_REGULAR, px, right - tx), FS_REGULAR, px, p.msgFg);
 

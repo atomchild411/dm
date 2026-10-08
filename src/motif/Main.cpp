@@ -479,7 +479,7 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	LoadMotifConfig();
+	LoadClientConfig("motif.conf");
 	PickVisual(dpy);
 	g_pixelFormat.Init(dpy, g_visual, g_depth, g_colormap);
 

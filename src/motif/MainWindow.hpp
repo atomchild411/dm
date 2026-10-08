@@ -78,7 +78,6 @@ private:
 	static void SendCB(Widget, XtPointer, XtPointer);
 	static void EditorChangedCB(Widget, XtPointer, XtPointer);
 	static void MenuCB(Widget, XtPointer, XtPointer);
-	static void TypingTimerCB(XtPointer, XtIntervalId*);
 
 	void BuildMenus(Widget menubar);
 	void SendFromEditor();
@@ -116,8 +115,6 @@ private:
 
 
 	// typing: channel -> user -> when it expires
-	std::map<Snowflake, std::map<Snowflake, time_t>> m_typing;
-	XtIntervalId m_typingTimer = 0;
 	time_t m_lastTypingSent = 0;
 	std::string m_statusText;
 };
