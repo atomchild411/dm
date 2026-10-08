@@ -243,6 +243,8 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 
 		headers.insert(std::make_pair("Authorization", req.authorization));
 	}
+	for (auto& h : req.extra_headers)
+		headers.insert(h);
 
 	using namespace std::placeholders;
 	int attempt = 0;
@@ -326,9 +328,11 @@ void NetworkerThread::AddRequest(
 	std::string additional_data,
 	NetRequest::NetworkResponseFunc pRespFunc,
 	uint8_t* stream_bytes,
-	size_t stream_size)
+	size_t stream_size,
+	const std::vector<std::pair<std::string, std::string>>& extra_headers)
 {
 	NetRequest rq(0, itype, requestKey, type, url, "", params, authorization, additional_data, pRespFunc, stream_bytes, stream_size);
+	rq.extra_headers = extra_headers;
 
 	std::lock_guard<std::mutex> lk(m_requestLock);
 	m_requests.push(rq);
@@ -437,7 +441,8 @@ void NetworkerThreadManager::PerformRequest(
 	std::string additional_data,
 	NetRequest::NetworkResponseFunc pRespFunc,
 	uint8_t* stream_bytes,
-	size_t stream_size)
+	size_t stream_size,
+	const std::vector<std::pair<std::string, std::string>>& extra_headers)
 {
 	int idx;
 	if (interactive) {
@@ -450,5 +455,5 @@ void NetworkerThreadManager::PerformRequest(
 	}
 
 	if (m_pNetworkThreads[idx])
-		m_pNetworkThreads[idx]->AddRequest(type, url, itype, requestKey, params, authorization, additional_data, pRespFunc, stream_bytes, stream_size);
+		m_pNetworkThreads[idx]->AddRequest(type, url, itype, requestKey, params, authorization, additional_data, pRespFunc, stream_bytes, stream_size, extra_headers);
 }

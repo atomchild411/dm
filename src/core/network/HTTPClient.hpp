@@ -70,6 +70,7 @@ struct NetRequest
 	std::string authorization = "";
 	std::string additional_data = "";
 	std::vector<uint8_t> params_bytes; // used only for PUT_OCTETS and PUT_OCTETS_PROGRESS
+	std::vector<std::pair<std::string, std::string>> extra_headers; // sent as they are
 	size_t m_offset; // used only for *_PROGRESS
 	size_t m_length; // used only for *_PROGRESS
 	bool m_bCancelOp = false; // used only for *_PROGRESS
@@ -139,7 +140,8 @@ public:
 		std::string additional_data = "",
 		NetRequest::NetworkResponseFunc pRespFunc = nullptr,
 		uint8_t* stream_bytes = nullptr,
-		size_t stream_size = 0
+		size_t stream_size = 0,
+		const std::vector<std::pair<std::string, std::string>>& extra_headers = {}
 	) = 0;
 
 	static void DefaultRequestHandler(NetRequest* pRequest);
