@@ -219,8 +219,9 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 	if (!caFile.empty())
 		client.set_ca_cert_path(caFile.c_str());
 
-	// Follow redirects (CDN links)
-	client.set_follow_location(true);
+	// Follow redirects (CDN links), but never with the login token: httplib
+	// sends the same headers to wherever a redirect points, http:// included.
+	client.set_follow_location(req.authorization.empty());
 
 	Headers headers;
 	headers.insert(std::make_pair("User-Agent", GetClientConfig()->GetUserAgent()));

@@ -6,6 +6,9 @@
 //   dm-cli --probe    connect without a token: Discord greets the client,
 //                     then refuses it (close code 4004), which proves HTTPS,
 //                     TLS and the websocket work.
+//   dm-cli --connect wss://host/
+//                     open a websocket to that address and print whether
+//                     TLS let it through (a wrong host name must not).
 
 #include <cerrno>
 #include <cstdio>
@@ -29,6 +32,7 @@
 static DiscordInstance* g_pDiscordInstance;
 static bool g_bQuit;
 static bool g_bProbe;
+static const char* g_connectUrl; // --connect: one websocket, no session
 
 DiscordInstance* GetDiscordInstance()
 {
@@ -120,13 +124,26 @@ public:
 			msg.m_author.c_str(), msg.m_message.c_str());
 	}
 	void OnWebsocketMessage(int gatewayID, const std::string& payload) override {
+		if (g_connectUrl) {
+			printf("* connected; the server says: %.200s\n", payload.c_str());
+			MainQueue::Post([] { g_bQuit = true; });
+			return;
+		}
 		if (g_bProbe)
 			printf("* gateway says: %.200s\n", payload.c_str());
 		Frontend_Posix::OnWebsocketMessage(gatewayID, payload);
 	}
+	void OnWebsocketFail(int gatewayID, int errorCode, const std::string& message, bool isTLSError, bool mayRetry) override {
+		if (g_connectUrl) {
+			printf("* could not connect: %d %s%s\n", errorCode, message.c_str(), isTLSError ? " (TLS)" : "");
+			MainQueue::Post([] { g_bQuit = true; });
+			return;
+		}
+		Frontend_Posix::OnWebsocketFail(gatewayID, errorCode, message, isTLSError, mayRetry);
+	}
 	void OnWebsocketClose(int gatewayID, int errorCode, const std::string& message) override {
 		printf("* gateway closed the connection: %d %s\n", errorCode, message.c_str());
-		if (g_bProbe) {
+		if (g_bProbe || g_connectUrl) {
 			MainQueue::Post([] { g_bQuit = true; });
 			return;
 		}
@@ -190,8 +207,10 @@ int main(int argc, char** argv)
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--probe"))
 			g_bProbe = true;
+		else if (!strcmp(argv[i], "--connect") && i + 1 < argc)
+			g_connectUrl = argv[++i];
 		else {
-			fprintf(stderr, "usage: %s [--probe]\n", argv[0]);
+			fprintf(stderr, "usage: %s [--probe | --connect wss://host/]\n", argv[0]);
 			return 2;
 		}
 	}
@@ -205,6 +224,8 @@ int main(int argc, char** argv)
 	g_pHTTPClient = new NetworkerThreadManager;
 	GetLocalSettings()->Load();
 
+	if (g_connectUrl)
+		g_bProbe = true; // no token is read or sent
 	std::string token = g_bProbe ? "" : GetLocalSettings()->GetToken();
 	const char* envToken = getenv("DM_TOKEN");
 	if (!g_bProbe && envToken && *envToken)
@@ -219,7 +240,13 @@ int main(int argc, char** argv)
 	g_pHTTPClient->Init();
 	GetWebsocketClient()->Init();
 	g_pDiscordInstance = new DiscordInstance(token);
-	g_pFrontend->StartSession();
+	if (g_connectUrl) {
+		printf("* connecting to %s\n", g_connectUrl);
+		if (GetWebsocketClient()->Connect(g_connectUrl) < 0)
+			return 1;
+	}
+	else
+		g_pFrontend->StartSession();
 
 	int fd = MainQueue::WakeFd();
 	while (!g_bQuit)

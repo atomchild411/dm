@@ -418,7 +418,18 @@ void QrLogin::OnGatewayMessage(const std::string& payload)
 	}
 	else if (op == "pending_remote_init")
 	{
-		std::string url = "https://discord.com/ra/" + j.value("fingerprint", "");
+		// The code must be for our key (its SHA-256): a code for another key
+		// would log the phone in to whoever holds that key.
+		std::string fingerprint = j.value("fingerprint", "");
+		std::vector<uint8_t> der = Unbase64(s->publicKey);
+		unsigned char digest[32];
+		unsigned int dlen = 0;
+		EVP_Digest(der.data(), der.size(), digest, &dlen, EVP_sha256(), NULL);
+		if (fingerprint != Base64(digest, dlen, true)) {
+			Fail("The login service sent a code for another key.", "");
+			return;
+		}
+		std::string url = "https://discord.com/ra/" + fingerprint;
 		std::vector<uint8_t> temp(qrcodegen_BUFFER_LEN_MAX);
 		s->qr.assign(qrcodegen_BUFFER_LEN_MAX, 0);
 		if (!qrcodegen_encodeText(url.c_str(), temp.data(), s->qr.data(), qrcodegen_Ecc_LOW,

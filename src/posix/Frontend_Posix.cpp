@@ -12,8 +12,10 @@
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include <strings.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 DiscordInstance* GetDiscordInstance();
@@ -176,11 +178,29 @@ void Frontend_Posix::LaunchURL(const std::string& url)
 		return;
 	}
 
+	// Links come from other people's messages: hand the browser only web
+	// addresses (no file: or other schemes, nothing it could read as an
+	// option), and nothing with control characters in it.
+	bool web = !strncasecmp(url.c_str(), "https://", 8) || !strncasecmp(url.c_str(), "http://", 7);
+	for (size_t i = 0; web && i < url.size(); i++)
+		if ((unsigned char) url[i] < 0x20 || url[i] == 0x7f)
+			web = false;
+	if (!web) {
+		OnGenericError("Only web links (http and https) are opened:\n\n" + url);
+		return;
+	}
+
+	// Fork twice so the browser is not our child: nothing is left to reap.
 	pid_t pid = fork();
 	if (pid == 0) {
-		execlp(browser, browser, url.c_str(), (char*) NULL);
-		_exit(127);
+		if (fork() == 0) {
+			execlp(browser, browser, url.c_str(), (char*) NULL);
+			_exit(127);
+		}
+		_exit(0);
 	}
+	if (pid > 0)
+		waitpid(pid, NULL, 0);
 }
 
 static std::string ReadFile(const std::string& path)

@@ -60,7 +60,8 @@ Files:   ~/.discordmessenger: settings.json, motif.conf (text size and
          /usr/local/lib/discord-messenger: fonts/ (DejaVu, Noto Color
          Emoji; DM_FONT_DIR names another directory), cacert.pem (the
          roots of trust; DM_CA_FILE names another file), licenses/.
-Links:   open in the browser that DM_BROWSER or BROWSER names.
+Links:   open in the browser that DM_BROWSER or BROWSER names (web
+         links only: http and https).
 Debugging: DM_DEBUG=1 prints the client's log on stderr.
 Speed:   DM_PERF=1 prints how often and how long its drawing and network
          handling took, every minute and at exit (stderr).

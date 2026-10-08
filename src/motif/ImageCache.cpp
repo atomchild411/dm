@@ -24,6 +24,8 @@
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_GIF
 #define STBI_NO_STDIO
+// Pictures come from other people: a small file can claim a huge size.
+#define STBI_MAX_DIMENSIONS 8192
 #include <stb/stb_image.h>
 
 #ifndef DISABLE_WEBP
@@ -258,15 +260,26 @@ namespace
 	}
 }
 
+// The most pixels a picture may have (64 MB decoded, twice over while it is
+// converted): anything bigger is refused before it is decoded.
+static const long MAX_PIXELS = 4096L * 4096L;
+
+static bool SizeOK(int w, int h)
+{
+	return w > 0 && h > 0 && (long) w * h <= MAX_PIXELS;
+}
+
 bool ImageCache::Decode(const uint8_t* data, size_t size, Image& out)
 {
-	if (!data || size < 12)
+	if (!data || size < 12 || size > 0x7fffffff)
 		return false;
 
 #ifndef DISABLE_WEBP
 	if (!memcmp(data, "RIFF", 4) && !memcmp(data + 8, "WEBP", 4))
 	{
 		int w = 0, h = 0;
+		if (!WebPGetInfo(data, size, &w, &h) || !SizeOK(w, h))
+			return false;
 		uint8_t* rgba = WebPDecodeRGBA(data, size, &w, &h);
 		if (!rgba)
 			return false;
@@ -283,6 +296,8 @@ bool ImageCache::Decode(const uint8_t* data, size_t size, Image& out)
 #endif
 
 	int w = 0, h = 0, comp = 0;
+	if (!stbi_info_from_memory(data, (int) size, &w, &h, &comp) || !SizeOK(w, h))
+		return false;
 	uint8_t* rgba = stbi_load_from_memory(data, (int) size, &w, &h, &comp, 4);
 	if (!rgba)
 		return false;

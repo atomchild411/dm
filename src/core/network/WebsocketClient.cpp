@@ -175,16 +175,10 @@ AsioSslContextSharedPtr WebsocketClient::HandleTLSInit(websocketpp::connection_h
 
 void WebsocketClient::HandleSocketInit(websocketpp::connection_hdl hdl, AsioSocketType& socket)
 {
-	WSClient::connection_ptr pConn = m_endpoint.get_con_from_hdl(hdl);
-
+	// This runs inside get_connection(), before the connection has its
+	// address: the host name to check is set in Connect().
 	if (GetLocalSettings()->EnableTLSVerification())
-	{
 		socket.set_verify_mode(websocketpp::lib::asio::ssl::verify_peer);
-
-		if (!SSL_set_tlsext_host_name(reinterpret_cast<SSL*>(socket.native_handle()), "gateway.discord.gg")) {
-			DbgPrintF("Failed to set SNI host name... this might go awry");
-		}
-	}
 }
 
 void WebsocketClient::Init()
@@ -243,6 +237,17 @@ int WebsocketClient::Connect(const std::string& uri)
 
 	if (ec) {
 		DbgPrintF("ERROR: Websocket client could not initialize: %s", ec.message().c_str());
+		return -1;
+	}
+
+	// SNI, and the name the certificate must carry: without the name check
+	// any certificate from a trusted CA would do, and the gateway is sent
+	// the login token.  (The handshake starts later, in connect().)
+	SSL* ssl = reinterpret_cast<SSL*>(con->get_socket().native_handle());
+	const std::string host = con->get_host();
+	if (!SSL_set_tlsext_host_name(ssl, host.c_str()) ||
+		(GetLocalSettings()->EnableTLSVerification() && !SSL_set1_host(ssl, host.c_str()))) {
+		DbgPrintF("ERROR: Websocket client could not set the host name %s", host.c_str());
 		return -1;
 	}
 
