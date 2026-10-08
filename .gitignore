@@ -6,3 +6,4 @@ keep/
 *.d
 build-win/
 build-mac/
+build-linux/

@@ -15,7 +15,7 @@ static uint64_t RandU64()
 static std::string FormatUUID(uint64_t partLeft, uint64_t partRight)
 {
 	char buffer[36];
-	snprintf(buffer, sizeof buffer, "%016llx%016llx", partLeft, partRight);
+	snprintf(buffer, sizeof buffer, "%016llx%016llx", (unsigned long long) partLeft, (unsigned long long) partRight);
 
 	// turn it into a uid in the most hacky way possible
 	return std::string(buffer, 8) + "-"

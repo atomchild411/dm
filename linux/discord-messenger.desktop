@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Discord Messenger
+Comment=A Discord-compatible messenger
+Exec=discord-messenger
+Icon=discord-messenger
+Terminal=false
+Categories=Network;InstantMessaging;Chat;

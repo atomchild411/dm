@@ -1,0 +1,8 @@
+# The .deb build (linux/build.sh): Ubuntu 24.04 with its own OpenSSL,
+# libwebp, FreeType and GLFW, so the package installs on Ubuntu 24.04 and
+# later and Debian 13 and uses theirs (and gets their security updates).
+FROM docker.io/library/ubuntu:24.04
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        g++ make pkg-config dpkg-dev fakeroot icoutils \
+        libssl-dev libwebp-dev libfreetype-dev libglfw3-dev libgl-dev zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*

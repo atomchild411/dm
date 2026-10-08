@@ -358,12 +358,32 @@ static void UseBundleResources()
 }
 #endif
 
+#if defined(__linux__)
+#include <unistd.h>
+
+// A copy to run from anywhere (the .tar.gz, the AppImage): the fonts beside
+// the program, unless DM_FONT_DIR names others.  (Installed, they are in
+// DM_DATADIR.)
+static void UseProgramResources()
+{
+	char path[4096];
+	ssize_t n = readlink("/proc/self/exe", path, sizeof path - 1);
+	if (n <= 0)
+		return;
+	path[n] = 0;
+	std::string fonts = std::string(path, strrchr(path, '/') - path) + "/fonts";
+	struct stat st;
+	if (!getenv("DM_FONT_DIR") && stat((fonts + "/DejaVuSans.ttf").c_str(), &st) == 0)
+		setenv("DM_FONT_DIR", fonts.c_str(), 1);
+}
+#endif
+
 int main(int argc, char** argv)
 {
 	bool demo = argc > 1 && !strcmp(argv[1], "--demo");
 #if defined(__APPLE__)
 	UseBundleResources();
-#elif defined(_WIN32)
+#elif defined(_WIN32) || defined(__linux__)
 	UseProgramResources();
 #endif
 

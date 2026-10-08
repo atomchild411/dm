@@ -304,10 +304,15 @@ namespace
 	void Dialogs()
 	{
 		if (!errors.empty()) {
-			ImGui::OpenPopup("Discord Messenger");
+			// (its own ID: the main window is "Discord Messenger" too, and a
+			// popup by that name would be that window)
+			ImGui::OpenPopup("Discord Messenger##error");
 			ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-			if (ImGui::BeginPopupModal("Discord Messenger", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-				ImGui::TextWrapped("%s", errors.front().c_str());
+			if (ImGui::BeginPopupModal("Discord Messenger##error", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+				// (an auto-sized window has no width to wrap to: this is it)
+				ImGui::PushTextWrapPos(440.0f);
+				ImGui::TextUnformatted(errors.front().c_str());
+				ImGui::PopTextWrapPos();
 				if (ImGui::Button("OK")) {
 					errors.erase(errors.begin());
 					ImGui::CloseCurrentPopup();
@@ -319,7 +324,9 @@ namespace
 			ImGui::OpenPopup("Delete Message");
 			ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 			if (ImGui::BeginPopupModal("Delete Message", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-				ImGui::TextWrapped("%s", MessageList::DeleteQuestion(*deleteMessage).c_str());
+				ImGui::PushTextWrapPos(440.0f);
+				ImGui::TextUnformatted(MessageList::DeleteQuestion(*deleteMessage).c_str());
+				ImGui::PopTextWrapPos();
 				if (ImGui::Button("Delete")) {
 					GetDiscordInstance()->RequestDeleteMessage(list->GetChannel(), deleteMessage->m_snowflake);
 					deleteMessage.reset();

@@ -64,7 +64,7 @@ void App::Init(bool isDemo)
 		list->SetChannel(0, Demo::CHANNEL);
 		status = "Demo: sample messages, not connected.";
 		unreadAfter = 0;
-		// DM_TEST_OPEN=viewer or picker: opened at once (for screenshots)
+		// DM_TEST_OPEN=viewer, picker or error: opened at once (for screenshots)
 		if (const char* t = getenv("DM_TEST_OPEN")) {
 			if (!strcmp(t, "viewer")) {
 				PictureInfo pic;
@@ -76,6 +76,9 @@ void App::Init(bool isDemo)
 			}
 			else if (!strcmp(t, "picker"))
 				OpenPicker(false, 0, ImVec2(800, 760));
+			else if (!strcmp(t, "error"))
+				ShowError("Could not verify the identity of https://example.com/.\n\n"
+					"The server's certificate was not accepted (a test of this dialog).");
 		}
 	}
 	Typing::SetChangedCallback([] {});
