@@ -34,7 +34,8 @@ on others' where you may manage messages).  The client opens the server
 and channel you were last in, and the window's icon name counts unread
 mentions and direct messages: "Discord (3)".  The Messages menu lists
 your direct messages, unread ones first ("Messages (2)" when there are
-some), whichever lists are shown.  A channel counts as read once its
+some), whichever lists are shown; a conversation picked there opens in a
+window of its own, so the main window keeps its server and channel.  A channel counts as read once its
 newest messages are on screen (while the window is in front).
 
 Mentions and direct messages (as your Discord notification settings say)
