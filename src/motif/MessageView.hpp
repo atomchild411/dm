@@ -88,6 +88,11 @@ private:
 	void PaintBand(int y0, int y1);
 	void PaintItem(Item& item, int top);
 	void RequestVisibleGaps();
+	// The newest messages of the open channel are on screen: tell Discord
+	// it is read (and drop the unread counts).
+	void MarkReadIfSeen();
+	bool m_justOpened = false;   // opened by the user: read even before focus is known
+	Snowflake m_ackSent = 0;     // the last message acknowledged
 	void OnClick(int x, int y);
 	void DrawPicture(const Rect& r, const std::string& url, int top, const std::string& label);
 	static void RepaintTimerCB(XtPointer, XtIntervalId*);

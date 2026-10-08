@@ -20,6 +20,7 @@
 #include "ImageCache.hpp"
 #include "ImageViewer.hpp"
 #include "MainWindow.hpp"
+#include "Notifier.hpp"
 #include "ReactionPicker.hpp"
 #include "Perf.hpp"
 
@@ -191,6 +192,7 @@ void MessageView::SetChannel(Snowflake guild, Snowflake channel)
 	m_scrollY = 0;
 	m_stickToBottom = true;
 	m_canvasValid = false;
+	m_justOpened = true;
 	Refresh();
 }
 
@@ -1151,6 +1153,32 @@ void MessageView::Paint()
 	m_paintedScrollY = m_scrollY;
 	m_dirtyFromY = -1;
 	RequestVisibleGaps();
+	MarkReadIfSeen();
+}
+
+void MessageView::MarkReadIfSeen()
+{
+	if (!m_channel || !m_stickToBottom || m_items.empty())
+		return;
+	if (m_items.back().msg->IsLoadGap())
+		return; // the newest are still being fetched
+	// messages arriving while the user is in another window stay unread
+	bool opened = m_justOpened;
+	m_justOpened = false;
+	if (!opened && !Notifier::IsFocused())
+		return;
+	DiscordInstance* pInst = GetDiscordInstance();
+	Channel* pChan = pInst ? pInst->GetChannelGlobally(m_channel) : nullptr;
+	if (!pChan || (!pChan->HasUnreadMessages() && pChan->m_mentionCount == 0))
+		return;
+	if (m_ackSent == pChan->m_lastSentMsg)
+		return; // asked already; Discord's answer is on its way
+	m_ackSent = pChan->m_lastSentMsg;
+	pInst->RequestAcknowledgeChannel(m_channel);
+	// at once, not when Discord's read state comes back
+	pChan->m_lastViewedMsg = pChan->m_lastSentMsg;
+	pChan->m_mentionCount = 0;
+	GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_CHANNELS | MainWindow::LIST_GUILDS);
 }
 
 // DM_NO_SCROLLCOPY: always draw the whole view (to compare).
@@ -1221,4 +1249,5 @@ void MessageView::Update()
 	m_paintedScrollY = m_scrollY;
 	m_dirtyFromY = -1;
 	RequestVisibleGaps();
+	MarkReadIfSeen();
 }
