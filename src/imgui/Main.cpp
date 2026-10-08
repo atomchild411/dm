@@ -2,8 +2,10 @@
 //
 //   dm-imgui [--demo]
 //
-// DM_SNAPSHOT=file.png saves the window as a PNG after DM_SNAPSHOT_AFTER
-// seconds (default 15) and quits (for tests and screenshots).
+// DM_SNAPSHOT=file.png draws the window off screen (hidden, ignoring the
+// mouse and keyboard), saves it as a PNG after DM_SNAPSHOT_AFTER seconds
+// (default 15) and quits: for tests and screenshots, without a window
+// popping up in front of anyone.
 //
 // The window is drawn afresh every frame; frames are made when something
 // happens (input, a network reply, a timer), and the loop sleeps between.
@@ -19,6 +21,15 @@
 #include <vector>
 #include <sys/stat.h>
 
+// OpenGL 3 declarations (framebuffers): the core profile header on macOS,
+// the extension prototypes elsewhere
+#if defined(__APPLE__)
+#define GL_SILENCE_DEPRECATION
+#define GLFW_INCLUDE_GLCOREARB
+#else
+#define GL_GLEXT_PROTOTYPES
+#define GLFW_INCLUDE_GLEXT
+#endif
 #include <GLFW/glfw3.h>
 
 #include "imgui.h"
@@ -37,6 +48,7 @@
 #include "posix/NetworkerThread.hpp"
 #include "utils/Util.hpp"
 #include "shared/ClientConfig.hpp"
+#include "shared/Fonts.hpp"
 #include "shared/ImageCache.hpp"
 #include "shared/QrLogin.hpp"
 #include "shared/Sound.hpp"
@@ -243,6 +255,20 @@ void RequestReconnect()
 	}
 }
 
+// DM_SNAPSHOT: frames go into this framebuffer instead of the window.
+static GLuint g_snapFbo, g_snapTex;
+
+static void MakeSnapshotTarget(int w, int h)
+{
+	glGenTextures(1, &g_snapTex);
+	glBindTexture(GL_TEXTURE_2D, g_snapTex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glGenFramebuffers(1, &g_snapFbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, g_snapFbo);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_snapTex, 0);
+}
+
 // The frame just drawn, as a PNG (DM_SNAPSHOT).
 static void Snapshot(const char* path, int w, int h)
 {
@@ -302,13 +328,16 @@ int main(int argc, char** argv)
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 #endif
 	int winW = 1180, winH = 820;
+	const char* snapshot = getenv("DM_SNAPSHOT");
+	if (snapshot)
+		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 	g_window = glfwCreateWindow(winW, winH, "Discord Messenger", nullptr, nullptr);
 	if (!g_window) {
 		fprintf(stderr, "dm: no OpenGL 3 window\n");
 		return 1;
 	}
 	glfwMakeContextCurrent(g_window);
-	glfwSwapInterval(1);
+	glfwSwapInterval(snapshot ? 0 : 1);
 	// network threads wake the loop
 	MainQueue::SetWakeHook([] { glfwPostEmptyEvent(); });
 
@@ -321,13 +350,18 @@ int main(int argc, char** argv)
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	ImGui::StyleColorsDark();
 	std::string fontErr;
-	if (!Gfx::LoadFonts(fontErr)) {
+	if (!Fonts::Init(fontErr) || !Gfx::LoadUiFont(fontErr)) {
 		fprintf(stderr, "dm: %s\n", fontErr.c_str());
 		return 1;
 	}
 	ImGui::GetStyle().FontSizeBase = (float) GetTextSize();
-	ImGui_ImplGlfw_InitForOpenGL(g_window, true);
+	ImGui_ImplGlfw_InitForOpenGL(g_window, !snapshot);
 	ImGui_ImplOpenGL3_Init(glsl);
+	if (snapshot) {
+		io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
+		io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
+		MakeSnapshotTarget(winW, winH);
+	}
 
 	g_pFrontend = new Frontend_ImGui;
 	g_pHTTPClient = new NetworkerThreadManager;
@@ -376,20 +410,27 @@ int main(int argc, char** argv)
 
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
+		if (snapshot)
+			io.DisplayFramebufferScale = ImVec2(1, 1); // the off-screen frame
 		ImGui::NewFrame();
 		ImGui::GetStyle().FontSizeBase = (float) GetTextSize();
 		App::Frame(glfwGetWindowAttrib(g_window, GLFW_FOCUSED) != 0);
 		ImGui::Render();
 		int fbW, fbH;
 		glfwGetFramebufferSize(g_window, &fbW, &fbH);
+		if (snapshot) {
+			fbW = winW;
+			fbH = winH;
+			glBindFramebuffer(GL_FRAMEBUFFER, g_snapFbo);
+		}
 		glViewport(0, 0, fbW, fbH);
 		glClearColor(0.19f, 0.2f, 0.22f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-		if (const char* shot = getenv("DM_SNAPSHOT")) {
+		if (snapshot) {
 			const char* after = getenv("DM_SNAPSHOT_AFTER");
 			if (glfwGetTime() > (after ? atof(after) : 15.0)) {
-				Snapshot(shot, fbW, fbH);
+				Snapshot(snapshot, fbW, fbH);
 				break;
 			}
 			busyFrames = 3; // frames keep coming until then

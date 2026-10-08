@@ -73,15 +73,14 @@ CXXFLAGS += $(X_CFLAGS)
 LIBS += $(X_LIBS)
 endif
 
-# Dear ImGui (deps/imgui, with its GLFW and OpenGL 3 back ends and FreeType
-# for colour emoji)
+# Dear ImGui (deps/imgui, with its GLFW and OpenGL 3 back ends)
 IMGUI_FILES :=
 ifeq ($(FRONTEND),imgui)
-CXXFLAGS += -Ideps/imgui -Ideps/imgui/backends -I$(GLFW_PREFIX)/include $(FT_CFLAGS) -DIMGUI_ENABLE_FREETYPE -DIMGUI_USE_WCHAR32
+CXXFLAGS += -Ideps/imgui -Ideps/imgui/backends -I$(GLFW_PREFIX)/include -DIMGUI_USE_WCHAR32
 IMGUI_FILES := deps/imgui/imgui.cpp deps/imgui/imgui_draw.cpp deps/imgui/imgui_tables.cpp \
 	deps/imgui/imgui_widgets.cpp deps/imgui/backends/imgui_impl_glfw.cpp \
-	deps/imgui/backends/imgui_impl_opengl3.cpp deps/imgui/misc/freetype/imgui_freetype.cpp
-LIBS += $(FT_LIBS) -L$(GLFW_PREFIX)/lib -lglfw
+	deps/imgui/backends/imgui_impl_opengl3.cpp
+LIBS += -L$(GLFW_PREFIX)/lib -lglfw
 ifeq ($(UNAME),Darwin)
 LIBS += -framework OpenGL
 else

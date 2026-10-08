@@ -24,17 +24,15 @@ struct Palette
 };
 const Palette& GetPalette();
 
-// The text faces (DejaVu, with Noto Color Emoji merged into each), loaded
-// with FreeType from DM_FONT_DIR, the installed fonts directory, or the
-// system's.
+// Text in the drawn parts comes from shared/Fonts (FreeType), as in the
+// Motif client: its glyphs go into textures here.  ImGui's own widgets
+// (menus, buttons, the message box) use ImGui's font, DejaVu Sans.
 namespace Gfx
 {
-	bool LoadFonts(std::string& err);
-	ImFont* Font(FontStyle st);
+	// ImGui's font for its widgets; shared/Fonts must be loaded first.
+	bool LoadUiFont(std::string& err);
 
-	// The faces' measurements, for the shared layout.
 	TextMetrics& Metrics();
-
 	int Ascent(FontStyle st, int px);
 	int LineHeight(FontStyle st, int px);
 	int Measure(const std::string& s, FontStyle st, int px);
