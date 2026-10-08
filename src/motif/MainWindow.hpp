@@ -44,6 +44,9 @@ public:
 	// says so, with Cancel); CancelReply takes that back.
 	void BeginReply(Snowflake message, const std::string& author);
 	void CancelReply();
+	// At the first connection: the server and channel open when the
+	// client last ran, if they are still there.
+	void RestoreLastChannel();
 	void UpdateTitle();
 
 	void OnTyping(Snowflake user, Snowflake guild, Snowflake channel, time_t when);
@@ -87,6 +90,7 @@ private:
 	XtIntervalId m_listUpdateTimer = 0;
 	Widget m_replyBar = nullptr, m_replyLabel = nullptr;
 	Snowflake m_replyTo = 0;
+	bool m_restoredLast = false; // the last channel is saved from then on
 	static void CancelReplyCB(Widget, XtPointer, XtPointer);
 	int m_pendingLists = 0;
 

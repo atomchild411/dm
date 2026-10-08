@@ -27,6 +27,7 @@
 #include "Theme.hpp"
 #include "IconList.hpp"
 #include "ImageViewer.hpp"
+#include "ReactionPicker.hpp"
 #include "Perf.hpp"
 #include "models/ActiveStatus.hpp"
 
@@ -380,6 +381,20 @@ void MainWindow::BeginReply(Snowflake message, const std::string& author)
 	XmProcessTraversal(m_editor, XmTRAVERSE_CURRENT);
 }
 
+void MainWindow::RestoreLastChannel()
+{
+	if (m_restoredLast)
+		return;
+	m_restoredLast = true;
+	DiscordInstance* pInst = GetDiscordInstance();
+	Snowflake guild = 0, channel = 0;
+	GetLastChannel(guild, channel);
+	Guild* pGuild = pInst->GetGuild(guild);
+	if (!channel || !pGuild || !pGuild->GetChannel(channel))
+		return; // gone (or never saved): the login's choice stays
+	pInst->OnSelectGuild(guild, channel);
+}
+
 void MainWindow::CancelReply()
 {
 	m_replyTo = 0;
@@ -593,6 +608,16 @@ void MainWindow::UpdateSelectedChannel()
 {
 	DiscordInstance* pInst = GetDiscordInstance();
 	CancelReply(); // a reply belongs to its channel
+	// remembered for the next start (not before the last one was opened
+	// again: the first channel the login selects is not the user's choice)
+	if (m_restoredLast && pInst->GetCurrentChannelID()) {
+		Snowflake g = 0, c = 0;
+		GetLastChannel(g, c);
+		if (g != pInst->GetCurrentGuildID() || c != pInst->GetCurrentChannelID()) {
+			SetLastChannel(pInst->GetCurrentGuildID(), pInst->GetCurrentChannelID());
+			SaveMotifConfig();
+		}
+	}
 	UpdateChannelList();
 	UpdateHeader();
 	UpdateTitle();
@@ -735,6 +760,7 @@ void MainWindow::OnImagesChanged()
 {
 	m_messages->ImagesChanged();
 	ImageViewer::ImagesChanged();
+	ReactionPicker::ImagesChanged();
 	if (!m_listRepaintTimer)
 		m_listRepaintTimer = XtAppAddTimeOut(XtWidgetToApplicationContext(m_shell), 100, ListRepaintCB, this);
 }

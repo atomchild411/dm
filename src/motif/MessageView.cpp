@@ -681,9 +681,7 @@ void MessageView::MenuCB(Widget w, XtPointer client, XtPointer)
 	Snowflake channel = self->m_channel, id = msg->m_snowflake;
 	switch ((int) (long) data) {
 		case MENU_REACT:
-			ReactionPicker::Show(self->m_area, self->m_fmt, self->m_menuX, self->m_menuY, [channel, id](const std::string& emoji) {
-				Reaction r;
-				r.m_emojiName = emoji;
+			ReactionPicker::Show(self->m_area, self->m_fmt, self->m_menuX, self->m_menuY, self->m_guild, [channel, id](const Reaction& r) {
 				GetDiscordInstance()->RequestReaction(channel, id, r, true);
 			});
 			break;

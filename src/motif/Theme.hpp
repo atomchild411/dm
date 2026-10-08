@@ -3,6 +3,7 @@
 #include <string>
 #include "Xm.hpp"
 #include "TextInterface_Motif.hpp"
+#include "models/Snowflake.hpp"
 
 // Colours of the drawn panes (lists and messages), taken from the colours
 // Motif widgets get from the desktop's scheme, so they match whatever
@@ -29,6 +30,9 @@ void SetTextSize(int px);
 enum Pane { PANE_GUILDS, PANE_CHANNELS, PANE_MEMBERS, PANE_COUNT };
 bool IsPaneShown(Pane p);
 void SetPaneShown(Pane p, bool shown);
+// The server and channel last open, to open again at the next start.
+void GetLastChannel(Snowflake& guild, Snowflake& channel);
+void SetLastChannel(Snowflake guild, Snowflake channel);
 void ApplyTheme(DrawingContext& ctx);
 
 // UTF-8 text for Motif widgets, which show ISO 8859-1: characters outside

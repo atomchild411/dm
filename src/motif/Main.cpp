@@ -69,6 +69,9 @@ public:
 		m_retryDelayMs = 1000;
 		GetMainWindow()->SetStatus("");
 		GetMainWindow()->UpdateGuildList();
+		// once the login data is in (this runs as it starts): where the
+		// user was last time
+		MainQueue::Post([] { GetMainWindow()->RestoreLastChannel(); });
 	}
 	void OnSessionClosed(int errorCode) override {
 		GetMainWindow()->SetStatus("Disconnected (" + std::to_string(errorCode) + ").  File > Reconnect to try again.");
