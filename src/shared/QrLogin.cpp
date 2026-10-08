@@ -6,13 +6,6 @@
 #include <thread>
 #include <vector>
 
-#include <Xm/DialogS.h>
-#include <Xm/DrawingA.h>
-#include <Xm/Form.h>
-#include <Xm/Label.h>
-#include <Xm/PushB.h>
-#include <Xm/Separator.h>
-
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/x509.h>
@@ -24,100 +17,49 @@
 #include "network/DiscordAPI.hpp"
 #include "network/HTTPClient.hpp"
 #include "network/WebsocketClient.hpp"
-#include "utils/Util.hpp"
 #include "posix/MainQueue.hpp"
-#include "Fonts.hpp"
-#include "Theme.hpp"
-
-int AddVisualArgs(Arg* args, int n); // Main.cpp
+#include "Timers.hpp"
 
 using Json = nlohmann::json;
 
 namespace
 {
 	const char* const GATEWAY_URL = "wss://remote-auth-gateway.discord.gg/?v=2";
-	const int QR_AREA = 300;
 
 	struct State
 	{
-		Widget shell = nullptr, area = nullptr, status = nullptr;
-		const PixelFormat* fmt = nullptr;
-		GC gc = nullptr;
-		Canvas canvas;
-		std::function<void(const std::string&)> done;
-		std::function<void()> useToken;
+		std::function<void()> changed;
+		std::function<void(const std::string&)> loggedIn;
 
 		EVP_PKEY* key = nullptr;
 		std::string publicKey; // base64 SubjectPublicKeyInfo (DER)
-		XtIntervalId heartbeat = 0;
+		int heartbeat = 0;     // Timers id
 		int heartbeatMs = 0;
 		std::vector<uint8_t> qr; // qrcodegen's buffer; empty until a code arrives
+		std::string status;
 		bool waitingForPhone = false;
-		bool loggingIn = false;   // the ticket is being exchanged: keep the dialog as it is
-		bool failed = false;      // an error is shown: wait for Try Again
-		Widget retry = nullptr;
-		int generation = 0;   // bumped by every new dialog
+		bool loggingIn = false;   // the ticket is being exchanged: keep things as they are
+		bool failed = false;      // an error is shown: wait for Retry
+		int generation = 0;       // bumped by every new login
 	};
 
 	State* g_state;
 	std::atomic<int> g_gateway(-1);
 	int g_generation = 0;
+	const std::string g_empty;
+
+	void Changed()
+	{
+		if (g_state && g_state->changed)
+			g_state->changed();
+	}
 
 	void SetStatus(const std::string& text)
 	{
 		if (!g_state)
 			return;
-		XmString xs = XmStringCreateLtoR((char*) Utf8ToLatin1(text).c_str(), (char*) XmFONTLIST_DEFAULT_TAG);
-		XtVaSetValues(g_state->status, XmNlabelString, xs, NULL);
-		XmStringFree(xs);
-	}
-
-	void Paint()
-	{
-		State* s = g_state;
-		if (!s || !XtIsRealized(s->area))
-			return;
-		Display* dpy = XtDisplay(s->area);
-		Window win = XtWindow(s->area);
-		if (!s->gc)
-			s->gc = XCreateGC(dpy, win, 0, NULL);
-		Dimension w = 0, h = 0;
-		XtVaGetValues(s->area, XmNwidth, &w, XmNheight, &h, NULL);
-		if (s->canvas.Width() != w || s->canvas.Height() != h)
-			s->canvas.Resize(w, h);
-
-		Canvas& c = s->canvas;
-		c.Fill(0, 0, w, h, 0xffffff);
-		if (!s->qr.empty())
-		{
-			int n = qrcodegen_getSize(s->qr.data());
-			int quiet = 4;
-			int scale = std::max(1, std::min((int) w, (int) h) / (n + 2 * quiet));
-			int x0 = ((int) w - n * scale) / 2, y0 = ((int) h - n * scale) / 2;
-			for (int y = 0; y < n; y++)
-				for (int x = 0; x < n; x++)
-					if (qrcodegen_getModule(s->qr.data(), x, y))
-						c.Fill(x0 + x * scale, y0 + y * scale, scale, scale, 0x000000);
-			if (s->waitingForPhone) {
-				// scanned: grey the code out, as discord.com does
-				for (int y = 0; y < (int) h; y++)
-					for (int x = 0; x < (int) w; x++)
-						if ((x + y) % 3)
-							c.Fill(x, y, 1, 1, 0xffffff);
-			}
-		}
-		else
-		{
-			const char* text = s->failed ? "No code: see below" : "Preparing a code\xe2\x80\xa6";
-			int tw = Fonts::Measure(text, FS_ITALIC, 14);
-			Fonts::Draw(c, ((int) w - tw) / 2, (int) h / 2, text, FS_ITALIC, 14, 0x606060);
-		}
-		c.Present(*s->fmt, win, s->gc, 0, 0, w, h, 0, 0);
-	}
-
-	void ExposeCB(Widget, XtPointer, XtPointer)
-	{
-		Paint();
+		g_state->status = text;
+		Changed();
 	}
 
 	std::string Base64(const uint8_t* data, size_t n, bool url)
@@ -198,17 +140,16 @@ namespace
 	void StopHeartbeat()
 	{
 		if (g_state && g_state->heartbeat) {
-			XtRemoveTimeOut(g_state->heartbeat);
+			Timers::Cancel(g_state->heartbeat);
 			g_state->heartbeat = 0;
 		}
 	}
 
-	void HeartbeatCB(XtPointer, XtIntervalId*)
+	void Heartbeat()
 	{
 		if (!g_state)
 			return;
-		g_state->heartbeat = XtAppAddTimeOut(XtWidgetToApplicationContext(g_state->shell),
-			g_state->heartbeatMs, HeartbeatCB, NULL);
+		g_state->heartbeat = Timers::After(g_state->heartbeatMs, Heartbeat);
 		Json j;
 		j["op"] = "heartbeat";
 		Send(j);
@@ -230,8 +171,6 @@ namespace
 		g_state->waitingForPhone = false;
 		g_state->loggingIn = false;
 		g_state->failed = false;
-		XtSetSensitive(g_state->retry, False);
-		Paint();
 		SetStatus("Connecting to Discord\xe2\x80\xa6");
 		int id = GetWebsocketClient()->Connect(GATEWAY_URL);
 		g_gateway = id;
@@ -239,19 +178,16 @@ namespace
 			SetStatus("Could not reach Discord's login service.  Check the network, then try again.");
 	}
 
-	void ReconnectCB(XtPointer client, XtIntervalId*)
+	void ReconnectAfter(int ms)
 	{
-		if (g_state && g_state->generation == (int) (long) client)
-			Connect();
+		int gen = g_state->generation;
+		Timers::After(ms, [gen] {
+			if (g_state && g_state->generation == gen)
+				Connect();
+		});
 	}
 
-	void ReconnectSoon(int ms)
-	{
-		CloseGateway();
-		XtAppAddTimeOut(XtWidgetToApplicationContext(g_state->shell), ms, ReconnectCB, (XtPointer) (long) g_state->generation);
-	}
-
-	// Shows why the login failed and waits for Try Again (or a token).
+	// Shows why the login failed and waits for Retry.
 	void Fail(const std::string& why, const std::string& detail)
 	{
 		if (!g_state)
@@ -261,39 +197,24 @@ namespace
 		g_state->loggingIn = false;
 		CloseGateway();
 		g_state->qr.clear();
-		Paint();
 		SetStatus(why);
-		XtSetSensitive(g_state->retry, True);
 	}
 
-	void RetryCB(Widget, XtPointer, XtPointer)
-	{
-		Connect();
-	}
-
-	void Finish(const std::string& token, bool wantToken)
+	// Ends the login: the connection closed, the key freed, the state gone.
+	State* Detach()
 	{
 		State* s = g_state;
 		if (!s)
-			return;
+			return nullptr;
 		g_state = nullptr;
 		int id = g_gateway.exchange(-1);
 		if (id >= 0)
 			GetWebsocketClient()->Close(id, websocketpp::close::status::normal);
 		if (s->heartbeat)
-			XtRemoveTimeOut(s->heartbeat);
+			Timers::Cancel(s->heartbeat);
 		if (s->key)
 			EVP_PKEY_free(s->key);
-		if (s->gc)
-			XFreeGC(XtDisplay(s->area), s->gc);
-		XtDestroyWidget(s->shell);
-		auto done = s->done;
-		auto useToken = s->useToken;
-		delete s;
-		if (wantToken)
-			useToken();
-		else
-			done(token);
+		return s;
 	}
 
 	// The exchange of the ticket for the token comes back here (from the
@@ -310,7 +231,10 @@ namespace
 					Json j = Json::parse(response);
 					std::vector<uint8_t> token;
 					if (j.contains("encrypted_token") && Decrypt(g_state->key, j["encrypted_token"], token)) {
-						Finish(std::string(token.begin(), token.end()), false);
+						State* s = Detach();
+						auto loggedIn = s->loggedIn;
+						delete s;
+						loggedIn(std::string(token.begin(), token.end()));
 						return;
 					}
 				}
@@ -338,34 +262,78 @@ namespace
 				Fail("Discord refused the login (" + std::to_string(result) + ").\nTry again, or log in with a token.", detail);
 		});
 	}
+}
 
-	void QuitCB(Widget, XtPointer, XtPointer)
-	{
-		Finish("", false);
-	}
+void QrLogin::Start(std::function<void()> changed, std::function<void(const std::string&)> loggedIn)
+{
+	if (g_state)
+		return;
+	State* s = new State;
+	g_state = s;
+	s->changed = changed;
+	s->loggedIn = loggedIn;
+	s->generation = ++g_generation;
+	SetStatus("Making a key for this login\xe2\x80\xa6\n ");
 
-	void UseTokenCB(Widget, XtPointer, XtPointer)
-	{
-		Finish("", true);
-	}
+	// the key takes a while on an old CPU: off the UI thread
+	int gen = s->generation;
+	std::thread([gen] {
+		std::string pub;
+		EVP_PKEY* key = MakeKey(pub);
+		MainQueue::Post([gen, key, pub] {
+			if (!g_state || g_state->generation != gen) {
+				if (key) EVP_PKEY_free(key);
+				return;
+			}
+			if (!key) {
+				SetStatus("Could not make a key for the login (OpenSSL).");
+				return;
+			}
+			g_state->key = key;
+			g_state->publicKey = pub;
+			Connect();
+		});
+	}).detach();
+}
 
-	Widget MakeLabel(Widget form, const char* name, const char* text, Widget above, int offset)
-	{
-		XmString xs = XmStringCreateLtoR((char*) text, (char*) XmFONTLIST_DEFAULT_TAG);
-		Widget w = XtVaCreateManagedWidget(name, xmLabelWidgetClass, form,
-			XmNlabelString, xs,
-			XmNalignment, XmALIGNMENT_BEGINNING,
-			XmNtopAttachment, above ? XmATTACH_WIDGET : XmATTACH_FORM,
-			XmNtopWidget, above,
-			XmNleftAttachment, XmATTACH_FORM,
-			XmNrightAttachment, XmATTACH_FORM,
-			XmNtopOffset, offset,
-			XmNleftOffset, 12,
-			XmNrightOffset, 12,
-			NULL);
-		XmStringFree(xs);
-		return w;
-	}
+void QrLogin::Retry()
+{
+	Connect();
+}
+
+void QrLogin::Stop()
+{
+	delete Detach();
+}
+
+bool QrLogin::Active()
+{
+	return g_state != nullptr;
+}
+
+const std::string& QrLogin::StatusText()
+{
+	return g_state ? g_state->status : g_empty;
+}
+
+int QrLogin::CodeSize()
+{
+	return g_state && !g_state->qr.empty() ? qrcodegen_getSize(g_state->qr.data()) : 0;
+}
+
+bool QrLogin::CodeModule(int x, int y)
+{
+	return g_state && !g_state->qr.empty() && qrcodegen_getModule(g_state->qr.data(), x, y);
+}
+
+bool QrLogin::Scanned()
+{
+	return g_state && g_state->waitingForPhone;
+}
+
+bool QrLogin::Failed()
+{
+	return g_state && g_state->failed;
 }
 
 int QrLogin::GatewayId()
@@ -394,7 +362,7 @@ void QrLogin::OnGatewayMessage(const std::string& payload)
 	{
 		s->heartbeatMs = j.value("heartbeat_interval", 41250);
 		StopHeartbeat();
-		s->heartbeat = XtAppAddTimeOut(XtWidgetToApplicationContext(s->shell), s->heartbeatMs, HeartbeatCB, NULL);
+		s->heartbeat = Timers::After(s->heartbeatMs, Heartbeat);
 		Json init;
 		init["op"] = "init";
 		init["encoded_public_key"] = s->publicKey;
@@ -436,7 +404,6 @@ void QrLogin::OnGatewayMessage(const std::string& payload)
 				qrcodegen_VERSION_MIN, qrcodegen_VERSION_MAX, qrcodegen_Mask_AUTO, true))
 			s->qr.clear();
 		s->waitingForPhone = false;
-		Paint();
 		SetStatus("Scan this code with the Discord app on your phone:\n"
 			"tap your avatar, then Scan QR Code.");
 	}
@@ -454,7 +421,6 @@ void QrLogin::OnGatewayMessage(const std::string& payload)
 				name = u.substr(p + 1);
 		}
 		s->waitingForPhone = true;
-		Paint();
 		SetStatus("Scanned by " + name + ".\nConfirm the login on your phone.");
 	}
 	else if (op == "pending_login")
@@ -478,7 +444,8 @@ void QrLogin::OnGatewayMessage(const std::string& payload)
 	else if (op == "cancel")
 	{
 		SetStatus("The login was cancelled on the phone.  Getting a new code\xe2\x80\xa6");
-		ReconnectSoon(1500);
+		CloseGateway();
+		ReconnectAfter(1500);
 	}
 }
 
@@ -489,118 +456,11 @@ void QrLogin::OnGatewayClosed(int code, const std::string& reason)
 	g_gateway = -1;
 	StopHeartbeat();
 	// the gateway closes once it handed over the ticket; and an error
-	// stays on screen until Try Again
+	// stays on screen until Retry
 	if (g_state->loggingIn || g_state->failed)
 		return;
 	fprintf(stderr, "dm: QR login gateway closed: %d %s\n", code, reason.c_str());
 	// codes last a couple of minutes: get a new one
 	SetStatus("The code expired.  Getting a new one\xe2\x80\xa6");
-	XtAppAddTimeOut(XtWidgetToApplicationContext(g_state->shell), 1500, ReconnectCB, (XtPointer) (long) g_state->generation);
-}
-
-void QrLogin::Show(Widget parent, const PixelFormat& fmt, const std::string& message,
-	std::function<void(const std::string&)> done, std::function<void()> useToken)
-{
-	if (g_state)
-		return;
-	State* s = new State;
-	g_state = s;
-	s->fmt = &fmt;
-	s->done = done;
-	s->useToken = useToken;
-	s->generation = ++g_generation;
-
-	Arg args[8];
-	int n = 0;
-	XtSetArg(args[n], XmNtitle, "Log in to Discord"); n++;
-	XtSetArg(args[n], XmNdeleteResponse, XmDO_NOTHING); n++;
-	n = AddVisualArgs(args, n);
-	s->shell = XmCreateDialogShell(parent, (char*) "qrlogin", args, n);
-
-	Widget form = XtVaCreateWidget("form", xmFormWidgetClass, s->shell,
-		XmNdialogStyle, XmDIALOG_FULL_APPLICATION_MODAL,
-		XmNautoUnmanage, False,
-		NULL);
-
-	Widget title = MakeLabel(form, "title", "Log in with a QR code", NULL, 10);
-	Widget prev = title;
-	if (!message.empty())
-		prev = MakeLabel(form, "message", Utf8ToLatin1(message).c_str(), title, 6);
-
-	s->area = XtVaCreateManagedWidget("code", xmDrawingAreaWidgetClass, form,
-		XmNtopAttachment, XmATTACH_WIDGET,
-		XmNtopWidget, prev,
-		XmNleftAttachment, XmATTACH_POSITION,
-		XmNleftPosition, 50,
-		XmNleftOffset, -QR_AREA / 2,
-		XmNtopOffset, 10,
-		XmNwidth, QR_AREA,
-		XmNheight, QR_AREA,
-		XmNresizePolicy, XmRESIZE_NONE,
-		NULL);
-	XtAddCallback(s->area, XmNexposeCallback, ExposeCB, NULL);
-
-	s->status = MakeLabel(form, "status", " \n ", s->area, 10);
-
-	Widget sep = XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, form,
-		XmNtopAttachment, XmATTACH_WIDGET,
-		XmNtopWidget, s->status,
-		XmNleftAttachment, XmATTACH_FORM,
-		XmNrightAttachment, XmATTACH_FORM,
-		XmNtopOffset, 10,
-		NULL);
-
-	Widget token = XtVaCreateManagedWidget("Use a Token Instead", xmPushButtonWidgetClass, form,
-		XmNtopAttachment, XmATTACH_WIDGET,
-		XmNtopWidget, sep,
-		XmNleftAttachment, XmATTACH_FORM,
-		XmNbottomAttachment, XmATTACH_FORM,
-		XmNtopOffset, 10, XmNleftOffset, 12, XmNbottomOffset, 10,
-		NULL);
-	XtAddCallback(token, XmNactivateCallback, UseTokenCB, NULL);
-
-	s->retry = XtVaCreateManagedWidget("Try Again", xmPushButtonWidgetClass, form,
-		XmNtopAttachment, XmATTACH_WIDGET,
-		XmNtopWidget, sep,
-		XmNleftAttachment, XmATTACH_WIDGET,
-		XmNleftWidget, token,
-		XmNbottomAttachment, XmATTACH_FORM,
-		XmNtopOffset, 10, XmNleftOffset, 8, XmNbottomOffset, 10,
-		XmNsensitive, False,
-		NULL);
-	XtAddCallback(s->retry, XmNactivateCallback, RetryCB, NULL);
-
-	Widget quit = XtVaCreateManagedWidget("Quit", xmPushButtonWidgetClass, form,
-		XmNtopAttachment, XmATTACH_WIDGET,
-		XmNtopWidget, sep,
-		XmNrightAttachment, XmATTACH_FORM,
-		XmNbottomAttachment, XmATTACH_FORM,
-		XmNtopOffset, 10, XmNrightOffset, 12, XmNbottomOffset, 10,
-		XmNwidth, 90,
-		NULL);
-	XtAddCallback(quit, XmNactivateCallback, QuitCB, NULL);
-
-	XtVaSetValues(form, XmNwidth, QR_AREA + 160, NULL);
-	XtManageChild(form);
-	SetStatus("Making a key for this login\xe2\x80\xa6\n ");
-
-	// the key takes a while on an old CPU: off the UI thread
-	int gen = s->generation;
-	std::thread([gen] {
-		std::string pub;
-		EVP_PKEY* key = MakeKey(pub);
-		MainQueue::Post([gen, key, pub] {
-			if (!g_state || g_state->generation != gen) {
-				if (key) EVP_PKEY_free(key);
-				return;
-			}
-			if (!key) {
-				SetStatus("Could not make a key for the login (OpenSSL).");
-				return;
-			}
-			g_state->key = key;
-			g_state->publicKey = pub;
-			Connect();
-		});
-	}).detach();
+	ReconnectAfter(1500);
 }

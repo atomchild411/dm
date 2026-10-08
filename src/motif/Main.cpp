@@ -26,12 +26,14 @@
 #include "AppIcon.hpp"
 #include "Bench.hpp"
 #include "LogonDialog.hpp"
-#include "QrLogin.hpp"
+#include "QrLoginDialog.hpp"
+#include "shared/QrLogin.hpp"
 #include "MainWindow.hpp"
 #include "MessageView.hpp"
 #include "Notifier.hpp"
 #include "ConversationWindow.hpp"
 #include "shared/Perf.hpp"
+#include "shared/Timers.hpp"
 #include "Theme.hpp"
 
 static XtAppContext g_app;
@@ -269,7 +271,7 @@ static void ShowLogon(const std::string& why)
 		StartWithToken();
 	};
 	// a QR code for the phone app first; a pasted token on request
-	QrLogin::Show(g_toplevel, g_pixelFormat, why, done, [why, done] {
+	QrLoginDialog::Show(g_toplevel, g_pixelFormat, why, done, [why, done] {
 		ShowLogonDialog(g_toplevel, why, done);
 	});
 }
@@ -531,6 +533,25 @@ int main(int argc, char** argv)
 
 	XtToolkitInitialize();
 	g_app = XtCreateApplicationContext();
+	// the shared layer's timers are Xt timeouts
+	struct XtTimer { XtIntervalId id; std::function<void()> fn; };
+	Timers::SetBackend({
+		[](int ms, std::function<void()> fn) -> void* {
+			XtTimer* t = new XtTimer{ 0, fn };
+			t->id = XtAppAddTimeOut(g_app, ms, [](XtPointer p, XtIntervalId*) {
+				XtTimer* t = (XtTimer*) p;
+				auto fn = t->fn;
+				delete t;
+				fn();
+			}, t);
+			return t;
+		},
+		[](void* handle) {
+			XtTimer* t = (XtTimer*) handle;
+			XtRemoveTimeOut(t->id);
+			delete t;
+		}
+	});
 	XtAppSetFallbackResources(g_app, g_fallbackResources);
 	Display* dpy = XtOpenDisplay(g_app, NULL, "dm", "DiscordMessenger", NULL, 0, &argc, argv);
 	if (!dpy) {
