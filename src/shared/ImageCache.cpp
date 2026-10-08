@@ -414,7 +414,7 @@ void ImageCache::Downloaded(const std::string& id, const uint8_t* data, size_t s
 		if (f) {
 			bool ok = fwrite(data, 1, size, f) == size;
 			ok = fclose(f) == 0 && ok;
-			if (!ok || rename(tmp.c_str(), path.c_str()) != 0)
+			if (!ok || !RenameOver(tmp, path))
 				remove(tmp.c_str());
 			else if ((g_writtenSinceTrim += size) >= TRIM_EVERY)
 				TrimDisk();

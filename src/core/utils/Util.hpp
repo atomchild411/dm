@@ -15,6 +15,8 @@ void SetBasePath(const std::string& appDataPath);
 uint64_t HashStringLong(const char* str, int len);
 std::string CombineNicely(Snowflake sf, std::string avkey);
 bool ReadEntireFile(const std::string& fileName, char** data, size_t* size, bool readBinary);
+// rename() that replaces an existing file, as POSIX's does, on Windows too
+bool RenameOver(const std::string& from, const std::string& to);
 std::string LoadEntireTextFile(const std::string& fileName);
 std::string HttpEncodeString(std::string str);
 std::string GetSizeString(size_t sz);

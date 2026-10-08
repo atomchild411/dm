@@ -68,7 +68,7 @@ void SaveClientConfig()
 		fprintf(f, "lastchannel = %llu\n", (unsigned long long) g_lastChannel);
 	}
 	if (fclose(f) == 0)
-		rename(tmp.c_str(), path.c_str());
+		RenameOver(tmp, path);
 	else
 		remove(tmp.c_str());
 }

@@ -1,13 +1,16 @@
 #include "MainQueue.hpp"
 
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
 #include <thread>
 
+#ifndef _WIN32
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 
 namespace
 {
@@ -19,6 +22,7 @@ namespace
 
 	std::mutex g_lock;
 	std::condition_variable g_doneCond;
+	std::condition_variable g_workCond; // for Wait
 	std::deque<Item> g_items;
 	std::thread::id g_mainThread;
 	int g_pipe[2] = { -1, -1 };
@@ -28,9 +32,12 @@ namespace
 
 	void Wake()
 	{
+#ifndef _WIN32
 		char c = 0;
 		while (write(g_pipe[1], &c, 1) < 0 && errno == EINTR)
 			;
+#endif
+		g_workCond.notify_all();
 		if (g_wakeHook)
 			g_wakeHook();
 	}
@@ -39,12 +46,16 @@ namespace
 void MainQueue::Init()
 {
 	g_mainThread = std::this_thread::get_id();
+#ifndef _WIN32
+	// (Windows has no pipe that select() or a toolkit could watch: its
+	// loops wake through the hook, or sleep in Wait)
 	if (pipe(g_pipe) == 0) {
 		fcntl(g_pipe[0], F_SETFL, fcntl(g_pipe[0], F_GETFL) | O_NONBLOCK);
 		fcntl(g_pipe[1], F_SETFL, fcntl(g_pipe[1], F_GETFL) | O_NONBLOCK);
 		fcntl(g_pipe[0], F_SETFD, FD_CLOEXEC);
 		fcntl(g_pipe[1], F_SETFD, FD_CLOEXEC);
 	}
+#endif
 }
 
 int MainQueue::WakeFd()
@@ -89,11 +100,19 @@ void MainQueue::Send(std::function<void()> fn)
 	g_doneCond.wait(lk, [&] { return done || g_shutdown; });
 }
 
+void MainQueue::Wait(int ms)
+{
+	std::unique_lock<std::mutex> lk(g_lock);
+	g_workCond.wait_for(lk, std::chrono::milliseconds(ms), [] { return !g_items.empty() || g_shutdown; });
+}
+
 void MainQueue::Drain()
 {
+#ifndef _WIN32
 	char buf[64];
 	while (read(g_pipe[0], buf, sizeof buf) > 0)
 		;
+#endif
 
 	for (;;)
 	{

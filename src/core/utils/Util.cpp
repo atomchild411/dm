@@ -687,3 +687,12 @@ void DbgPrintF(const char* fmt, ...)
 	va_end(vl);
 }
 #endif
+
+bool RenameOver(const std::string& from, const std::string& to)
+{
+#ifdef _WIN32
+	return dm_win_rename(from.c_str(), to.c_str()) == 0; // compat/win
+#else
+	return rename(from.c_str(), to.c_str()) == 0;
+#endif
+}

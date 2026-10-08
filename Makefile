@@ -4,9 +4,13 @@
 #
 # FRONTEND picks the user interface: motif (the X11/Motif client, for IRIX
 # and other historic Unix), imgui (Dear ImGui on GLFW and OpenGL 3, for
-# Linux and macOS) or cli (a text test client that exercises the core).
+# Linux, macOS and Windows) or cli (a text test client that exercises the core).
 # PREFIX_DEPS is where OpenSSL and libwebp are installed (include/ and lib/
 # below it); GLFW_PREFIX where GLFW is, when not there.
+#
+# TARGET_OS=windows cross-builds for Windows with a clang that targets the
+# MSVC ABI (CXX=x86_64-windows-clang++ or aarch64-windows-clang++), against
+# static libraries in PREFIX_DEPS as their CMake builds name them.
 
 FRONTEND    ?= motif
 DEBUG       ?= no
@@ -19,6 +23,11 @@ EXTRA_CXXFLAGS ?=
 EXTRA_LDFLAGS  ?=
 X_CFLAGS    ?=
 X_LIBS      ?= -lXm -lXt -lXext -lX11
+TARGET_OS   ?=
+ifeq ($(TARGET_OS),windows)
+FT_LIBS     ?= $(PREFIX_DEPS)/lib/freetype.lib $(PREFIX_DEPS)/lib/libpng16_static.lib $(PREFIX_DEPS)/lib/zlib.lib
+GLFW_LIBS   ?= $(PREFIX_DEPS)/lib/glfw3.lib
+endif
 FT_CFLAGS   ?= -I$(PREFIX_DEPS)/include/freetype2
 FT_LIBS     ?= -lfreetype
 GLFW_PREFIX ?= $(PREFIX_DEPS)
@@ -28,7 +37,11 @@ GLFW_LIBS   ?= -L$(GLFW_PREFIX)/lib -lglfw
 UNAME       := $(shell uname -s)
 
 BUILD_DIR ?= build-unix/$(FRONTEND)
+ifeq ($(TARGET_OS),windows)
+TARGET    ?= bin/dm-$(FRONTEND).exe
+else
 TARGET    ?= bin/dm-$(FRONTEND)
+endif
 
 DEFINES = \
 	-DASIO_STANDALONE             \
@@ -60,8 +73,14 @@ else
 LIBS     = -lssl -lcrypto
 endif
 
+ifeq ($(TARGET_OS),windows)
+LIBS     = $(PREFIX_DEPS)/lib/libssl.a $(PREFIX_DEPS)/lib/libcrypto.a
+endif
+
 ifneq ($(DISABLE_WEBP),1)
-ifeq ($(STATIC_DEPS),1)
+ifeq ($(TARGET_OS),windows)
+LIBS += $(PREFIX_DEPS)/lib/webp.lib $(PREFIX_DEPS)/lib/sharpyuv.lib
+else ifeq ($(STATIC_DEPS),1)
 LIBS += $(PREFIX_DEPS)/lib/libwebp.a $(PREFIX_DEPS)/lib/libsharpyuv.a
 else
 LIBS += -lwebp
@@ -87,7 +106,9 @@ IMGUI_FILES := deps/imgui/imgui.cpp deps/imgui/imgui_draw.cpp deps/imgui/imgui_t
 	deps/imgui/imgui_widgets.cpp deps/imgui/backends/imgui_impl_glfw.cpp \
 	deps/imgui/backends/imgui_impl_opengl3.cpp
 LIBS += $(GLFW_LIBS)
-ifeq ($(UNAME),Darwin)
+ifeq ($(TARGET_OS),windows)
+LIBS += -lopengl32
+else ifeq ($(UNAME),Darwin)
 # the browser view for logging in (Objective-C++)
 MMFILES := $(shell find src/$(FRONTEND) -type f -name '*.mm')
 LIBS += -framework OpenGL -framework Cocoa -framework WebKit
@@ -96,14 +117,27 @@ LIBS += -lGL -ldl
 endif
 endif
 
-# macOS checks the servers' certificates itself (src/posix/SystemTrust.cpp)
+# Windows: the POSIX calls the code makes come from src/compat/win
+COMPAT_FILES :=
+ifeq ($(TARGET_OS),windows)
+DEFINES += -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX \
+	-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS -D_CRT_DECLARE_NONSTDC_NAMES=1
+INC_DIRS += -Isrc/compat/win
+# (Microsoft's C++ library needs C++14 at least)
+CXXFLAGS += -std=c++17 -include src/compat/win/dm_win.h
+COMPAT_FILES := $(wildcard src/compat/win/*.cpp)
+LIBS += -lws2_32 -lmswsock -lcrypt32 -luser32 -lgdi32 -lshell32 -ladvapi32 -lwinmm -lole32
+endif
+
+# macOS checks the servers' certificates itself (src/posix/SystemTrust.cpp);
+# so does Windows, through crypt32
 ifeq ($(UNAME),Darwin)
 LIBS += -framework Security -framework CoreFoundation
 endif
 
 CXXFILES := \
 	$(shell find src/core src/posix src/shared src/$(FRONTEND) -type f -name '*.cpp') \
-	$(IMGUI_FILES) \
+	$(IMGUI_FILES) $(COMPAT_FILES) \
 	deps/asio/src/asio.cpp \
 	deps/asio/src/asio_ssl.cpp \
 	deps/md5/MD5.cpp
@@ -139,6 +173,6 @@ $(BUILD_DIR)/%.o: %.c
 	@$(CC) -std=c99 $(OPT) $(EXTRA_CXXFLAGS:-std=%=) -MMD -MF $(BUILD_DIR)/$*.d -c $< -o $@
 
 $(TARGET): $(OBJ) Makefile
-	@mkdir -p bin
+	@mkdir -p $(dir $@)
 	@echo ">> linking $@"
 	@$(CXX) -o $@ $(OBJ) $(LDFLAGS) $(LIBS)

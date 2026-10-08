@@ -1,4 +1,5 @@
 #include "MessageCache.hpp"
+#include "../utils/Util.hpp"
 #include "ProfileCache.hpp"
 #include "../Frontend.hpp"
 #include "../DiscordInstance.hpp"
@@ -128,7 +129,7 @@ void MessageCache::SaveDirty()
 			continue;
 		bool ok = write(fd, text.data(), text.size()) == (ssize_t) text.size();
 		ok = close(fd) == 0 && ok;
-		if (!ok || rename(tmp.c_str(), path.c_str()) != 0)
+		if (!ok || !RenameOver(tmp, path))
 			remove(tmp.c_str());
 		wrote = true;
 	}

@@ -206,7 +206,7 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 	Client client(hostName);
 
 	client.enable_server_certificate_verification(GetLocalSettings()->EnableTLSVerification());
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(_WIN32)
 	if (GetLocalSettings()->EnableTLSVerification())
 		UseSystemTrust(client.ssl_context());
 #else

@@ -21,7 +21,9 @@
 #include <functional>
 #include <map>
 #include <string>
+#ifndef _WIN32
 #include <sys/select.h>
+#endif
 #include <sys/time.h>
 
 #include "DiscordInstance.hpp"
@@ -221,7 +223,11 @@ int main(int argc, char** argv)
 		}
 	}
 
+#ifdef _WIN32
+	setvbuf(stdout, NULL, _IONBF, 0); // (Windows' C library refuses _IOLBF with no size)
+#else
 	setvbuf(stdout, NULL, _IOLBF, 0);
+#endif
 	srand((unsigned) time(NULL));
 	MainQueue::Init();
 	SetupPosixPaths();
@@ -264,6 +270,15 @@ int main(int argc, char** argv)
 	else
 		g_pFrontend->StartSession();
 
+#ifdef _WIN32
+	// no pipe to select() on: sleep on the queue itself
+	while (!g_bQuit)
+	{
+		MainQueue::Wait(MsToNextTimer());
+		MainQueue::Drain();
+		RunDueTimers();
+	}
+#else
 	int fd = MainQueue::WakeFd();
 	while (!g_bQuit)
 	{
@@ -281,6 +296,7 @@ int main(int argc, char** argv)
 			MainQueue::Drain();
 		RunDueTimers();
 	}
+#endif
 
 	printf("* quitting\n");
 	g_pDiscordInstance->CloseGatewaySession();

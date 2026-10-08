@@ -2,24 +2,31 @@
 
 #include <cstdlib>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <mmsystem.h>
+#else
+#include <sys/wait.h>
+#endif
 
 #include "Perf.hpp"
 
 namespace
 {
+	double g_lastSound = 0;
+
+#ifndef _WIN32
 	const char* const DEFAULT_SOUND = "/usr/share/data/sounds/soundscheme/soundfiles/08.ting.aifc";
 	const char* const PLAYER = "/usr/sbin/sfplay";
-
-	double g_lastSound = 0;
 
 	bool Exists(const char* path)
 	{
 		struct stat st;
 		return path && stat(path, &st) == 0;
 	}
+#endif
 }
 
 // the player in the background: forked twice, so nothing waits for it
@@ -31,6 +38,14 @@ void Sound::PlayNotification(std::function<void()> fallback)
 	g_lastSound = now;
 
 	const char* file = getenv("DM_SOUND");
+#ifdef _WIN32
+	// DM_SOUND (a .wav file), or the system's notification sound
+	if (file && *file)
+		PlaySoundA(file, nullptr, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
+	else
+		PlaySoundW(L"Notification.Default", nullptr, SND_ALIAS | SND_ASYNC);
+	(void) fallback;
+#else
 	if (!file || !*file)
 		file = DEFAULT_SOUND;
 	if (!Exists(PLAYER) || !Exists(file)) {
@@ -54,4 +69,5 @@ void Sound::PlayNotification(std::function<void()> fallback)
 	}
 	if (pid > 0)
 		waitpid(pid, NULL, 0);
+#endif
 }

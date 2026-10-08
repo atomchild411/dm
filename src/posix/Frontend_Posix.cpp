@@ -6,6 +6,7 @@
 #include "network/DiscordAPI.hpp"
 #include "network/DiscordRequest.hpp"
 #include "state/MessageCache.hpp"
+#include "utils/Util.hpp"
 
 #include <cerrno>
 #include <cstdio>
@@ -15,8 +16,13 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <shellapi.h>
+#else
+#include <sys/wait.h>
+#endif
 
 DiscordInstance* GetDiscordInstance();
 
@@ -35,10 +41,18 @@ void SetupPosixPaths()
 		SetProgramNamePath("");
 	}
 	else {
+#ifdef _WIN32
+		// %APPDATA%\DiscordMessenger, as Windows programs keep their settings
+		const char* home = getenv("APPDATA");
+		base = std::string(home && *home ? home : ".");
+		SetBasePath(base);
+		SetProgramNamePath("DiscordMessenger");
+#else
 		const char* home = getenv("HOME");
 		base = std::string(home && *home ? home : ".");
 		SetBasePath(base);
 		SetProgramNamePath(".discordmessenger");
+#endif
 	}
 
 	mkdir(GetBasePath().c_str(), 0700);
@@ -169,6 +183,7 @@ void Frontend_Posix::OnProtobufError(Protobuf::ErrorCode code)
 
 void Frontend_Posix::LaunchURL(const std::string& url)
 {
+#ifndef _WIN32
 	// The browser to open links with: DM_BROWSER, then BROWSER.
 	const char* browser = getenv("DM_BROWSER");
 	if (!browser || !*browser)
@@ -177,6 +192,7 @@ void Frontend_Posix::LaunchURL(const std::string& url)
 		OnGenericError("No web browser is set (DM_BROWSER or BROWSER) to open:\n\n" + url);
 		return;
 	}
+#endif
 
 	// Links come from other people's messages: hand the browser only web
 	// addresses (no file: or other schemes, nothing it could read as an
@@ -190,6 +206,14 @@ void Frontend_Posix::LaunchURL(const std::string& url)
 		return;
 	}
 
+#ifdef _WIN32
+	// the user's default browser
+	int n = MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, nullptr, 0);
+	std::wstring wurl(n > 0 ? n - 1 : 0, L'\0');
+	if (n > 1)
+		MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, &wurl[0], n);
+	ShellExecuteW(nullptr, L"open", wurl.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+#else
 	// Fork twice so the browser is not our child: nothing is left to reap.
 	pid_t pid = fork();
 	if (pid == 0) {
@@ -201,6 +225,7 @@ void Frontend_Posix::LaunchURL(const std::string& url)
 	}
 	if (pid > 0)
 		waitpid(pid, NULL, 0);
+#endif
 }
 
 static std::string ReadFile(const std::string& path)
@@ -230,7 +255,7 @@ bool Frontend_Posix::SaveConfig(const std::string& configJson)
 	chmod(tmp.c_str(), 0600); // it holds the login token
 	bool ok = fwrite(configJson.data(), 1, configJson.size(), f) == configJson.size();
 	ok = (fclose(f) == 0) && ok;
-	if (!ok || rename(tmp.c_str(), path.c_str()) != 0) {
+	if (!ok || !RenameOver(tmp, path)) {
 		unlink(tmp.c_str());
 		return false;
 	}

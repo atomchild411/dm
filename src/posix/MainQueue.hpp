@@ -10,8 +10,12 @@ namespace MainQueue
 	// Call once, on the UI thread.
 	void Init();
 
-	// Readable while work is queued.
+	// Readable while work is queued (-1 on Windows: use Wait or the hook).
 	int WakeFd();
+
+	// Sleeps until work is queued or ms milliseconds passed, for loops that
+	// have nothing else to sleep on.
+	void Wait(int ms);
 
 	// Also called (on the posting thread) whenever work is queued, for UI
 	// loops that sleep in their toolkit rather than on WakeFd (GLFW's
