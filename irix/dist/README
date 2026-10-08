@@ -28,8 +28,16 @@ your desktop's Motif scheme.  View > Larger/Smaller Text sets the text
 size; View > Server List, Channel List and Member List show or hide those.
 A click on a picture opens it in a window of its own (it scales with the
 window); a click on a reaction adds or takes back yours; right-clicking a
-message offers Add Reaction (common emoji and the server's own) and Reply.
-The client opens the server and channel you were last in.
+message offers Add Reaction (common emoji and the server's own), Reply and,
+on your own messages, Edit Message.  The client opens the server and
+channel you were last in.
+
+Emoji in your messages: the message box shows ISO 8859-1 only, so emoji
+are written there as shortcodes, as Discord's clients allow: the button by
+Send opens a picker that inserts :joy: or a server emoji's :name:, and you
+can type them too.  They become the emoji when the message is sent.  A
+message being edited shows its emoji that way, and any other character
+the box cannot show as :U+XXXX:, so nothing is lost.
 
 Files:   ~/.discordmessenger: settings.json, motif.conf (text size and
          the lists View shows) and cache/: pictures (64 MB at most,
