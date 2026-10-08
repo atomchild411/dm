@@ -178,6 +178,14 @@ MessageView::MessageView(Widget parent, const PixelFormat& fmt) : m_fmt(fmt)
 	ApplyTheme(m_ctx);
 }
 
+MessageView::~MessageView()
+{
+	if (m_repaintTimer)
+		XtRemoveTimeOut(m_repaintTimer);
+	if (m_gc)
+		XFreeGC(XtDisplay(m_area), m_gc);
+}
+
 int MessageView::ContentWidth() const
 {
 	return std::max(200, m_viewW);
@@ -709,10 +717,16 @@ void MessageView::MenuCB(Widget w, XtPointer client, XtPointer)
 			});
 			break;
 		case MENU_REPLY:
-			GetMainWindow()->BeginReply(id, msg->m_author);
+			if (self->m_onReply)
+				self->m_onReply(id, msg->m_author);
+			else
+				GetMainWindow()->BeginReply(id, msg->m_author);
 			break;
 		case MENU_EDIT:
-			GetMainWindow()->BeginEdit(id, msg->m_message);
+			if (self->m_onEdit)
+				self->m_onEdit(id, msg->m_message);
+			else
+				GetMainWindow()->BeginEdit(id, msg->m_message);
 			break;
 		case MENU_DELETE:
 			self->ConfirmDelete(msg);
@@ -1165,7 +1179,7 @@ void MessageView::MarkReadIfSeen()
 	// messages arriving while the user is in another window stay unread
 	bool opened = m_justOpened;
 	m_justOpened = false;
-	if (!opened && !Notifier::IsFocused())
+	if (!opened && !(m_isFocused ? m_isFocused() : Notifier::IsFocused()))
 		return;
 	DiscordInstance* pInst = GetDiscordInstance();
 	Channel* pChan = pInst ? pInst->GetChannelGlobally(m_channel) : nullptr;

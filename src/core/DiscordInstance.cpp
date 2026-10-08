@@ -143,10 +143,11 @@ void DiscordInstance::OnSelectChannel(Snowflake sf, bool bSendSubscriptionUpdate
 
 void DiscordInstance::RequestMessages(Snowflake sf, ScrollDir::eScrollDir dir, Snowflake source, Snowflake gapper)
 {
-	if (m_messageRequestsInProgress[source])
+	auto inProgress = std::make_pair(sf, gapper);
+	if (m_messageRequestsInProgress.count(inProgress))
 		return; // already going
 
-	m_messageRequestsInProgress[source] = true;
+	m_messageRequestsInProgress.insert(inProgress);
 
 	std::string dirStr;
 	switch (dir)
@@ -498,6 +499,11 @@ void DiscordInstance::HandleRequest(NetRequest* pRequest)
 		OnUploadAttachmentSecond(pRequest);
 		return;
 	}
+
+	// a message request is over, however it went: the gap may be asked for again
+	if (pRequest->itype == DiscordRequest::MESSAGES && pRequest->additional_data.size() > 1)
+		m_messageRequestsInProgress.erase(std::make_pair((Snowflake) pRequest->key,
+			(Snowflake) GetIntFromString(pRequest->additional_data.substr(1))));
 
 	using namespace DiscordRequest;
 
@@ -1393,10 +1399,17 @@ bool DiscordInstance::SendMessageToCurrentChannel(const std::string& msg_, Snowf
 {
 	if (!GetCurrentChannel() || !GetCurrentGuild())
 		return false;
+	return SendMessageToChannel(m_CurrentGuild, m_CurrentChannel, msg_, tempSf, replyTo, mentionReplied);
+}
 
-	std::string msg = ResolveMentions(msg_, m_CurrentGuild, m_CurrentChannel);
+bool DiscordInstance::SendMessageToChannel(Snowflake guild, Snowflake channel, const std::string& msg_, Snowflake& tempSf, Snowflake replyTo, bool mentionReplied)
+{
+	Channel* pChan = GetChannel(channel);
+	if (!pChan || !GetGuild(guild))
+		return false;
 
-	Channel* pChan = GetCurrentChannel();
+	std::string msg = ResolveMentions(msg_, guild, channel);
+
 	tempSf = CreateTemporarySnowflake();
 
 	if (!pChan->HasPermission(PERM_SEND_MESSAGES))
@@ -1412,10 +1425,10 @@ bool DiscordInstance::SendMessageToCurrentChannel(const std::string& msg_, Snowf
 	if (replyTo)
 	{
 		Json mr;
-		if (m_CurrentGuild)
-			mr["guild_id"] = m_CurrentGuild;
+		if (guild)
+			mr["guild_id"] = guild;
 
-		mr["channel_id"] = m_CurrentChannel;
+		mr["channel_id"] = channel;
 		mr["message_id"] = replyTo;
 		j["message_reference"] = mr;
 	}
@@ -1455,8 +1468,14 @@ void DiscordInstance::Typing()
 {
 	if (!GetCurrentChannel() || !GetCurrentGuild())
 		return;
+	Typing(m_CurrentChannel);
+}
 
-	Channel* pChan = GetCurrentChannel();
+void DiscordInstance::Typing(Snowflake channel)
+{
+	Channel* pChan = GetChannel(channel);
+	if (!pChan)
+		return;
 
 	if (m_lastTypingSent + TYPING_INTERVAL >= GetTimeMs())
 		return;
@@ -2767,9 +2786,8 @@ void DiscordInstance::HandleMESSAGE_DELETE(Json& j)
 	
 	GetMessageCache()->DeleteMessage(channelId, messageId);
 
-	if (m_CurrentGuild != guildId || m_CurrentChannel != channelId)
-		return;
-
+	// (any channel: a conversation may be open in a window of its own)
+	(void) guildId;
 	GetFrontend()->OnDeleteMessage(messageId);
 }
 

@@ -53,6 +53,9 @@ public:
 	// The icon's name says how many mentions and direct messages are unread:
 	// "Discord (3)".
 	void UpdateIconName();
+	// "X is typing..." for a channel, or "".
+	std::string TypingText(Snowflake channel);
+	Pixmap GetEmojiPixmap() const { return m_emojiPixmap; }
 
 	void OnTyping(Snowflake user, Snowflake guild, Snowflake channel, time_t when);
 	void OnStopTyping(Snowflake channel, Snowflake user);
@@ -105,6 +108,7 @@ private:
 	static void MessagesItemCB(Widget, XtPointer, XtPointer);
 	void BuildMessagesMenu(Widget menubar);
 	Widget m_emojiButton = nullptr;
+	Pixmap m_emojiPixmap = 0;
 	const PixelFormat* m_fmt = nullptr;
 	static void EmojiCB(Widget, XtPointer, XtPointer);
 	Pixmap MakeEmojiPixmap(Widget button);

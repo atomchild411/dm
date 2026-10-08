@@ -30,6 +30,7 @@
 #include "ReactionPicker.hpp"
 #include "Shortcodes.hpp"
 #include "Notifier.hpp"
+#include "ConversationWindow.hpp"
 #include "Fonts.hpp"
 #include "Perf.hpp"
 #include "models/ActiveStatus.hpp"
@@ -166,8 +167,8 @@ MainWindow::MainWindow(Widget toplevel, const PixelFormat& fmt)
 		XmNrightOffset, 4,
 		NULL);
 	XtAddCallback(m_emojiButton, XmNactivateCallback, EmojiCB, this);
-	if (Pixmap pm = MakeEmojiPixmap(m_emojiButton))
-		XtVaSetValues(m_emojiButton, XmNlabelType, XmPIXMAP, XmNlabelPixmap, pm, NULL);
+	if ((m_emojiPixmap = MakeEmojiPixmap(m_emojiButton)) != 0)
+		XtVaSetValues(m_emojiButton, XmNlabelType, XmPIXMAP, XmNlabelPixmap, m_emojiPixmap, NULL);
 
 	n = 0;
 	XtSetArg(args[n], XmNbottomAttachment, XmATTACH_WIDGET); n++;
@@ -376,8 +377,9 @@ void MainWindow::MessagesItemCB(Widget, XtPointer client, XtPointer)
 	if (!pInst || i >= self->m_dmItems.size())
 		return;
 	Snowflake channel = self->m_dmItems[i];
+	// a conversation opens in a window of its own: this one keeps its place
 	if (channel)
-		pInst->OnSelectGuild(0, channel);
+		Conversations::Open(channel);
 	else
 		pInst->OnSelectGuild(0);
 }
@@ -401,6 +403,7 @@ void MainWindow::MenuCB(Widget w, XtPointer client, XtPointer)
 			SetTextSize(GetTextSize() + ((int) (long) client == MI_BIGGER ? 1 : -1));
 			SaveMotifConfig();
 			self->m_messages->Relayout();
+			Conversations::Relayout();
 			self->UpdateGuildList();
 			self->UpdateChannelList();
 			self->UpdateMemberList();
@@ -941,6 +944,7 @@ void MainWindow::OnImagesChanged()
 	m_messages->ImagesChanged();
 	ImageViewer::ImagesChanged();
 	ReactionPicker::ImagesChanged();
+	Conversations::ImagesChanged();
 	Notifier::ImagesChanged();
 	if (!m_listRepaintTimer)
 		m_listRepaintTimer = XtAppAddTimeOut(XtWidgetToApplicationContext(m_shell), 100, ListRepaintCB, this);
@@ -1057,31 +1061,35 @@ void MainWindow::SetStatus(const std::string& text)
 	UpdateTypingStatus();
 }
 
+std::string MainWindow::TypingText(Snowflake channel)
+{
+	DiscordInstance* pInst = GetDiscordInstance();
+	auto it = m_typing.find(channel);
+	if (!pInst || it == m_typing.end() || it->second.empty())
+		return "";
+	Channel* pChan = pInst->GetChannelGlobally(channel);
+	Snowflake guild = pChan ? pChan->m_parentGuild : 0;
+	std::vector<std::string> names;
+	for (auto& t : it->second) {
+		Profile* p = GetProfileCache()->LookupProfile(t.first, "", "", "", false);
+		names.push_back(p ? p->GetName(guild) : "Someone");
+	}
+	if (names.size() > 3)
+		return "Several people are typing...";
+	std::string who;
+	for (size_t i = 0; i < names.size(); i++)
+		who += (i ? (i + 1 == names.size() ? " and " : ", ") : "") + names[i];
+	return who + (names.size() == 1 ? " is typing..." : " are typing...");
+}
+
 void MainWindow::UpdateTypingStatus()
 {
 	DiscordInstance* pInst = GetDiscordInstance();
 	std::string text = m_statusText;
-	if (pInst)
-	{
-		auto it = m_typing.find(pInst->GetCurrentChannelID());
-		if (it != m_typing.end() && !it->second.empty())
-		{
-			std::vector<std::string> names;
-			for (auto& t : it->second) {
-				Profile* p = GetProfileCache()->LookupProfile(t.first, "", "", "", false);
-				names.push_back(p ? p->GetName(pInst->GetCurrentGuildID()) : "Someone");
-			}
-			std::string who;
-			if (names.size() > 3)
-				who = "Several people are typing...";
-			else {
-				for (size_t i = 0; i < names.size(); i++)
-					who += (i ? (i + 1 == names.size() ? " and " : ", ") : "") + names[i];
-				who += names.size() == 1 ? " is typing..." : " are typing...";
-			}
-			text = who;
-		}
-	}
+	std::string typing = pInst ? TypingText(pInst->GetCurrentChannelID()) : "";
+	if (!typing.empty())
+		text = typing;
+	Conversations::UpdateTyping();
 	XmString xs = MakeXmString(text.empty() ? std::string(" ") : text);
 	XtVaSetValues(m_status, XmNlabelString, xs, NULL);
 	XmStringFree(xs);

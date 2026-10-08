@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <list>
 #include <memory>
 #include <set>
@@ -31,6 +33,17 @@ public:
 	void Refresh();
 	void ScrollToBottom();
 	void ScrollTo(int y) { SetScroll(y); }
+	~MessageView();
+	// Where Reply and Edit Message from the message menu go, and whether
+	// the window has the keyboard (to mark arriving messages read); the
+	// main window's when not set.
+	void SetOwner(std::function<void(Snowflake, const std::string&)> reply,
+		std::function<void(Snowflake, const std::string&)> edit, std::function<bool()> focused)
+	{
+		m_onReply = reply;
+		m_onEdit = edit;
+		m_isFocused = focused;
+	}
 	int GetScroll() const { return m_scrollY; }
 	// Each item's message, place and height, to compare layouts (--bench).
 	std::string LayoutSignature() const;
@@ -91,7 +104,9 @@ private:
 	// The newest messages of the open channel are on screen: tell Discord
 	// it is read (and drop the unread counts).
 	void MarkReadIfSeen();
-	bool m_justOpened = false;   // opened by the user: read even before focus is known
+	bool m_justOpened = false;
+	std::function<void(Snowflake, const std::string&)> m_onReply, m_onEdit;
+	std::function<bool()> m_isFocused;   // opened by the user: read even before focus is known
 	Snowflake m_ackSent = 0;     // the last message acknowledged
 	void OnClick(int x, int y);
 	void DrawPicture(const Rect& r, const std::string& url, int top, const std::string& label);

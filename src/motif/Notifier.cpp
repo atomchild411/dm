@@ -17,6 +17,7 @@
 #include "ImageCache.hpp"
 #include "Perf.hpp"
 #include "Theme.hpp"
+#include "ConversationWindow.hpp"
 
 int AddVisualArgs(Arg* args, int n); // Main.cpp
 
@@ -166,6 +167,12 @@ namespace
 		Popdown();
 		if (ev->xbutton.button != Button1)
 			return;
+		// a direct message opens in its conversation window; anything else
+		// in the main window
+		if (n.m_sourceGuild == 0 && n.m_sourceChannel) {
+			Conversations::Open(n.m_sourceChannel);
+			return;
+		}
 		XMapRaised(XtDisplay(g_toplevel), XtWindow(g_toplevel));
 		DiscordInstance* pInst = GetDiscordInstance();
 		if (pInst && n.m_sourceChannel)
@@ -234,6 +241,8 @@ void Notifier::OnNotification()
 	Notification* n = GetNotificationManager() ? GetNotificationManager()->GetLatestNotification() : nullptr;
 	if (!n)
 		return;
+	if (Conversations::IsFocusedOn(n->m_sourceChannel))
+		return; // being read in its own window
 	if (IsNotifyOn(NOTIFY_SOUND))
 		PlaySound();
 	if (IsNotifyOn(NOTIFY_POPUP) && !g_focused)

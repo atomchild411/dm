@@ -30,6 +30,7 @@
 #include "MainWindow.hpp"
 #include "MessageView.hpp"
 #include "Notifier.hpp"
+#include "ConversationWindow.hpp"
 #include "Perf.hpp"
 #include "Theme.hpp"
 
@@ -71,8 +72,11 @@ public:
 		GetMainWindow()->SetStatus("");
 		GetMainWindow()->UpdateGuildList();
 		// once the login data is in (this runs as it starts): where the
-		// user was last time
-		MainQueue::Post([] { GetMainWindow()->RestoreLastChannel(); });
+		// user was last time, and the conversations open in their windows
+		MainQueue::Post([] {
+			GetMainWindow()->RestoreLastChannel();
+			Conversations::Reload();
+		});
 	}
 	void OnSessionClosed(int errorCode) override {
 		GetMainWindow()->SetStatus("Disconnected (" + std::to_string(errorCode) + ").  File > Reconnect to try again.");
@@ -84,6 +88,7 @@ public:
 		Frontend_Posix::OnAddMessage(channelID, msg);
 		// mention counts may have changed: the server badges and the icon's name
 		GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_GUILDS);
+		Conversations::Refresh(channelID);
 		MainWindow* mw = GetMainWindow();
 		if (mw->GetMessageView()->GetChannel() == channelID) {
 			mw->GetMessageView()->Refresh();
@@ -97,9 +102,11 @@ public:
 		Frontend_Posix::OnUpdateMessage(channelID, msg);
 		if (GetMainWindow()->GetMessageView()->GetChannel() == channelID)
 			GetMainWindow()->GetMessageView()->Refresh();
+		Conversations::Refresh(channelID);
 	}
-	void OnDeleteMessage(Snowflake messageInCurrentChannel) override {
+	void OnDeleteMessage(Snowflake message) override {
 		GetMainWindow()->GetMessageView()->Refresh();
+		Conversations::Refresh(0);
 	}
 	void OnStartTyping(Snowflake userID, Snowflake guildID, Snowflake channelID, time_t startTime) override {
 		GetMainWindow()->OnTyping(userID, guildID, channelID, startTime);
@@ -107,6 +114,7 @@ public:
 	void OnFailedToSendMessage(Snowflake channel, Snowflake message) override {
 		if (GetMainWindow()->GetMessageView()->GetChannel() == channel)
 			GetMainWindow()->GetMessageView()->Refresh();
+		Conversations::Refresh(0);
 	}
 	void UpdateSelectedGuild() override { GetMainWindow()->UpdateSelectedGuild(); }
 	void UpdateSelectedChannel() override { GetMainWindow()->UpdateSelectedChannel(); }
@@ -120,6 +128,7 @@ public:
 	void RepaintGuildList() override { GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_GUILDS); }
 	void RefreshMessages(ScrollDir::eScrollDir sd, Snowflake gapCulprit) override {
 		GetMainWindow()->GetMessageView()->Refresh();
+		Conversations::Refresh(0);
 	}
 	void RefreshMembers(const std::set<Snowflake>& members) override {
 		// only changes to the current server's list show
@@ -273,6 +282,7 @@ void RequestLogout()
 	if (g_pDiscordInstance)
 		g_pDiscordInstance->CloseGatewaySession();
 	// the account's messages and pictures do not stay behind it
+	Conversations::CloseAll();
 	GetMessageCache()->ClearDiskCache();
 	ImageCache::ClearDisk();
 	GetLocalSettings()->SetToken("");
@@ -564,6 +574,7 @@ int main(int argc, char** argv)
 
 	new MainWindow(g_toplevel, g_pixelFormat);
 	Notifier::Init(g_toplevel, g_pixelFormat);
+	Conversations::Init(g_toplevel, g_pixelFormat);
 	ImageCache::SetChangedCallback([] { GetMainWindow()->OnImagesChanged(); });
 
 	Atom wmDelete = XmInternAtom(dpy, (char*) "WM_DELETE_WINDOW", False);

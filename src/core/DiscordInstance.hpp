@@ -172,7 +172,8 @@ public:
 	Guild m_dmGuild;
 
 	// Requests in progress
-	std::map<Snowflake, bool> m_messageRequestsInProgress;
+	// (channel, gap) of the message requests on their way
+	std::set<std::pair<Snowflake, Snowflake>> m_messageRequestsInProgress;
 
 	// Gateway url and connection ID
 	std::string m_gatewayUrl = "";
@@ -373,7 +374,7 @@ public:
 	}
 
 	void HandledChannelSwitch() {
-		m_messageRequestsInProgress[0] = false;
+		m_messageRequestsInProgress.erase(std::make_pair(m_CurrentChannel, (Snowflake) 0));
 	}
 
 	bool IsGatewayConnected() const {
@@ -433,6 +434,8 @@ public:
 
 	// Send a message to the current channel.
 	bool SendMessageToCurrentChannel(const std::string& msg, Snowflake& tempSf, Snowflake reply = 0, bool mentionReplied = true);
+	// The same to any channel (a conversation in a window of its own).
+	bool SendMessageToChannel(Snowflake guild, Snowflake channel, const std::string& msg, Snowflake& tempSf, Snowflake reply = 0, bool mentionReplied = true);
 
 	// Send a message with an attachment to the current channel.
 	bool SendMessageAndAttachmentToCurrentChannel(const std::string& msg, Snowflake& tempSf, uint8_t* pAttData, size_t szAtt, const std::string& attName, bool isSpoiler = false);
@@ -448,6 +451,7 @@ public:
 
 	// Inform the Discord backend that we are typing.
 	void Typing();
+	void Typing(Snowflake channel);
 
 	// Inform the Discord backend that we have acknowledged messages up to but not including "message".
 	// Used by the "mark unread" feature.
