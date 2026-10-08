@@ -4,17 +4,13 @@
 
 #include "Xm.hpp"
 #include "Canvas.hpp"
+#include "shared/PictureInfo.hpp"
 
 // A picture from a message, as large as fits the screen, in a dialog of its
 // own: Close, Escape or a click on the picture shuts it.
 namespace ImageViewer
 {
-	struct Picture
-	{
-		std::string url;             // a media proxy URL (it can be asked for a size)
-		int width = 0, height = 0;   // the original's size; 0 when not known
-		std::string title;
-	};
+	typedef PictureInfo Picture;
 
 	void Show(Widget parent, const PixelFormat& fmt, const Picture& pic);
 

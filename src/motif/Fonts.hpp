@@ -3,19 +3,10 @@
 #include <string>
 #include "Canvas.hpp"
 #include "shared/Utf8.hpp"
+#include "shared/TextStyle.hpp"
 
 // Text drawn with FreeType into a Canvas (the X server's own fonts have
 // neither Unicode coverage nor antialiasing on most SGI displays).
-enum FontStyle
-{
-	FS_REGULAR,
-	FS_BOLD,
-	FS_ITALIC,
-	FS_BOLDITALIC,
-	FS_MONO,
-	FS_MONOBOLD,
-	FS_COUNT
-};
 
 namespace Fonts
 {
@@ -41,4 +32,7 @@ namespace Fonts
 
 	// Truncates text to maxWidth with an ellipsis.
 	std::string Elide(const std::string& s, FontStyle st, int px, int maxWidth);
+
+	// These fonts' measurements, for the shared layout.
+	TextMetrics& Metrics();
 }

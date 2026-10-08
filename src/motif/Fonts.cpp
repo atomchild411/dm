@@ -692,3 +692,19 @@ std::string Fonts::Elide(const std::string& s, FontStyle st, int px, int maxWidt
 	}
 	return s;
 }
+
+namespace
+{
+	struct FreeTypeMetrics : TextMetrics
+	{
+		int Ascent(FontStyle st, int px) override { return Fonts::Ascent(st, px); }
+		int Descent(FontStyle st, int px) override { return Fonts::Descent(st, px); }
+		int Measure(const std::string& s, FontStyle st, int px) override { return Fonts::Measure(s, st, px); }
+	};
+}
+
+TextMetrics& Fonts::Metrics()
+{
+	static FreeTypeMetrics metrics;
+	return metrics;
+}

@@ -15,6 +15,7 @@
 #include "text/FormattedText.hpp"
 #include "Canvas.hpp"
 #include "TextInterface_Motif.hpp"
+#include "shared/MessageList.hpp"
 
 // The channel's messages, drawn into a Canvas: authors and times, the
 // formatted text, replies, attachments and embeds, grouped the way Discord
@@ -55,27 +56,8 @@ public:
 	void ImagesChanged();
 
 private:
-	struct ItemExtra;
-	struct Item
-	{
-		MessagePtr msg;
-		bool grouped = false;   // follows a message by the same author
-		bool systemLine = false;
-		std::string systemText;
-		FormattedText text;
-		std::vector<InteractableItem> interactables;
-		std::unique_ptr<FormattedText> reply;
-		int y = 0;              // top, in content coordinates
-		int height = 0;
-		int textTop = 0;        // offsets inside the item
-		int day = -1;           // DayNumber of the message
-		// what the layout was made for: it is kept while these hold
-		int laidOutWidth = -1;
-		int laidOutPx = 0;
-		bool laidOutGrouped = false;
-		bool laidOutDateSep = false;
-		std::shared_ptr<ItemExtra> extra;
-	};
+	typedef MessageList::Item Item;
+	typedef MessageList::ItemExtra ItemExtra;
 
 	static void ExposeCB(Widget, XtPointer, XtPointer);
 	static void ResizeCB(Widget, XtPointer, XtPointer);
@@ -86,11 +68,7 @@ private:
 	static void MenuCB(Widget, XtPointer, XtPointer);
 	void ShowMenu(XButtonEvent& ev);
 
-	// Brings the items up to date with the cache; true when the only change
-	// is messages added after the last one.
-	bool Rebuild();
 	void LayoutAll();
-	void LayoutItem(Item& item, int width);
 	void UpdateScrollbar();
 	void SetScroll(int y);
 	// Paint draws the whole view; Update only what scrolling or messages
@@ -107,13 +85,10 @@ private:
 	bool m_justOpened = false;
 	std::function<void(Snowflake, const std::string&)> m_onReply, m_onEdit;
 	std::function<bool()> m_isFocused;   // opened by the user: read even before focus is known
-	Snowflake m_ackSent = 0;     // the last message acknowledged
 	void OnClick(int x, int y);
 	void DrawPicture(const Rect& r, const std::string& url, int top, const std::string& label);
 	static void RepaintTimerCB(XtPointer, XtIntervalId*);
 	int ContentWidth() const;
-	static int ReactionHeight(int px);
-	static int ReactionWidth(const Reaction& r, int px);
 
 	Widget m_form, m_area, m_scroll;
 	const PixelFormat& m_fmt;
@@ -122,9 +97,7 @@ private:
 	DrawingContext m_ctx;
 
 	Snowflake m_guild = 0, m_channel = 0;
-	std::list<Item> m_items;
-	std::set<Snowflake> m_requestedGaps;
-	int m_contentHeight = 0;
+	MessageList m_list;       // the items and their layout
 	int m_scrollY = 0;
 	int m_viewW = 1, m_viewH = 1;
 	bool m_stickToBottom = true;
