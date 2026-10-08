@@ -130,11 +130,13 @@ bool Gfx::LoadUiFont(std::string& err)
 	dirs.push_back(DM_DATADIR "/fonts");
 	dirs.push_back("/usr/share/fonts/truetype/dejavu");
 	dirs.push_back("/usr/local/share/fonts");
-	for (auto& d : dirs) {
-		std::string path = d + "/DejaVuSans.ttf";
-		if (Exists(path) && ImGui::GetIO().Fonts->AddFontFromFileTTF(path.c_str(), 14.0f))
-			return true;
-	}
+	// Inter, as the text; DejaVu Sans when it is not there
+	for (const char* file : { "Inter-Regular.ttf", "DejaVuSans.ttf" })
+		for (auto& d : dirs) {
+			std::string path = d + "/" + file;
+			if (Exists(path) && ImGui::GetIO().Fonts->AddFontFromFileTTF(path.c_str(), 14.0f))
+				return true;
+		}
 	err = "DejaVuSans.ttf was not found (DM_FONT_DIR names a directory with the DejaVu fonts).";
 	return false;
 }

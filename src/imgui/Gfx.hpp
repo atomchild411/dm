@@ -26,7 +26,7 @@ const Palette& GetPalette();
 
 // Text in the drawn parts comes from shared/Fonts (FreeType), as in the
 // Motif client: its glyphs go into textures here.  ImGui's own widgets
-// (menus, buttons, the message box) use ImGui's font, DejaVu Sans.
+// (menus, buttons, the message box) use ImGui's font: Inter, as the text.
 namespace Gfx
 {
 	// ImGui's font for its widgets; shared/Fonts must be loaded first.

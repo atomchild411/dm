@@ -351,7 +351,7 @@ int main(int argc, char** argv)
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	ImGui::StyleColorsDark();
 	std::string fontErr;
-	if (!Fonts::Init(fontErr) || !Gfx::LoadUiFont(fontErr)) {
+	if (!Fonts::Init(fontErr, Fonts::INTER) || !Gfx::LoadUiFont(fontErr)) {
 		fprintf(stderr, "dm: %s\n", fontErr.c_str());
 		return 1;
 	}
