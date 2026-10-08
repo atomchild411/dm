@@ -55,6 +55,9 @@ namespace ImageCache
 	// Offline: no image is read or fetched (the benchmark draws placeholders).
 	void SetOffline(bool offline);
 
-	// Decodes PNG, JPEG, GIF (first frame) and WebP.
-	bool Decode(const uint8_t* data, size_t size, Image& out);
+	// Decodes WebP, and with anyFormat also PNG, JPEG and GIF (first frame).
+	// Pictures from other people are fetched as WebP, which Discord's
+	// servers make anew, so their own bytes never reach a decoder; only
+	// Discord's own default avatars may be anything else.
+	bool Decode(const uint8_t* data, size_t size, Image& out, bool anyFormat = false);
 }

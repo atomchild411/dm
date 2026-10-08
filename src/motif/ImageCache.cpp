@@ -53,6 +53,7 @@ namespace
 		std::string url;
 		std::vector<std::pair<int, int>> sizes;
 		bool requested = false;
+		bool anyFormat = false; // not only WebP (Discord's own pictures)
 	};
 
 	std::map<std::string, Entry> g_entries;     // key: source id + size
@@ -108,23 +109,49 @@ namespace
 		return p;
 	}
 
+#ifndef DISABLE_WEBP
+	const bool WEBP = true;
+#else
+	const bool WEBP = false; // no WebP decoder: take what the servers send
+#endif
+
+	// Whether a URL is on Discord's media proxy (media.discordapp.net or
+	// images-ext-N.discordapp.net), which converts what it serves when
+	// asked (format=webp).
+	bool OnMediaProxy(const std::string& url)
+	{
+		if (url.compare(0, 8, "https://"))
+			return false;
+		size_t end = url.find('/', 8);
+		std::string host = url.substr(8, end == std::string::npos ? std::string::npos : end - 8);
+		const std::string tail = ".discordapp.net";
+		return host == "media.discordapp.net" ||
+			(!host.compare(0, 11, "images-ext-") && host.size() > tail.size() &&
+			 !host.compare(host.size() - tail.size(), tail.size(), tail));
+	}
+
+	// Where a picture is fetched from.  Everything other people chose is
+	// asked for as WebP: the CDN and the media proxy make it anew.
 	std::string SourceURL(ImageCache::Kind kind, const std::string& place, Snowflake sf, int size)
 	{
 		int px = NearestPowerOfTwo(std::max(size * 2, 32)); // some headroom for the scaling
+		const std::string ext = WEBP ? ".webp" : ".png";
 		switch (kind) {
 			case ImageCache::AVATAR:
-				return GetDiscordCDN() + "avatars/" + std::to_string(sf) + "/" + place + ".png?size=" + std::to_string(px);
+				return GetDiscordCDN() + "avatars/" + std::to_string(sf) + "/" + place + ext + "?size=" + std::to_string(px);
 			case ImageCache::ICON:
-				return GetDiscordCDN() + "icons/" + std::to_string(sf) + "/" + place + ".png?size=" + std::to_string(px);
+				return GetDiscordCDN() + "icons/" + std::to_string(sf) + "/" + place + ext + "?size=" + std::to_string(px);
 			case ImageCache::EMOJI:
-				return GetDiscordCDN() + "emojis/" + std::to_string(sf) + ".png?size=" + std::to_string(px);
+				return GetDiscordCDN() + "emojis/" + std::to_string(sf) + ext + "?size=" + std::to_string(px);
 			case ImageCache::CHANNEL_ICON:
-				return GetDiscordCDN() + "channel-icons/" + std::to_string(sf) + "/" + place + ".png?size=" + std::to_string(px);
+				return GetDiscordCDN() + "channel-icons/" + std::to_string(sf) + "/" + place + ext + "?size=" + std::to_string(px);
 			case ImageCache::DEFAULT_AVATAR:
 				return GetDiscordCDN() + "embed/avatars/" + std::to_string((sf >> 22) % 6) + ".png";
 			case ImageCache::URL:
 			default:
-				return place;
+				if (WEBP && OnMediaProxy(place))
+					return place + (place.find('?') == std::string::npos ? "?" : "&") + "format=webp";
+				return place; // not converted: only shown if it is WebP
 		}
 	}
 
@@ -226,7 +253,7 @@ namespace
 			return false;
 
 		Image full;
-		bool ok = ImageCache::Decode(data, size, full);
+		bool ok = ImageCache::Decode(data, size, full, sit->second.anyFormat);
 		if (!ok && !final)
 			return false;
 		for (auto& sz : sit->second.sizes)
@@ -269,7 +296,7 @@ static bool SizeOK(int w, int h)
 	return w > 0 && h > 0 && (long) w * h <= MAX_PIXELS;
 }
 
-bool ImageCache::Decode(const uint8_t* data, size_t size, Image& out)
+bool ImageCache::Decode(const uint8_t* data, size_t size, Image& out, bool anyFormat)
 {
 	if (!data || size < 12 || size > 0x7fffffff)
 		return false;
@@ -294,6 +321,9 @@ bool ImageCache::Decode(const uint8_t* data, size_t size, Image& out)
 		return true;
 	}
 #endif
+
+	if (!anyFormat)
+		return false;
 
 	int w = 0, h = 0, comp = 0;
 	if (!stbi_info_from_memory(data, (int) size, &w, &h, &comp) || !SizeOK(w, h))
@@ -331,8 +361,10 @@ const Image* ImageCache::Get(Kind kind, const std::string& place, Snowflake sf, 
 	g_entries[key].state = LOADING;
 	Source& src = g_sources[id];
 	src.sizes.push_back(std::make_pair(w, h));
-	if (src.url.empty())
+	if (src.url.empty()) {
 		src.url = SourceURL(kind, place, sf, std::max(w, h));
+		src.anyFormat = !WEBP || kind == DEFAULT_AVATAR;
+	}
 
 	// on disk already?
 	std::string data;
