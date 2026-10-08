@@ -7,6 +7,7 @@
 #include <ctime>
 
 #include <Xm/DrawingA.h>
+#include <Xm/MessageB.h>
 #include <Xm/PushB.h>
 #include <Xm/RowColumn.h>
 #include <Xm/Form.h>
@@ -629,7 +630,7 @@ static bool Inside(const Rect& r, int x, int y)
 
 int AddVisualArgs(Arg* args, int n); // Main.cpp
 
-enum { MENU_REACT = 1, MENU_REPLY, MENU_EDIT };
+enum { MENU_REACT = 1, MENU_REPLY, MENU_EDIT, MENU_DELETE };
 
 // Right-click on a message: react to it, or reply.
 void MessageView::ShowMenu(XButtonEvent& ev)
@@ -660,6 +661,7 @@ void MessageView::ShowMenu(XButtonEvent& ev)
 			{ "Add Reaction...", MENU_REACT, 'A' },
 			{ "Reply", MENU_REPLY, 'R' },
 			{ "Edit Message", MENU_EDIT, 'E' },
+			{ "Delete Message", MENU_DELETE, 'D' },
 		};
 		for (auto& item : items) {
 			Widget b = XtVaCreateManagedWidget(item.label, xmPushButtonWidgetClass, m_menu,
@@ -667,14 +669,24 @@ void MessageView::ShowMenu(XButtonEvent& ev)
 			XtAddCallback(b, XmNactivateCallback, MenuCB, this);
 			if (item.id == MENU_EDIT)
 				m_menuEdit = b;
+			if (item.id == MENU_DELETE)
+				m_menuDelete = b;
 		}
 	}
-	// only the user's own messages can be edited
+	// only the user's own messages can be edited; deleted too, or anyone's
+	// where the user may manage messages
 	DiscordInstance* pInst = GetDiscordInstance();
-	if (pInst && m_menuMessage->m_author_snowflake == pInst->GetUserID() && !m_menuMessage->IsWebHook())
+	bool own = pInst && m_menuMessage->m_author_snowflake == pInst->GetUserID() && !m_menuMessage->IsWebHook();
+	Channel* pChan = pInst ? pInst->GetChannelGlobally(m_channel) : nullptr;
+	bool manage = pChan && !pChan->IsDM() && pChan->HasPermission(PERM_MANAGE_MESSAGES);
+	if (own)
 		XtManageChild(m_menuEdit);
 	else
 		XtUnmanageChild(m_menuEdit);
+	if (own || manage)
+		XtManageChild(m_menuDelete);
+	else
+		XtUnmanageChild(m_menuDelete);
 	XmMenuPosition(m_menu, &ev);
 	XtManageChild(m_menu);
 }
@@ -700,7 +712,56 @@ void MessageView::MenuCB(Widget w, XtPointer client, XtPointer)
 		case MENU_EDIT:
 			GetMainWindow()->BeginEdit(id, msg->m_message);
 			break;
+		case MENU_DELETE:
+			self->ConfirmDelete(msg);
+			break;
 	}
+}
+
+// Deleting cannot be undone: asked first, with the start of the message.
+void MessageView::ConfirmDelete(MessagePtr msg)
+{
+	m_deleteChannel = m_channel;
+	m_deleteMessage = msg->m_snowflake;
+
+	std::string text = msg->m_message;
+	for (auto& ch : text)
+		if (ch == '\n' || ch == '\t')
+			ch = ' ';
+	if (text.empty())
+		text = msg->m_attachments.empty() ? std::string("(no text)") : "(" + msg->m_attachments[0].m_fileName + ")";
+	if (text.size() > 120)
+		text = text.substr(0, 117) + "...";
+	bool own = msg->m_author_snowflake == GetDiscordInstance()->GetUserID();
+	std::string question = std::string(own ? "Delete this message?" : "Delete this message by " + msg->m_author + "?") +
+		"\n\n" + text + "\n\nThis cannot be undone.";
+
+	Arg args[10];
+	int n = 0;
+	XmString xs = XmStringCreateLtoR((char*) Utf8ToLatin1(question).c_str(), (char*) XmFONTLIST_DEFAULT_TAG);
+	XmString ok = XmStringCreateLocalized((char*) "Delete");
+	XtSetArg(args[n], XmNmessageString, xs); n++;
+	XtSetArg(args[n], XmNokLabelString, ok); n++;
+	XtSetArg(args[n], XmNdialogStyle, XmDIALOG_FULL_APPLICATION_MODAL); n++;
+	XtSetArg(args[n], XmNtitle, "Delete Message"); n++;
+	XtSetArg(args[n], XmNdefaultButtonType, XmDIALOG_CANCEL_BUTTON); n++;
+	n = AddVisualArgs(args, n);
+	Widget dlg = XmCreateQuestionDialog(m_area, (char*) "deleteMessage", args, n);
+	XmStringFree(xs);
+	XmStringFree(ok);
+	XtUnmanageChild(XmMessageBoxGetChild(dlg, XmDIALOG_HELP_BUTTON));
+	XtAddCallback(dlg, XmNokCallback, DeleteCB, this);
+	XtAddCallback(dlg, XmNcancelCallback, [](Widget w, XtPointer, XtPointer) { XtDestroyWidget(XtParent(w)); }, NULL);
+	XtManageChild(dlg);
+}
+
+void MessageView::DeleteCB(Widget w, XtPointer client, XtPointer)
+{
+	MessageView* self = (MessageView*) client;
+	if (self->m_deleteMessage)
+		GetDiscordInstance()->RequestDeleteMessage(self->m_deleteChannel, self->m_deleteMessage);
+	self->m_deleteMessage = 0;
+	XtDestroyWidget(XtParent(w));
 }
 
 void MessageView::OnClick(int x, int y)
