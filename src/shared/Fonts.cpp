@@ -520,7 +520,7 @@ namespace
 	}
 }
 
-bool Fonts::Init(std::string& err)
+bool Fonts::Init(std::string& err, Family family)
 {
 	if (FT_Init_FreeType(&g_lib)) {
 		err = "FreeType could not start.";
@@ -563,6 +563,28 @@ bool Fonts::Init(std::string& err)
 	for (int i = 1; i < FS_COUNT; i++)
 		if (!g_style[i].face)
 			g_style[i] = g_style[i >= FS_MONO ? (g_style[FS_MONO].face ? FS_MONO : FS_REGULAR) : FS_REGULAR];
+
+	// Inter for the text (not the code), when asked for and found; DejaVu
+	// then draws what Inter lacks
+	if (family == INTER) {
+		const char* const interFiles[FS_MONO] = {
+			"Inter-Regular.ttf", "Inter-SemiBold.ttf", "Inter-Italic.ttf", "Inter-SemiBoldItalic.ttf",
+		};
+		for (auto& d : dirs) {
+			if (!Exists(d + "/" + interFiles[0]))
+				continue;
+			Face dejavu = g_style[FS_REGULAR];
+			for (int i = 0; i < FS_MONO; i++) {
+				Face f;
+				if (FT_New_Face(g_lib, (d + "/" + interFiles[i]).c_str(), 0, &f.face) == 0)
+					g_style[i] = f;
+				else if (i > 0)
+					g_style[i] = g_style[FS_REGULAR];
+			}
+			g_fallback.insert(g_fallback.begin(), dejavu);
+			break;
+		}
+	}
 
 	// Extra faces for scripts and symbols DejaVu lacks, when present.
 	const char* const extra[] = {

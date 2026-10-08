@@ -13,9 +13,13 @@
 // SGI displays; a GPU front end puts them in a texture).  UI thread.
 namespace Fonts
 {
+	// The text's typeface: DejaVu Sans, or Inter (with DejaVu for what Inter
+	// lacks).  Code is always DejaVu Sans Mono.
+	enum Family { DEJAVU, INTER };
+
 	// Loads the faces from DM_FONT_DIR, the installed fonts directory, or
 	// pkgsrc's TrueType directory.  On failure, err says what is missing.
-	bool Init(std::string& err);
+	bool Init(std::string& err, Family family = DEJAVU);
 
 	int Ascent(FontStyle st, int px);
 	int Descent(FontStyle st, int px);
