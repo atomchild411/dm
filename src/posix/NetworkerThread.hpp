@@ -34,7 +34,8 @@ public:
 		std::string additional_data = "",
 		NetRequest::NetworkResponseFunc pRespFunc = nullptr,
 		uint8_t* stream_bytes = nullptr,
-		size_t stream_size = 0
+		size_t stream_size = 0,
+		const std::vector<std::pair<std::string, std::string>>& extra_headers = {}
 	);
 
 	void StopAllRequests();
@@ -77,7 +78,8 @@ public:
 		std::string additional_data = "",
 		NetRequest::NetworkResponseFunc pRespFunc = nullptr,
 		uint8_t* stream_bytes = nullptr,
-		size_t stream_size = 0
+		size_t stream_size = 0,
+		const std::vector<std::pair<std::string, std::string>>& extra_headers = {}
 	) override;
 
 	std::string ErrorMessage(int errorCode) const override;

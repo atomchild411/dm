@@ -43,6 +43,20 @@ namespace QrLogin
 	// An error is shown, waiting for Retry().
 	bool Failed();
 
+	// When Discord wants a captcha solved before it hands over the token
+	// (Failed() then, with a site key here): what the front end shows the
+	// user (an hCaptcha widget with this site key and request data).
+	struct Captcha
+	{
+		std::string service;   // "hcaptcha"
+		std::string sitekey;
+		std::string rqdata;
+		std::string rqtoken;
+	};
+	const Captcha& PendingCaptcha();
+	// The user's answer: the login is tried again with it.
+	void SolveCaptcha(const std::string& answer);
+
 	// The remote-auth gateway's connection, -1 when none: the frontend hands
 	// its traffic here (any thread).
 	int GatewayId();

@@ -40,6 +40,8 @@ namespace
 		bool waitingForPhone = false;
 		bool loggingIn = false;   // the ticket is being exchanged: keep things as they are
 		bool failed = false;      // an error is shown: wait for Retry
+		std::string ticket;       // the phone's, to exchange for the token
+		QrLogin::Captcha captcha; // what Discord wants solved first (none: no site key)
 		int generation = 0;       // bumped by every new login
 	};
 
@@ -47,6 +49,31 @@ namespace
 	std::atomic<int> g_gateway(-1);
 	int g_generation = 0;
 	const std::string g_empty;
+	const QrLogin::Captcha g_noCaptcha;
+
+	void TicketResponse(NetRequest* req);
+
+	// Exchanges the ticket for the token (with the captcha's answer, when
+	// Discord asked for one).
+	void SendTicket(const std::vector<std::pair<std::string, std::string>>& headers)
+	{
+		Json body;
+		body["ticket"] = g_state->ticket;
+		GetHTTPClient()->PerformRequest(
+			true,
+			NetRequest::POST_JSON,
+			GetDiscordAPI() + "users/@me/remote-auth/login",
+			0,
+			0,
+			body.dump(),
+			"",
+			"",
+			TicketResponse,
+			nullptr,
+			0,
+			headers
+		);
+	}
 
 	void Changed()
 	{
@@ -171,6 +198,8 @@ namespace
 		g_state->waitingForPhone = false;
 		g_state->loggingIn = false;
 		g_state->failed = false;
+		g_state->ticket.clear();
+		g_state->captcha = QrLogin::Captcha();
 		SetStatus("Connecting to Discord\xe2\x80\xa6");
 		int id = GetWebsocketClient()->Connect(GATEWAY_URL);
 		g_gateway = id;
@@ -256,6 +285,17 @@ namespace
 			catch (...) {
 				detail += " body " + response.substr(0, 200);
 			}
+			try {
+				Json j = Json::parse(response);
+				if (j.contains("captcha_sitekey")) {
+					QrLogin::Captcha& c = g_state->captcha;
+					c.service = j.value("captcha_service", std::string());
+					c.sitekey = j.value("captcha_sitekey", std::string());
+					c.rqdata = j.value("captcha_rqdata", std::string());
+					c.rqtoken = j.value("captcha_rqtoken", std::string());
+				}
+			}
+			catch (...) {}
 			if (response.find("captcha") != std::string::npos)
 				Fail("Discord wants a captcha for this login, which Discord\nMessenger cannot show.  Log in with a token instead.", detail);
 			else
@@ -329,6 +369,27 @@ bool QrLogin::CodeModule(int x, int y)
 bool QrLogin::Scanned()
 {
 	return g_state && g_state->waitingForPhone;
+}
+
+const QrLogin::Captcha& QrLogin::PendingCaptcha()
+{
+	return g_state && g_state->failed ? g_state->captcha : g_noCaptcha;
+}
+
+void QrLogin::SolveCaptcha(const std::string& answer)
+{
+	State* s = g_state;
+	if (!s || s->ticket.empty() || answer.empty())
+		return;
+	std::vector<std::pair<std::string, std::string>> headers;
+	headers.push_back(std::make_pair(std::string("X-Captcha-Key"), answer));
+	if (!s->captcha.rqtoken.empty())
+		headers.push_back(std::make_pair(std::string("X-Captcha-Rqtoken"), s->captcha.rqtoken));
+	s->captcha = QrLogin::Captcha();
+	s->failed = false;
+	s->loggingIn = true;
+	SetStatus("Logging in\xe2\x80\xa6");
+	SendTicket(headers);
 }
 
 bool QrLogin::Failed()
@@ -427,19 +488,8 @@ void QrLogin::OnGatewayMessage(const std::string& payload)
 	{
 		s->loggingIn = true;
 		SetStatus("Logging in\xe2\x80\xa6");
-		Json body;
-		body["ticket"] = j.value("ticket", "");
-		GetHTTPClient()->PerformRequest(
-			true,
-			NetRequest::POST_JSON,
-			GetDiscordAPI() + "users/@me/remote-auth/login",
-			0,
-			0,
-			body.dump(),
-			"",
-			"",
-			TicketResponse
-		);
+		s->ticket = j.value("ticket", "");
+		SendTicket({});
 	}
 	else if (op == "cancel")
 	{
