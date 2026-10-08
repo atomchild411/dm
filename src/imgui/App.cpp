@@ -1,6 +1,7 @@
 #include "App.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -14,6 +15,9 @@
 #include "state/MessageCache.hpp"
 #include "shared/ClientConfig.hpp"
 #include "shared/Composer.hpp"
+#include "shared/Shortcodes.hpp"
+#include "shared/PictureInfo.hpp"
+#include "shared/EmojiChoices.hpp"
 #include "shared/Demo.hpp"
 #include "shared/ImageCache.hpp"
 #include "shared/Lists.hpp"
@@ -54,6 +58,19 @@ namespace
 
 	std::vector<std::string> g_errors;
 	MessagePtr g_menuMessage, g_deleteMessage;
+
+	// the image viewer: the picture, what is fetched, and whether it shows
+	bool g_viewerOpen = false;
+	PictureInfo g_viewPic;
+	PictureFetch g_viewFetch;
+	int g_screenW = 1920, g_screenH = 1080;
+
+	// the emoji picker: Add Reaction (to a message) or Insert Emoji
+	bool g_pickerOpen = false;
+	bool g_pickerReact = false;
+	Snowflake g_pickerMessage = 0;
+	ImVec2 g_pickerAt;
+	bool g_focusInput = false;   // the message box takes the keyboard next frame
 
 	// the login dialog
 	bool g_loginShown = false;
@@ -449,6 +466,22 @@ namespace
 		}
 	}
 
+	void OpenViewer(const PictureInfo& pic)
+	{
+		g_viewPic = pic;
+		// as large as the screen leaves room for
+		g_viewFetch = FetchFor(pic, g_screenW * 9 / 10, g_screenH * 9 / 10 - 80);
+		g_viewerOpen = true;
+	}
+
+	void OpenPicker(bool react, Snowflake message, ImVec2 at)
+	{
+		g_pickerReact = react;
+		g_pickerMessage = message;
+		g_pickerAt = at;
+		g_pickerOpen = true;
+	}
+
 	void MessageView(float height)
 	{
 		const Palette& p = GetPalette();
@@ -523,7 +556,7 @@ namespace
 					GetDiscordInstance()->RequestReaction(g_list->GetChannel(), hit.message->m_snowflake, r, !r.m_bMe);
 				}
 				else if (hit.kind == MessageList::Hit::PICTURE && !hit.picture.url.empty())
-					GetFrontend()->LaunchURL(hit.picture.url);
+					OpenViewer(hit.picture);
 			}
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
 				MessageList::Item* it = g_list->ItemAt(cy);
@@ -535,6 +568,8 @@ namespace
 		}
 		if (ImGui::BeginPopup("message menu")) {
 			if (g_menuMessage) {
+				if (!g_demo && ImGui::MenuItem("Add Reaction..."))
+					OpenPicker(true, g_menuMessage->m_snowflake, ImGui::GetMousePos());
 				if (ImGui::MenuItem("Reply")) {
 					g_composer.BeginReply(g_menuMessage->m_snowflake);
 					g_bar = "Replying to " + g_menuMessage->m_author;
@@ -578,11 +613,28 @@ namespace
 			}
 		}
 		float sendW = ImGui::CalcTextSize("Send").x + ImGui::GetStyle().FramePadding.x * 2;
-		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - sendW - ImGui::GetStyle().ItemSpacing.x);
+		const float EMOJI_BTN = 34;
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - sendW - EMOJI_BTN - ImGui::GetStyle().ItemSpacing.x * 2);
+		if (g_focusInput) {
+			ImGui::SetKeyboardFocusHere();
+			g_focusInput = false;
+		}
 		bool enter = ImGui::InputTextMultiline("##message", g_input, sizeof g_input, ImVec2(0, ImGui::GetTextLineHeight() * 3),
 			ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CtrlEnterForNewLine);
 		if (ImGui::IsItemEdited())
 			g_composer.TextChanged(g_input[0] == 0);
+		ImGui::SameLine();
+		// the emoji button: a smiling face from the colour emoji
+		{
+			ImVec2 pos = ImGui::GetCursorScreenPos();
+			if (ImGui::Button("##emoji", ImVec2(EMOJI_BTN, EMOJI_BTN)))
+				OpenPicker(false, 0, ImVec2(pos.x, pos.y - 8));
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("Insert Emoji");
+			const char* face = "\xf0\x9f\x99\x82"; // U+1F642
+			int fw = Gfx::Measure(face, FS_REGULAR, 18);
+			Gfx::Text(ImGui::GetWindowDrawList(), ImVec2(pos.x + (EMOJI_BTN - fw) / 2, pos.y + (EMOJI_BTN - Gfx::LineHeight(FS_REGULAR, 18)) / 2), face, FS_REGULAR, 18, 0);
+		}
 		ImGui::SameLine();
 		bool send = ImGui::Button("Send") || enter;
 		if (send && !g_demo) {
@@ -669,6 +721,149 @@ namespace
 		ImGui::EndPopup();
 	}
 
+	// A picture, as large as fits the window it is in (resizable); Escape,
+	// a click on it, or Close shuts it.
+	void ViewerWindow()
+	{
+		if (!g_viewerOpen)
+			return;
+		const char* id = "Picture##viewer";
+		ImGui::OpenPopup(id);
+		ImGuiViewport* vp = ImGui::GetMainViewport();
+		// the picture's size (in the main window), the buttons below it
+		float maxW = vp->WorkSize.x * 0.9f, maxH = vp->WorkSize.y * 0.9f - 60;
+		float w = (float) g_viewFetch.w, h = (float) g_viewFetch.h;
+		float k = std::min(1.0f, std::min(maxW / w, maxH / h));
+		ImGui::SetNextWindowSize(ImVec2(std::max(320.0f, w * k + 16), h * k + 60), ImGuiCond_Appearing);
+		ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+		ImGui::PushStyleColor(ImGuiCol_PopupBg, ImGui::ColorConvertU32ToFloat4(Col(0x18191c)));
+		if (ImGui::BeginPopupModal(id, nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoTitleBar))
+		{
+			ImVec2 avail = ImGui::GetContentRegionAvail();
+			avail.y -= ImGui::GetFrameHeightWithSpacing() + 4;
+			ImVec2 pos = ImGui::GetCursorScreenPos();
+			ImDrawList* dl = ImGui::GetWindowDrawList();
+			const Image* img = ImageCache::Get(ImageCache::URL, g_viewFetch.url, 0, g_viewFetch.w, g_viewFetch.h);
+			bool close = false;
+			if (img) {
+				// scaled to the window, its shape kept; the GPU smooths it
+				float s = std::min(avail.x / img->w, avail.y / img->h);
+				float dw = img->w * s, dh = img->h * s;
+				ImVec2 p0(pos.x + (avail.x - dw) / 2, pos.y + (avail.y - dh) / 2);
+				dl->AddImage(Gfx::Texture(*img), p0, ImVec2(p0.x + dw, p0.y + dh));
+			}
+			else {
+				bool failed = ImageCache::Failed(ImageCache::URL, g_viewFetch.url, 0, g_viewFetch.w, g_viewFetch.h);
+				const char* text = failed ? "The picture could not be loaded." : "Loading\xe2\x80\xa6";
+				int tw = Gfx::Measure(text, FS_ITALIC, 15);
+				TextAt(dl, pos.x + (avail.x - tw) / 2, pos.y + avail.y / 2, text, FS_ITALIC, 15, 0xb0b0b0);
+			}
+			if (ImGui::InvisibleButton("##picture", ImVec2(std::max(1.0f, avail.x), std::max(1.0f, avail.y))))
+				close = true;
+			ImGui::Dummy(ImVec2(0, 4));
+			ImGui::TextDisabled("%s", g_viewPic.title.c_str());
+			ImGui::SameLine(ImGui::GetWindowWidth() - 70);
+			if (ImGui::Button("Close", ImVec2(60, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+				close = true;
+			if (close) {
+				g_viewerOpen = false;
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndPopup();
+		}
+		ImGui::PopStyleColor();
+	}
+
+	// The common emoji, then the server's own; the one clicked reacts to the
+	// message, or goes into the message box as its shortcode.
+	void PickerWindow()
+	{
+		const char* id = "##emojipicker";
+		if (g_pickerOpen) {
+			ImGui::OpenPopup(id);
+			g_pickerOpen = false;
+		}
+		const int COLUMNS = 8, CELL = 38, VISIBLE_ROWS = 7;
+		float width = COLUMNS * CELL + 2 * ImGui::GetStyle().WindowPadding.x + ImGui::GetStyle().ScrollbarSize;
+		ImVec2 at(g_pickerAt.x - width / 2, g_pickerAt.y - (VISIBLE_ROWS * CELL + 70));
+		ImGuiViewport* vp = ImGui::GetMainViewport();
+		at.x = std::max(vp->WorkPos.x, std::min(at.x, vp->WorkPos.x + vp->WorkSize.x - width));
+		at.y = std::max(vp->WorkPos.y, at.y);
+		ImGui::SetNextWindowPos(at, ImGuiCond_Appearing);
+		if (!ImGui::BeginPopup(id))
+			return;
+		ImGui::TextDisabled(g_pickerReact ? "Add Reaction" : "Insert Emoji");
+		Snowflake guild = g_list->GetGuild();
+		std::vector<EmojiChoices::Section> sections = EmojiChoices::For(g_demo ? 0 : guild);
+		static std::string hoverName;
+		std::string hovered;
+		// as tall as the emoji need, up to VISIBLE_ROWS rows (then it scrolls)
+		float contentH = 0;
+		for (auto& section : sections)
+			contentH += (section.title.empty() ? 0 : 24) + (float) ((section.emoji.size() + COLUMNS - 1) / COLUMNS) * CELL;
+		float gridH = std::min(contentH + 4, (float) (VISIBLE_ROWS * CELL + 24));
+		ImGui::BeginChild("grid", ImVec2(COLUMNS * CELL + ImGui::GetStyle().ScrollbarSize, gridH));
+		ImDrawList* dl = ImGui::GetWindowDrawList();
+		const Palette& p = GetPalette();
+		int n = 0;
+		for (auto& section : sections) {
+			if (!section.title.empty()) {
+				ImGui::Dummy(ImVec2(0, 4));
+				ImVec2 tp = ImGui::GetCursorScreenPos();
+				ImGui::Dummy(ImVec2(COLUMNS * CELL, 20));
+				TextAt(dl, tp.x + 6, tp.y + 15, Gfx::Elide(section.title, FS_BOLD, GetTextSize() - 2, COLUMNS * CELL - 12), FS_BOLD, GetTextSize() - 2, p.msgMuted);
+			}
+			for (size_t i = 0; i < section.emoji.size(); i++) {
+				const Reaction& e = section.emoji[i];
+				if (i % COLUMNS)
+					ImGui::SameLine(0, 0);
+				ImVec2 cp = ImGui::GetCursorScreenPos();
+				ImGui::PushID(n++);
+				bool clicked = ImGui::InvisibleButton("e", ImVec2(CELL, CELL));
+				bool hover = ImGui::IsItemHovered();
+				ImGui::PopID();
+				if (hover) {
+					dl->AddRectFilled(ImVec2(cp.x + 1, cp.y + 1), ImVec2(cp.x + CELL - 1, cp.y + CELL - 1), Col(p.selBg), 6.0f);
+					hovered = e.m_emojiId ? ":" + e.m_emojiName + ":" : Shortcodes::For(e);
+				}
+				if (ImGui::IsItemVisible()) {
+					if (e.m_emojiId) {
+						int s = CELL - 10;
+						const Image* im = ImageCache::Get(ImageCache::EMOJI, "", e.m_emojiId, s, s);
+						if (im)
+							Gfx::DrawImage(dl, *im, cp.x + (CELL - im->w) / 2.0f, cp.y + (CELL - im->h) / 2.0f);
+						else
+							dl->AddRectFilled(ImVec2(cp.x + 5, cp.y + 5), ImVec2(cp.x + 5 + s, cp.y + 5 + s), Col(Mix(p.msgBg, p.msgMuted, 1, 4)), 4.0f);
+					}
+					else {
+						int px = CELL * 2 / 3; // the colour emoji come out a fifth larger
+						int w = Gfx::Measure(e.m_emojiName, FS_REGULAR, px);
+						Gfx::Text(dl, ImVec2(cp.x + (CELL - w) / 2.0f, cp.y + (CELL - Gfx::LineHeight(FS_REGULAR, px)) / 2.0f), e.m_emojiName, FS_REGULAR, px, p.msgFg);
+					}
+				}
+				if (clicked) {
+					if (g_pickerReact && g_pickerMessage)
+						GetDiscordInstance()->RequestReaction(g_list->GetChannel(), g_pickerMessage, e, true);
+					else {
+						std::string code = Shortcodes::For(e);
+						size_t len = strlen(g_input);
+						if (len && g_input[len - 1] != ' ' && len + 1 < sizeof g_input)
+							strcat(g_input, " ");
+						if (strlen(g_input) + code.size() + 1 < sizeof g_input)
+							strcat(g_input, code.c_str());
+						g_focusInput = true;
+					}
+					ImGui::CloseCurrentPopup();
+				}
+			}
+		}
+		ImGui::EndChild();
+		if (!hovered.empty())
+			hoverName = hovered;
+		ImGui::TextDisabled("%s", hoverName.empty() ? " " : hoverName.c_str());
+		ImGui::EndPopup();
+	}
+
 	void Dialogs()
 	{
 		if (!g_errors.empty()) {
@@ -701,6 +896,8 @@ namespace
 				ImGui::EndPopup();
 			}
 		}
+		ViewerWindow();
+		PickerWindow();
 		LoginDialog();
 	}
 
@@ -769,6 +966,19 @@ void App::Init(bool demo)
 		Demo::LoadMessages();
 		g_list->SetChannel(0, Demo::CHANNEL);
 		g_status = "Demo: sample messages, not connected.";
+		// DM_TEST_OPEN=viewer or picker: opened at once (for screenshots)
+		if (const char* t = getenv("DM_TEST_OPEN")) {
+			if (!strcmp(t, "viewer")) {
+				PictureInfo pic;
+				pic.url = "https://www.gstatic.com/webp/gallery3/1_webp_ll.webp";
+				pic.width = 400;
+				pic.height = 301;
+				pic.title = "rose.webp";
+				OpenViewer(pic);
+			}
+			else if (!strcmp(t, "picker"))
+				OpenPicker(false, 0, ImVec2(700, 760));
+		}
 	}
 	Typing::SetChangedCallback([] {});
 }
@@ -814,6 +1024,14 @@ void App::RestoreLastChannel()
 	if (!channel || !pGuild || !pGuild->GetChannel(channel))
 		return;
 	pInst->OnSelectGuild(guild, channel);
+}
+
+void App::SetScreenSize(int w, int h)
+{
+	if (w > 0 && h > 0) {
+		g_screenW = w;
+		g_screenH = h;
+	}
 }
 
 void App::SetStatus(const std::string& text)

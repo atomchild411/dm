@@ -23,6 +23,9 @@ namespace App
 	// The session is up: where the user was last time.
 	void RestoreLastChannel();
 
+	// The screen's size: the image viewer fetches pictures to fit it.
+	void SetScreenSize(int w, int h);
+
 	void SetStatus(const std::string& text);
 	void ShowError(const std::string& text);
 	// The login dialog (QR code, or a token), with why it shows.

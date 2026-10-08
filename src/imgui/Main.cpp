@@ -386,6 +386,8 @@ int main(int argc, char** argv)
 		token = envToken;
 
 	g_pDiscordInstance = new DiscordInstance(demo ? "" : token);
+	if (const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor()))
+		App::SetScreenSize(mode->width, mode->height);
 	App::Init(demo);
 	if (!demo) {
 		Timers::After(30000, SaveHistory);
