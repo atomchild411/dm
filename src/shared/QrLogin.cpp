@@ -379,8 +379,11 @@ const QrLogin::Captcha& QrLogin::PendingCaptcha()
 void QrLogin::SolveCaptcha(const std::string& answer)
 {
 	State* s = g_state;
-	if (!s || s->ticket.empty() || answer.empty())
+	if (!s || s->ticket.empty() || answer.empty()) {
+		fprintf(stderr, "dm: QR login: captcha answer dropped (%s)\n", !s ? "no login" : s->ticket.empty() ? "no ticket" : "empty answer");
 		return;
+	}
+	fprintf(stderr, "dm: QR login: retrying with the captcha answer\n");
 	std::vector<std::pair<std::string, std::string>> headers;
 	headers.push_back(std::make_pair(std::string("X-Captcha-Key"), answer));
 	if (!s->captcha.rqtoken.empty())

@@ -205,19 +205,27 @@ static NSString* JsString(const std::string& s)
 	WKWebViewConfiguration* cfg = [[WKWebViewConfiguration alloc] init];
 	cfg.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
 	[cfg.userContentController addScriptMessageHandler:self name:@"dmCaptcha"];
+	[cfg.userContentController addScriptMessageHandler:self name:@"dmCaptchaLog"];
 
 	// hCaptcha's widget, as Discord's page shows it (the page is Discord's
 	// for the widget: the site key is Discord's)
 	NSString* html = [NSString stringWithFormat:
 		@"<!doctype html><html><head><meta charset='utf-8'>"
-		 "<script src='https://js.hcaptcha.com/1/api.js?onload=dmReady&render=explicit' async defer></script>"
+		 "<script>function dmLog(m){try{window.webkit.messageHandlers.dmCaptchaLog.postMessage(String(m));}catch(e){}}"
+		 "window.onerror=function(m){dmLog('page error: '+m);};</script>"
+		 "<script src='https://js.hcaptcha.com/1/api.js?onload=dmReady&render=explicit' async defer"
+		 " onerror=\"dmLog('hCaptcha script did not load')\"></script>"
 		 "<style>body{background:#313338;color:#dbdee1;font:15px -apple-system,sans-serif;margin:0;"
 		 "height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}"
 		 "p{margin:0 24px 18px;text-align:center}</style></head><body>"
 		 "<p>Discord wants this check before it finishes the QR login.</p><div id='c'></div>"
-		 "<script>function dmReady(){var id=hcaptcha.render('c',{sitekey:%@,theme:'dark',"
-		 "callback:function(t){window.webkit.messageHandlers.dmCaptcha.postMessage(t);}});"
-		 "var rq=%@;if(rq)hcaptcha.setData(id,{rqdata:rq});}</script></body></html>",
+		 "<script>function dmReady(){dmLog('widget script loaded');try{"
+		 "var id=hcaptcha.render('c',{sitekey:%@,theme:'dark',"
+		 "callback:function(t){dmLog('solved');window.webkit.messageHandlers.dmCaptcha.postMessage(t);},"
+		 "'error-callback':function(e){dmLog('widget error: '+e);},"
+		 "'expired-callback':function(){dmLog('answer expired');}});"
+		 "var rq=%@;if(rq)hcaptcha.setData(id,{rqdata:rq});dmLog('widget shown'+(rq?' (with rqdata)':''));"
+		 "}catch(e){dmLog('render failed: '+e);}}</script></body></html>",
 		JsString(sitekey), JsString(rqdata)];
 
 	NSRect frame = NSMakeRect(0, 0, 420, 640);
@@ -233,6 +241,7 @@ static NSString* JsString(const std::string& s)
 	[_window center];
 	[_web loadHTMLString:html baseURL:[NSURL URLWithString:@"https://discord.com/"]];
 	[_window makeKeyAndOrderFront:nil];
+	fprintf(stderr, "dm: captcha: window open (%s)\n", rqdata.empty() ? "no rqdata" : "with rqdata");
 	return self;
 }
 
@@ -242,6 +251,9 @@ static NSString* JsString(const std::string& s)
 		return;
 	self.finished = YES;
 	[self.web.configuration.userContentController removeScriptMessageHandlerForName:@"dmCaptcha"];
+	[self.web.configuration.userContentController removeScriptMessageHandlerForName:@"dmCaptchaLog"];
+	if (!answer)
+		fprintf(stderr, "dm: captcha: window closed unsolved\n");
 	[self.window orderOut:nil];
 	[self.window close];
 	auto done = self.onDone;
@@ -252,7 +264,13 @@ static NSString* JsString(const std::string& s)
 
 - (void)userContentController:(WKUserContentController*)ucc didReceiveScriptMessage:(WKScriptMessage*)message
 {
-	if ([message.body isKindOfClass:[NSString class]] && [(NSString*) message.body length] > 0)
+	if (![message.body isKindOfClass:[NSString class]])
+		return;
+	if ([message.name isEqualToString:@"dmCaptchaLog"]) {
+		fprintf(stderr, "dm: captcha: %s\n", [(NSString*) message.body UTF8String]);
+		return;
+	}
+	if ([(NSString*) message.body length] > 0)
 		[self finishWith:(NSString*) message.body];
 }
 
