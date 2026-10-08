@@ -32,7 +32,10 @@ message offers Add Reaction (common emoji and the server's own), Reply and,
 on your own messages, Edit Message and Delete Message (asked first; also
 on others' where you may manage messages).  The client opens the server
 and channel you were last in, and the window's icon name counts unread
-mentions and direct messages: "Discord (3)".
+mentions and direct messages: "Discord (3)".  The Messages menu lists
+your direct messages, unread ones first ("Messages (2)" when there are
+some), whichever lists are shown.  A channel counts as read once its
+newest messages are on screen (while the window is in front).
 
 Mentions and direct messages (as your Discord notification settings say)
 play the desktop sound scheme's "ting" through sfplay (DM_SOUND names
