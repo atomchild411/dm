@@ -78,6 +78,8 @@ the program, and the package brings its own fonts (DejaVu, Noto Color Emoji) and
 - Nothing else: OpenSSL, FreeType, libpng, zlib, libwebp, GLFW and the C runtime are linked in, and
   the fonts come in the zip. Server certificates are checked by Windows, against its own
   certificate stores
+- For logging in on discord.com's page and Discord's captcha: Microsoft's Edge WebView2 runtime,
+  which Windows 11 and current Windows 10 have (without it, the QR code and the token remain)
 
 ## Installing
 
@@ -186,7 +188,7 @@ windows/build.sh --accept-license --fonts <fonts directory>
 
 `--accept-license` accepts [Microsoft's licence](https://go.microsoft.com/fwlink/?LinkId=2086102)
 for the SDK and C runtime, which the first build downloads. The script fetches OpenSSL, FreeType,
-libpng, zlib, libwebp and GLFW too, checks each against its SHA-256, and builds them once. It
+libpng, zlib, libwebp, GLFW and the WebView2 SDK too, checks each against its SHA-256, and builds them once. It
 leaves `bin/windows/DiscordMessenger-<version>-windows-x64.zip` and `-arm64.zip`. The top of
 `windows/build.sh` has the details; `windows/inside.sh` is what runs in the container.
 
@@ -200,10 +202,10 @@ client with sample servers and messages, without connecting.
 
 ### Implemented
 
-- Logging in with a QR code scanned by the Discord app, or with a token; on macOS also on
-  discord.com's own page (email and password), in a window of the app
-- Discord's captcha, which it sometimes asks for at the end of a QR login: on macOS it shows in a
-  window of its own
+- Logging in with a QR code scanned by the Discord app, or with a token; on macOS and Windows also
+  on discord.com's own page (email and password), in a window of the app
+- Discord's captcha, which it sometimes asks for at the end of a QR login: on macOS and Windows it
+  shows in a window of its own
 - Server certificates checked by the system on macOS and Windows (its own roots, revocation and
   any certificates your organisation added), and against the distribution's or our bundled roots
   on Linux and IRIX
@@ -229,7 +231,7 @@ client with sample servers and messages, without connecting.
 - Voice channels
 - Friends list
 - IRIX: typing non-Latin-1 text in the message box (emoji are written as shortcodes)
-- IRIX, Linux and Windows: Discord's captcha (log in with a token when it asks for one)
+- IRIX and Linux: Discord's captcha (log in with a token when it asks for one)
 
 ## Attributions
 
@@ -247,6 +249,7 @@ Discord Messenger is powered by the following external libraries:
 - [stb_image](https://github.com/nothings/stb)
 - [QR Code generator](https://github.com/nayuki/QR-Code-generator)
 - [Dear ImGui](https://github.com/ocornut/imgui) and [GLFW](https://www.glfw.org)
+- On Windows, the loader from Microsoft's [WebView2 SDK](https://developer.microsoft.com/microsoft-edge/webview2/)
 - [LLVM libc++](https://libcxx.llvm.org)
 - The [Inter](https://rsms.me/inter/), [DejaVu](https://dejavu-fonts.github.io) and
   [Noto Color Emoji](https://github.com/googlefonts/noto-emoji) fonts, and Mozilla's root

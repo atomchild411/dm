@@ -4,9 +4,10 @@
 #include <string>
 
 // Logging in on discord.com's own login page, in a browser view inside
-// the app (WebKit on macOS): the user signs in there (a captcha, two-factor
-// codes and all), and the account's token is taken from the page's own
-// requests.  The view keeps nothing: its cookies and storage go with it.
+// the app (WebKit on macOS, WebView2 on Windows): the user signs in there
+// (a captcha, two-factor codes and all), and the account's token is taken
+// from the page's own requests.  The view keeps nothing: its cookies and
+// storage go with it.
 namespace WebLogin
 {
 	// Whether this platform has it.
@@ -25,5 +26,7 @@ namespace WebLogin
 
 	// DM_TEST_WEBLOGIN: loads the page in a hidden window, prints its title
 	// and whether the token watcher is in place, and calls finished().
+	// DM_TEST_WEBLOGIN=captcha: the captcha's page instead, with hCaptcha's
+	// test key, until the widget is shown (its steps print as dm: captcha:).
 	void SelfTest(std::function<void()> finished);
 }

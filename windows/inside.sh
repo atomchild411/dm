@@ -51,6 +51,9 @@ fetch libwebp-1.6.0.tar.gz https://storage.googleapis.com/downloads.webmproject.
 	e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
 fetch glfw-3.4.tar.gz https://github.com/glfw/glfw/archive/refs/tags/3.4.tar.gz \
 	c038d34200234d071fae9345bc455e4a8f2f544ab60150765d7704e08f3dac01
+fetch microsoft.web.webview2.1.0.4191.47.nupkg \
+	https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.4191.47/microsoft.web.webview2.1.0.4191.47.nupkg \
+	f492bbf547d0da329553b6727435b677579b1e9f91cc9e4a1ad029366d5f23d0
 fetch openssl-3.6.4.tar.gz https://github.com/openssl/openssl/releases/download/openssl-3.6.4/openssl-3.6.4.tar.gz \
 	9bffaa1ad1e07b354c21bd3324ec02fa15579f45a7d0494b3e74bc449b7333ef
 
@@ -93,10 +96,27 @@ deps() {
 	touch $P/.done
 }
 
+# WebView2's SDK (a NuGet package, a zip): its headers and static loader
+webview2() {
+	arch=$1 P=$W/pfx-$1
+	[ -f $P/lib/WebView2LoaderStatic.lib ] && return 0
+	python3 - $W/dl/microsoft.web.webview2.1.0.4191.47.nupkg $P $arch <<'PY'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1]); p = sys.argv[2]; a = {"x86_64": "x64", "aarch64": "arm64"}[sys.argv[3]]
+for src, dst in [("build/native/include/WebView2.h", "include/WebView2.h"),
+                 ("build/native/include/WebView2EnvironmentOptions.h", "include/WebView2EnvironmentOptions.h"),
+                 ("build/native/%s/WebView2LoaderStatic.lib" % a, "lib/WebView2LoaderStatic.lib"),
+                 ("LICENSE.txt", "share/WebView2-LICENSE.txt"), ("NOTICE.txt", "share/WebView2-NOTICE.txt")]:
+    import os; os.makedirs(os.path.dirname(os.path.join(p, dst)), exist_ok=True)
+    open(os.path.join(p, dst), "wb").write(z.read(src))
+PY
+}
+
 # ---- the program, and its zip -------------------------------------------------
 for arch in "$@"; do
 	case $arch in x86_64) name=x64 ;; aarch64) name=arm64 ;; *) echo "unknown arch $arch"; exit 1 ;; esac
 	deps $arch
+	webview2 $arch
 	echo "== Discord Messenger ($arch)"
 	make -C /src -j$(nproc) FRONTEND=imgui TARGET_OS=windows CXX=$arch-windows-clang++ CC=$arch-windows-clang \
 		PREFIX_DEPS=$W/pfx-$arch BUILD_DIR=$W/obj-$arch TARGET=$W/out-$arch/dm-imgui.exe > $W/make-$arch.log 2>&1 ||
@@ -124,6 +144,8 @@ for arch in "$@"; do
 	cp /src/deps/imgui/LICENSE.txt $d/licenses/Dear-ImGui-MIT
 	tar xzf $W/dl/glfw-3.4.tar.gz -O glfw-3.4/LICENSE.md > $d/licenses/GLFW-zlib
 	cp /fonts/Inter-LICENSE.txt $d/licenses/Inter-OFL-1.1
+	cp $W/pfx-$arch/share/WebView2-LICENSE.txt $d/licenses/WebView2-SDK-BSD-3-Clause
+	cp $W/pfx-$arch/share/WebView2-NOTICE.txt $d/licenses/WebView2-SDK-NOTICE
 	cp /src/windows/README.txt $d/README.txt
 	( cd $W/pkg && rm -f $W/dist/$pkg.zip && zip -qr $W/dist/$pkg.zip $pkg )
 	echo "$W/dist/$pkg.zip"

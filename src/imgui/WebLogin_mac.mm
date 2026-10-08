@@ -1,51 +1,19 @@
 // WebLogin on macOS: a window with a WKWebView on https://discord.com/login.
 
 #include "WebLogin.hpp"
+#include "WebLoginPages.hpp"
 
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 
-// Once the user is in, the page's requests carry the token in their
-// Authorization header: the script below (in the page before Discord's
-// own) hands the first such value to the app.
-static NSString* const kWatcher =
-	@"(function () {"
-	 "  var sent = false;"
-	 "  function send(t) {"
-	 "    if (sent || typeof t !== 'string' || t.length < 30 || t.indexOf(' ') >= 0) return;"
-	 "    sent = true;"
-	 "    try { window.webkit.messageHandlers.dmToken.postMessage(t); } catch (e) {}"
-	 "  }"
-	 "  var set = XMLHttpRequest.prototype.setRequestHeader;"
-	 "  XMLHttpRequest.prototype.setRequestHeader = function (k, v) {"
-	 "    if (String(k).toLowerCase() === 'authorization') send(v);"
-	 "    return set.apply(this, arguments);"
-	 "  };"
-	 "  var f = window.fetch;"
-	 "  if (f) window.fetch = function (input, init) {"
-	 "    try {"
-	 "      var h = init && init.headers;"
-	 "      if (h) send(typeof h.get === 'function' ? h.get('Authorization') : (h.Authorization || h.authorization));"
-	 "    } catch (e) {}"
-	 "    return f.apply(this, arguments);"
-	 "  };"
-	 "  window.__dmWatching = true;"
-	 "})();";
-
-// The token the page keeps, read through a fresh frame (Discord's page
-// hides its own localStorage): a fallback once it is past the login.
-static NSString* const kStoredToken =
-	@"(function () {"
-	 "  try {"
-	 "    var f = document.createElement('iframe'); f.style.display = 'none';"
-	 "    document.body.appendChild(f);"
-	 "    var t = f.contentWindow.localStorage.getItem('token');"
-	 "    f.remove();"
-	 "    return t ? JSON.parse(t) : '';"
-	 "  } catch (e) { return ''; }"
-	 "})()";
+static NSString* NS(const std::string& s)
+{
+	return [NSString stringWithUTF8String:s.c_str()];
+}
 
 @interface DMWebLogin : NSObject <WKScriptMessageHandler, WKNavigationDelegate, NSWindowDelegate>
 @property (strong) NSWindow* window;
@@ -68,7 +36,7 @@ static std::function<void()> g_cancelled;
 	WKWebViewConfiguration* cfg = [[WKWebViewConfiguration alloc] init];
 	// nothing stays behind: no cookies, no storage, after the window closes
 	cfg.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
-	WKUserScript* watcher = [[WKUserScript alloc] initWithSource:kWatcher
+	WKUserScript* watcher = [[WKUserScript alloc] initWithSource:NS(WebLoginPages::TokenWatcher())
 		injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES];
 	[cfg.userContentController addUserScript:watcher];
 	[cfg.userContentController addScriptMessageHandler:self name:@"dmToken"];
@@ -123,7 +91,7 @@ static std::function<void()> g_cancelled;
 - (void)webView:(WKWebView*)web didFinishNavigation:(WKNavigation*)nav
 {
 	if (self.test) {
-		[web evaluateJavaScript:@"document.title + ' | watcher ' + (window.__dmWatching === true)"
+		[web evaluateJavaScript:NS(WebLoginPages::kTestProbe)
 			completionHandler:^(id result, NSError* error) {
 				fprintf(stderr, "dm: web login test: %s: %s\n", web.URL.absoluteString.UTF8String,
 					result ? [[result description] UTF8String] : error.localizedDescription.UTF8String);
@@ -140,7 +108,7 @@ static std::function<void()> g_cancelled;
 	// past the login (the app's pages): the stored token, should the
 	// requests not have given it already
 	if ([web.URL.path hasPrefix:@"/channels"] || [web.URL.path hasPrefix:@"/app"]) {
-		[web evaluateJavaScript:kStoredToken completionHandler:^(id result, NSError*) {
+		[web evaluateJavaScript:NS(WebLoginPages::kStoredToken) completionHandler:^(id result, NSError*) {
 			if ([result isKindOfClass:[NSString class]] && [(NSString*) result length] >= 30)
 				[self finishWithToken:(NSString*) result];
 		}];
@@ -171,37 +139,24 @@ void WebLogin::Open(std::function<void(const std::string&)> done, std::function<
 	g_login = [[DMWebLogin alloc] initForTest:NO];
 }
 
-void WebLogin::SelfTest(std::function<void()> finished)
-{
-	g_done = nullptr;
-	g_cancelled = finished;
-	g_login = [[DMWebLogin alloc] initForTest:YES];
-}
-
 // ---- the captcha ----------------------------------------------------------
 
 @interface DMCaptcha : NSObject <WKScriptMessageHandler, NSWindowDelegate>
 @property (strong) NSWindow* window;
 @property (strong) WKWebView* web;
 @property (assign) BOOL finished;
+@property (assign) BOOL test;
 @property (copy) void (^onDone)(NSString*);
 @end
 
 static DMCaptcha* g_captcha;
 
-// A JavaScript string literal.
-static NSString* JsString(const std::string& s)
-{
-	NSData* json = [NSJSONSerialization dataWithJSONObject:@[ [NSString stringWithUTF8String:s.c_str()] ] options:0 error:nil];
-	NSString* arr = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
-	return [arr substringWithRange:NSMakeRange(1, arr.length - 2)];
-}
-
 @implementation DMCaptcha
 
-- (instancetype)initWithSitekey:(const std::string&)sitekey rqdata:(const std::string&)rqdata
+- (instancetype)initWithSitekey:(const std::string&)sitekey rqdata:(const std::string&)rqdata test:(BOOL)test
 {
 	self = [super init];
+	_test = test;
 	WKWebViewConfiguration* cfg = [[WKWebViewConfiguration alloc] init];
 	cfg.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
 	[cfg.userContentController addScriptMessageHandler:self name:@"dmCaptcha"];
@@ -209,24 +164,7 @@ static NSString* JsString(const std::string& s)
 
 	// hCaptcha's widget, as Discord's page shows it (the page is Discord's
 	// for the widget: the site key is Discord's)
-	NSString* html = [NSString stringWithFormat:
-		@"<!doctype html><html><head><meta charset='utf-8'>"
-		 "<script>function dmLog(m){try{window.webkit.messageHandlers.dmCaptchaLog.postMessage(String(m));}catch(e){}}"
-		 "window.onerror=function(m){dmLog('page error: '+m);};</script>"
-		 "<script src='https://js.hcaptcha.com/1/api.js?onload=dmReady&render=explicit' async defer"
-		 " onerror=\"dmLog('hCaptcha script did not load')\"></script>"
-		 "<style>body{background:#313338;color:#dbdee1;font:15px -apple-system,sans-serif;margin:0;"
-		 "height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}"
-		 "p{margin:0 24px 18px;text-align:center}</style></head><body>"
-		 "<p>Discord wants this check before it finishes the QR login.</p><div id='c'></div>"
-		 "<script>function dmReady(){dmLog('widget script loaded');try{"
-		 "var id=hcaptcha.render('c',{sitekey:%@,theme:'dark',"
-		 "callback:function(t){dmLog('solved');window.webkit.messageHandlers.dmCaptcha.postMessage(t);},"
-		 "'error-callback':function(e){dmLog('widget error: '+e);},"
-		 "'expired-callback':function(){dmLog('answer expired');}});"
-		 "var rq=%@;if(rq)hcaptcha.setData(id,{rqdata:rq});dmLog('widget shown'+(rq?' (with rqdata)':''));"
-		 "}catch(e){dmLog('render failed: '+e);}}</script></body></html>",
-		JsString(sitekey), JsString(rqdata)];
+	NSString* html = NS(WebLoginPages::CaptchaPage(sitekey, rqdata));
 
 	NSRect frame = NSMakeRect(0, 0, 420, 640);
 	_window = [[NSWindow alloc] initWithContentRect:frame
@@ -240,7 +178,8 @@ static NSString* JsString(const std::string& s)
 	_window.contentView = _web;
 	[_window center];
 	[_web loadHTMLString:html baseURL:[NSURL URLWithString:@"https://discord.com/"]];
-	[_window makeKeyAndOrderFront:nil];
+	if (!test)
+		[_window makeKeyAndOrderFront:nil];
 	fprintf(stderr, "dm: captcha: window open (%s)\n", rqdata.empty() ? "no rqdata" : "with rqdata");
 	return self;
 }
@@ -268,6 +207,9 @@ static NSString* JsString(const std::string& s)
 		return;
 	if ([message.name isEqualToString:@"dmCaptchaLog"]) {
 		fprintf(stderr, "dm: captcha: %s\n", [(NSString*) message.body UTF8String]);
+		// the test: shown is as far as it goes without a person
+		if (self.test && [(NSString*) message.body hasPrefix:@"widget shown"])
+			[self finishWith:nil];
 		return;
 	}
 	if ([(NSString*) message.body length] > 0)
@@ -289,7 +231,7 @@ void WebLogin::ShowCaptcha(const std::string& sitekey, const std::string& rqdata
 		[g_captcha.window makeKeyAndOrderFront:nil];
 		return;
 	}
-	g_captcha = [[DMCaptcha alloc] initWithSitekey:sitekey rqdata:rqdata];
+	g_captcha = [[DMCaptcha alloc] initWithSitekey:sitekey rqdata:rqdata test:NO];
 	g_captcha.onDone = ^(NSString* answer) {
 		if (answer.length > 0) {
 			if (done)
@@ -298,4 +240,22 @@ void WebLogin::ShowCaptcha(const std::string& sitekey, const std::string& rqdata
 		else if (cancelled)
 			cancelled();
 	};
+}
+
+void WebLogin::SelfTest(std::function<void()> finished)
+{
+	// DM_TEST_WEBLOGIN=captcha: the captcha's page with hCaptcha's test key,
+	// hidden, until the widget is shown
+	const char* what = getenv("DM_TEST_WEBLOGIN");
+	if (what && !strcmp(what, "captcha")) {
+		g_captcha = [[DMCaptcha alloc] initWithSitekey:"10000000-ffff-ffff-ffff-000000000001" rqdata:"" test:YES];
+		g_captcha.onDone = ^(NSString*) {
+			if (finished)
+				finished();
+		};
+		return;
+	}
+	g_done = nullptr;
+	g_cancelled = finished;
+	g_login = [[DMWebLogin alloc] initForTest:YES];
 }

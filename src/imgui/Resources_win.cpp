@@ -13,7 +13,10 @@
 // from a console, it writes its messages there.
 void UseProgramResources()
 {
-	if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+	// (unless they go somewhere already: redirected to a file or a pipe)
+	HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+	bool redirected = err && err != INVALID_HANDLE_VALUE && GetFileType(err) != FILE_TYPE_UNKNOWN;
+	if (!redirected && AttachConsole(ATTACH_PARENT_PROCESS)) {
 		freopen("CONOUT$", "w", stdout);
 		freopen("CONOUT$", "w", stderr);
 	}

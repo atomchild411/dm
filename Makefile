@@ -131,8 +131,11 @@ COMPAT_FILES := $(wildcard src/compat/win/*.cpp)
 RC        ?= llvm-rc
 RES_FILES := $(BUILD_DIR)/dm.res
 ifeq ($(FRONTEND),imgui)
-# a windowed program (no console), main() as everywhere
+# a windowed program (no console), main() as everywhere; WebView2 for the
+# login on discord.com's page (its SDK's headers and static loader in
+# PREFIX_DEPS)
 LDFLAGS += -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup
+LIBS += $(PREFIX_DEPS)/lib/WebView2LoaderStatic.lib -lshlwapi -lversion -loleaut32
 endif
 LIBS += -lws2_32 -lmswsock -lcrypt32 -luser32 -lgdi32 -lshell32 -ladvapi32 -lwinmm -lole32
 endif
