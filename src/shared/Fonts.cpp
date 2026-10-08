@@ -1,4 +1,5 @@
 #include "Fonts.hpp"
+#include "Utf8.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -629,26 +630,31 @@ int Fonts::Measure(const std::string& s, FontStyle st, int px)
 	return Measure(s.data(), s.size(), st, px);
 }
 
-int Fonts::Draw(Canvas& c, int x, int y, const char* s, size_t n, FontStyle st, int px, Rgb color)
+const std::vector<Fonts::PlacedGlyph>& Fonts::Glyphs(const char* s, size_t n, FontStyle st, int px)
 {
 	static std::vector<Shaped> glyphs;
+	static std::vector<PlacedGlyph> out;
 	Shape(s, n, st, glyphs);
-	int x0 = x;
+	out.clear();
+	int x = 0;
 	for (auto& sg : glyphs)
 	{
 		const Glyph& g = Render(sg.face, sg.index, px);
-		if (!g.argb.empty())
-			c.BlendArgb(x + g.left, y - g.top, g.argb.data(), g.w, g.h, g.w);
-		else if (g.w && g.h)
-			c.BlendMask(x + g.left, y - g.top, g.bits.data(), g.w, g.h, g.w, color);
+		PlacedGlyph pg;
+		pg.x = x;
+		pg.left = g.left;
+		pg.top = g.top;
+		pg.w = g.w;
+		pg.h = g.h;
+		pg.advance = g.advance;
+		pg.coverage = g.argb.empty() && g.w && g.h ? g.bits.data() : nullptr;
+		pg.argb = g.argb.empty() ? nullptr : g.argb.data();
+		pg.start = sg.start;
+		pg.end = sg.end;
+		out.push_back(pg);
 		x += g.advance;
 	}
-	return x - x0;
-}
-
-int Fonts::Draw(Canvas& c, int x, int y, const std::string& s, FontStyle st, int px, Rgb color)
-{
-	return Draw(c, x, y, s.data(), s.size(), st, px, color);
+	return out;
 }
 
 size_t Fonts::FitBytes(const char* s, size_t n, FontStyle st, int px, int maxWidth)
