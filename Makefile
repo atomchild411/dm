@@ -135,7 +135,7 @@ ifeq ($(FRONTEND),imgui)
 # login on discord.com's page (its SDK's headers and static loader in
 # PREFIX_DEPS)
 LDFLAGS += -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup
-LIBS += $(PREFIX_DEPS)/lib/WebView2LoaderStatic.lib -lshlwapi -lversion -loleaut32
+LIBS += $(PREFIX_DEPS)/lib/WebView2LoaderStatic.lib -lshlwapi -lversion -loleaut32 -ldwmapi
 endif
 LIBS += -lws2_32 -lmswsock -lcrypt32 -luser32 -lgdi32 -lshell32 -ladvapi32 -lwinmm -lole32
 endif

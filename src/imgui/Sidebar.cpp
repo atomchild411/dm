@@ -72,9 +72,9 @@ namespace
 				Fill(dl, x, pos.y + 1, w, h - 2, sel ? SELECTED : HOVER, 4);
 			// an unread channel: the white pill on the edge
 			if (r.unread && !sel)
-				dl->AddRectFilled(ImVec2(pos.x - 4, pos.y + h / 2 - 4), ImVec2(pos.x + 4, pos.y + h / 2 + 4), Col(0xffffff), 4);
+				dl->AddRectFilled(ImVec2(pos.x - 4, pos.y + h / 2 - 4), ImVec2(pos.x + 4, pos.y + h / 2 + 4), Col(TEXT_STRONG), 4);
 
-			uint32_t tc = sel ? 0xffffff : r.unread ? TEXT_BRIGHT : (hovered && r.selectable) ? TEXT : (r.dim ? FAINT : MUTED);
+			uint32_t tc = sel ? TEXT_STRONG : r.unread ? TEXT_BRIGHT : (hovered && r.selectable) ? TEXT : (r.dim ? FAINT : MUTED);
 			FontStyle st = r.unread && !sel ? FS_BOLD : FS_REGULAR;
 			float tx;
 			if (person) {
@@ -160,6 +160,16 @@ namespace
 				SetTextSize(GetTextSize() - 1);
 				SaveClientConfig();
 				list->ForgetLayout();
+			}
+			if (ImGui::BeginMenu("Theme")) {
+				const char* const names[] = { "Sync with System", "Dark", "Light" };
+				for (int i = 0; i < 3; i++)
+					if (ImGui::MenuItem(names[i], nullptr, GetColorScheme() == i)) {
+						SetColorScheme((ColorScheme) i);
+						SaveClientConfig();
+						App::ApplyTheme();
+					}
+				ImGui::EndMenu();
 			}
 			bool sound = IsNotifyOn(NOTIFY_SOUND);
 			if (ImGui::MenuItem("Notification Sound", nullptr, &sound)) {

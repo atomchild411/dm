@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "models/Snowflake.hpp"
@@ -32,6 +33,15 @@ namespace App
 	void ShowLogin(const std::string& why);
 
 	bool QuitRequested();
+
+	// The theme: as the setting (ClientConfig's colour scheme) and the
+	// system say; DM_THEME=dark or light overrides both (for tests).
+	// ApplyTheme after the setting changed; CheckSystemTheme asks the system
+	// again (at start, when the window comes to the front, every few seconds
+	// where that is cheap).  The hook frames the windows to match.
+	void ApplyTheme();
+	void CheckSystemTheme();
+	void SetFrameHook(std::function<void(bool dark, bool followSystem)> hook);
 }
 
 // Main.cpp: a new session with the token in the settings, and logging out.

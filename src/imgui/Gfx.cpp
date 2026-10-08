@@ -28,13 +28,21 @@
 
 namespace
 {
-	Palette g_palette = {
+	const Palette g_darkPalette = {
 		0x1e1f22, 0x2b2d31, 0xdbdee1, 0x949ba4, 0x949ba4,
 		0x404249, 0xffffff,
 		0xf23f42, 0xffffff,
 		0x313338, 0xdbdee1, 0x949ba4, 0x00a8fc, 0xc9cdfb, 0x2b2d31, 0x1e1f22, 0x4e5058,
 		0x23a55a, 0xf0b232, 0xf23f43, 0x80848e,
 	};
+	const Palette g_lightPalette = {
+		0xe3e5e8, 0xf2f3f5, 0x313338, 0x5c5e66, 0x5c5e66,
+		0xd4d7dc, 0x060607,
+		0xf23f42, 0xffffff,
+		0xffffff, 0x313338, 0x5c5e66, 0x006ce7, 0x505cdc, 0xf2f3f5, 0xe3e5e8, 0xc4c9ce,
+		0x23a55a, 0xf0b232, 0xf23f43, 0x80848e,
+	};
+	const Palette* g_palette = &g_darkPalette;
 
 	bool Exists(const std::string& path)
 	{
@@ -125,7 +133,12 @@ namespace
 
 const Palette& GetPalette()
 {
-	return g_palette;
+	return *g_palette;
+}
+
+void Gfx::SetPaletteDark(bool dark)
+{
+	g_palette = dark ? &g_darkPalette : &g_lightPalette;
 }
 
 bool Gfx::LoadUiFont(std::string& err)

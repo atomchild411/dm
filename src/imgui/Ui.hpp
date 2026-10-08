@@ -19,14 +19,27 @@
 
 namespace Ui
 {
-	// ---- the look (Discord's dark theme) ------------------------------------
+	// ---- the look (Discord's dark or light theme) ------------------------------
 
 	const int RAIL_W = 72, SIDEBAR_W = 240, MEMBERS_W = 240, HEADER_H = 48, PANEL_H = 52;
 
-	const uint32_t RAIL_BG = 0x1e1f22, SIDEBAR_BG = 0x2b2d31, CHAT_BG = 0x313338, PANEL_BG = 0x232428;
-	const uint32_t TEXT = 0xdbdee1, TEXT_BRIGHT = 0xf2f3f5, MUTED = 0x949ba4, FAINT = 0x80848e;
-	const uint32_t HOVER = 0x35373c, SELECTED = 0x404249, DIVIDER = 0x1f2023, ICON_BG = 0x313338;
-	const uint32_t BLURPLE = 0x5865f2, RED = 0xf23f42, COMPOSER_BG = 0x383a40, MSG_HOVER = 0x2e3035;
+	// The theme's colours, set by SetDark: the backgrounds of the rail, the
+	// lists, the messages and the user's panel; the text, from the most to
+	// the least prominent; what marks hovered and selected rows; the lines,
+	// surfaces (code, embeds, reactions, bars) and the ImGui widgets' own.
+	extern uint32_t RAIL_BG, SIDEBAR_BG, CHAT_BG, PANEL_BG;
+	extern uint32_t TEXT_STRONG, TEXT_BRIGHT, TEXT, MUTED, FAINT, PLACEHOLDER;
+	extern uint32_t HOVER, SELECTED, MSG_HOVER, ICON_BG, COMPOSER_BG;
+	extern uint32_t DIVIDER, LINE, RAIL_SEP, MENU_SEP, SURFACE, SURFACE_EDGE, QUOTE_BAR;
+	extern uint32_t REACT_ME_BG, REACT_ME_FG, EMOJI_BUTTON, POPUP_BG, FRAME_BG, SCROLL_GRAB;
+	extern bool dark;
+	// Discord's accents, the same in both; what is drawn on them is white.
+	const uint32_t BLURPLE = 0x5865f2, BLURPLE_HOVER = 0x4752c4, BLURPLE_ACTIVE = 0x3c45a5;
+	const uint32_t RED = 0xf23f42, GREEN = 0x23a55a, ON_ACCENT = 0xffffff;
+
+	// The dark theme or the light one: the colours above, the message
+	// palette (GetPalette) and ImGui's style.
+	void SetDark(bool dark);
 
 	// ---- state ----------------------------------------------------------------
 

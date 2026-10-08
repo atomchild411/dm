@@ -24,7 +24,7 @@ void Ui::Rail(float height)
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		if (r.type == ListRow::SPACE) {
 			ImGui::Dummy(ImVec2(RAIL_W, 10));
-			dl->AddRectFilled(ImVec2(pos.x + (RAIL_W - 32) / 2, pos.y + 4), ImVec2(pos.x + (RAIL_W + 32) / 2, pos.y + 6), Col(0x35363c), 1);
+			dl->AddRectFilled(ImVec2(pos.x + (RAIL_W - 32) / 2, pos.y + 4), ImVec2(pos.x + (RAIL_W + 32) / 2, pos.y + 6), Col(RAIL_SEP), 1);
 			continue;
 		}
 
@@ -61,7 +61,7 @@ void Ui::Rail(float height)
 				int px = 16, tw = Gfx::Measure(ini, FS_BOLD, px);
 				while (tw > ICON - 10 && px > 9)
 					tw = Gfx::Measure(ini, FS_BOLD, --px);
-				TextMid(dl, x + (ICON - tw) / 2, y + ICON / 2, ini, FS_BOLD, px, sel || hovered ? 0xffffff : TEXT);
+				TextMid(dl, x + (ICON - tw) / 2, y + ICON / 2, ini, FS_BOLD, px, sel || hovered ? ON_ACCENT : TEXT);
 			}
 		}
 
@@ -69,7 +69,7 @@ void Ui::Rail(float height)
 		// for unread
 		float pill = sel ? 40 : hovered ? 20 : r.unread ? 8 : 0;
 		if (pill > 0)
-			dl->AddRectFilled(ImVec2(pos.x - 4, y + (ICON - pill) / 2), ImVec2(pos.x + 4, y + (ICON + pill) / 2), Col(0xffffff), 4.0f);
+			dl->AddRectFilled(ImVec2(pos.x - 4, y + (ICON - pill) / 2), ImVec2(pos.x + 4, y + (ICON + pill) / 2), Col(TEXT_STRONG), 4.0f);
 		if (r.mentions > 0)
 			Badge(dl, x + ICON - 6, y + ICON - 6, r.mentions, RAIL_BG);
 	}

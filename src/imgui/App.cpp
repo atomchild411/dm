@@ -11,6 +11,7 @@
 #include "shared/Demo.hpp"
 #include "shared/Lists.hpp"
 #include "shared/Typing.hpp"
+#include "SystemTheme.hpp"
 #include "Ui.hpp"
 
 using namespace Ui;
@@ -42,51 +43,6 @@ namespace
 		selGuild = pInst->GetCurrentGuildID();
 		selChannel = pInst->GetCurrentChannelID();
 	}
-
-	// ImGui's own widgets (menus, popups, the message box) in the same dark
-	// theme as the drawn parts.
-	void Style()
-	{
-		ImGuiStyle& s = ImGui::GetStyle();
-		ImGui::StyleColorsDark(&s);
-		s.WindowRounding = 8;
-		s.PopupRounding = 6;
-		s.FrameRounding = 4;
-		s.ScrollbarSize = 8;
-		s.ScrollbarRounding = 4;
-		s.WindowBorderSize = 0;
-		s.PopupBorderSize = 0;
-		s.ItemSpacing = ImVec2(8, 6);
-		s.WindowPadding = ImVec2(10, 10);
-		auto c = [](uint32_t rgb, float a = 1.0f) {
-			ImVec4 v = ImGui::ColorConvertU32ToFloat4(Col(rgb));
-			v.w = a;
-			return v;
-		};
-		s.Colors[ImGuiCol_Text] = c(TEXT);
-		s.Colors[ImGuiCol_TextDisabled] = c(MUTED);
-		s.Colors[ImGuiCol_WindowBg] = c(CHAT_BG);
-		s.Colors[ImGuiCol_PopupBg] = c(0x111214);
-		s.Colors[ImGuiCol_ChildBg] = c(0, 0);
-		s.Colors[ImGuiCol_Border] = c(DIVIDER);
-		s.Colors[ImGuiCol_FrameBg] = c(0x1e1f22);
-		s.Colors[ImGuiCol_FrameBgHovered] = c(0x1e1f22);
-		s.Colors[ImGuiCol_FrameBgActive] = c(0x1e1f22);
-		s.Colors[ImGuiCol_Button] = c(BLURPLE);
-		s.Colors[ImGuiCol_ButtonHovered] = c(0x4752c4);
-		s.Colors[ImGuiCol_ButtonActive] = c(0x3c45a5);
-		s.Colors[ImGuiCol_Header] = c(BLURPLE, 0.0f);
-		s.Colors[ImGuiCol_HeaderHovered] = c(BLURPLE);
-		s.Colors[ImGuiCol_HeaderActive] = c(0x4752c4);
-		s.Colors[ImGuiCol_Separator] = c(0x2e2f34);
-		s.Colors[ImGuiCol_ScrollbarBg] = c(0, 0);
-		s.Colors[ImGuiCol_ScrollbarGrab] = c(0x1a1b1e);
-		s.Colors[ImGuiCol_ScrollbarGrabHovered] = c(0x1a1b1e);
-		s.Colors[ImGuiCol_ScrollbarGrabActive] = c(0x1a1b1e);
-		s.Colors[ImGuiCol_ModalWindowDimBg] = c(0, 0.7f);
-		s.Colors[ImGuiCol_TextSelectedBg] = c(BLURPLE, 0.5f);
-		s.Colors[ImGuiCol_NavHighlight] = c(BLURPLE, 0.0f);
-	}
 }
 
 void App::Init(bool isDemo)
@@ -102,7 +58,7 @@ void App::Init(bool isDemo)
 	geo.dateSep = 36;
 	geo.pictureMax = 400;
 	list = new MessageList(Gfx::Metrics(), geo);
-	Style();
+	SetDark(true); // the theme the system wants follows (App::UpdateTheme)
 	if (demo) {
 		Demo::LoadMessages();
 		list->SetChannel(0, Demo::CHANNEL);
@@ -229,4 +185,39 @@ void App::Frame(bool windowFocused)
 	Popups();
 	ImGui::End();
 	Gfx::CollectTextures();
+}
+
+namespace
+{
+	bool g_systemDark = true;
+	int g_shownDark = -1, g_shownScheme = -1;
+	std::function<void(bool, bool)> g_frameHook;
+}
+
+void App::ApplyTheme()
+{
+	ColorScheme scheme = GetColorScheme();
+	if (const char* e = getenv("DM_THEME"))
+		scheme = !strcmp(e, "light") ? SCHEME_LIGHT : !strcmp(e, "dark") ? SCHEME_DARK : scheme;
+	bool d = scheme == SCHEME_SYSTEM ? g_systemDark : scheme == SCHEME_DARK;
+	if ((int) d == g_shownDark && (int) scheme == g_shownScheme)
+		return;
+	g_shownDark = d;
+	g_shownScheme = scheme;
+	SetDark(d);
+	if (g_frameHook)
+		g_frameHook(d, scheme == SCHEME_SYSTEM);
+}
+
+void App::CheckSystemTheme()
+{
+	SystemTheme::Query([](bool d) {
+		g_systemDark = d;
+		ApplyTheme();
+	});
+}
+
+void App::SetFrameHook(std::function<void(bool, bool)> hook)
+{
+	g_frameHook = hook;
 }

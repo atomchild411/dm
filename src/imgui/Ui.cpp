@@ -107,7 +107,7 @@ void Ui::Avatar(ImDrawList* dl, float x, float y, int size, const ListRow& r, ui
 		std::string ini = Initials(r.text);
 		int ipx = std::max(9, size * 2 / 5);
 		int iw = Gfx::Measure(ini, FS_BOLD, ipx);
-		TextMid(dl, x + (size - iw) / 2.0f, y + size / 2.0f, ini, FS_BOLD, ipx, 0xffffff);
+		TextMid(dl, x + (size - iw) / 2.0f, y + size / 2.0f, ini, FS_BOLD, ipx, ON_ACCENT);
 	}
 	if (r.status >= 0)
 		PresenceDot(dl, x + size - size * 0.15f, y + size - size * 0.15f, r.status, bg, size >= 32 ? 5.0f : 4.0f);
@@ -136,7 +136,7 @@ void Ui::Badge(ImDrawList* dl, float cx, float cy, int count, uint32_t border)
 	dl->AddRectFilled(ImVec2(cx - w / 2 - 3, cy - h / 2 - 3), ImVec2(cx + w / 2 + 3, cy + h / 2 + 3), Col(border), h);
 	dl->AddRectFilled(ImVec2(cx - w / 2, cy - h / 2), ImVec2(cx + w / 2, cy + h / 2), Col(RED), h);
 	int tw = Gfx::Measure(s, FS_BOLD, px);
-	TextMid(dl, cx - tw / 2.0f, cy, s, FS_BOLD, px, 0xffffff);
+	TextMid(dl, cx - tw / 2.0f, cy, s, FS_BOLD, px, ON_ACCENT);
 }
 
 const Image& Ui::AppIconImage()

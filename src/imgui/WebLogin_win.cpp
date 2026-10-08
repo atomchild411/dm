@@ -6,6 +6,7 @@
 
 #if defined(_WIN32)
 #include "WebLogin.hpp"
+#include "SystemTheme.hpp"
 #include "WebLoginPages.hpp"
 
 #include <windows.h>
@@ -190,6 +191,7 @@ namespace
 		int x = (GetSystemMetrics(SM_CXSCREEN) - ww) / 2, y = (GetSystemMetrics(SM_CYSCREEN) - wh) / 2;
 		HWND hwnd = CreateWindowExW(0, L"DiscordMessengerWebView", title, WS_OVERLAPPEDWINDOW,
 			x, y, ww, wh, nullptr, nullptr, inst, nullptr);
+		SystemTheme::FrameNativeWindow(hwnd); // dark or light, as the app
 		if (hwnd && show) {
 			ShowWindow(hwnd, SW_SHOWNORMAL);
 			SetForegroundWindow(hwnd);

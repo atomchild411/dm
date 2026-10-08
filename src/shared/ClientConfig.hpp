@@ -22,6 +22,11 @@ void SetPaneShown(Pane p, bool shown);
 enum Notify { NOTIFY_SOUND, NOTIFY_POPUP, NOTIFY_COUNT };
 bool IsNotifyOn(Notify n);
 void SetNotifyOn(Notify n, bool on);
+// Dark or light (the front ends that have both): as the system has it, or
+// one of them whatever it says.
+enum ColorScheme { SCHEME_SYSTEM, SCHEME_DARK, SCHEME_LIGHT };
+ColorScheme GetColorScheme();
+void SetColorScheme(ColorScheme s);
 // The server and channel last open, to open again at the next start.
 void GetLastChannel(Snowflake& guild, Snowflake& channel);
 void SetLastChannel(Snowflake guild, Snowflake channel);

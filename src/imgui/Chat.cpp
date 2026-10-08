@@ -24,8 +24,6 @@ using namespace Ui;
 
 namespace
 {
-	const uint32_t PLACEHOLDER = 0x6d6f78;
-
 	// Replies' one-line previews, formatted (mentions, custom emoji), by the
 	// replying message.
 	std::map<Snowflake, std::unique_ptr<FormattedText>> g_snippets;
@@ -38,9 +36,9 @@ namespace
 		ctx.bg = CHAT_BG;
 		ctx.link = p.link;
 		ctx.mention = p.mention;
-		ctx.codeBg = 0x2b2d31;
-		ctx.codeFrame = 0x1e1f22;
-		ctx.quoteBar = 0x4e5058;
+		ctx.codeBg = SURFACE;
+		ctx.codeFrame = SURFACE_EDGE;
+		ctx.quoteBar = QUOTE_BAR;
 		ctx.muted = MUTED;
 	}
 
@@ -82,7 +80,7 @@ namespace
 			if (!topic.empty()) {
 				std::string t = topic;
 				std::replace(t.begin(), t.end(), '\n', ' ');
-				dl->AddLine(ImVec2(x, cy - 10), ImVec2(x, cy + 10), Col(0x3f4147));
+				dl->AddLine(ImVec2(x, cy - 10), ImVec2(x, cy + 10), Col(LINE));
 				x += 12;
 				TextMid(dl, x, cy, Gfx::Elide(t, FS_REGULAR, 13, (int) (pos.x + width - 16 - x)), FS_REGULAR, 13, MUTED);
 			}
@@ -102,7 +100,7 @@ namespace
 			dl->AddImageRounded(Gfx::Texture(*img), ImVec2(ix, iy), ImVec2(ix + img->w, iy + img->h), ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, 6.0f);
 			return;
 		}
-		Fill(dl, x, y, (float) w, (float) h, 0x2b2d31, 6.0f);
+		Fill(dl, x, y, (float) w, (float) h, SURFACE, 6.0f);
 		bool failed = ImageCache::Failed(ImageCache::URL, url, 0, w, h);
 		std::string text = failed ? (label.empty() ? std::string("Image not available") : label) : std::string("Loading\xe2\x80\xa6");
 		int spx = ctx.px - 2;
@@ -159,8 +157,8 @@ namespace
 			float mid = top + geo.dateSep / 2.0f;
 			int tw = Gfx::Measure(ex.dateSep, FS_BOLD, 12);
 			float cx = o.x + (viewW - tw) / 2;
-			dl->AddLine(ImVec2(o.x + geo.margin, mid), ImVec2(cx - 8, mid), Col(0x3f4147));
-			dl->AddLine(ImVec2(cx + tw + 8, mid), ImVec2(right, mid), Col(0x3f4147));
+			dl->AddLine(ImVec2(o.x + geo.margin, mid), ImVec2(cx - 8, mid), Col(LINE));
+			dl->AddLine(ImVec2(cx + tw + 8, mid), ImVec2(right, mid), Col(LINE));
 			TextMid(dl, cx, mid, ex.dateSep, FS_BOLD, 12, MUTED);
 		}
 		float bodyTop = top + (ex.dateSep.empty() ? 0 : geo.dateSep);
@@ -174,7 +172,7 @@ namespace
 				TextMid(dl, o.x + (viewW - tw) / 2, cy, item.systemText, FS_ITALIC, px, MUTED);
 			}
 			else {
-				TextMid(dl, textX - 30, cy, "\xe2\x86\x92", FS_BOLD, px + 2, 0x23a55a);
+				TextMid(dl, textX - 30, cy, "\xe2\x86\x92", FS_BOLD, px + 2, GREEN);
 				TextMid(dl, textX, cy, Gfx::Elide(item.systemText, FS_REGULAR, px, (int) (right - textX)), FS_REGULAR, px, MUTED);
 			}
 			return;
@@ -193,7 +191,7 @@ namespace
 			dl->PathLineTo(ImVec2(ex0, cy + 4));
 			dl->PathArcTo(ImVec2(ex0 + 6, cy + 4), 6.0f, 3.14159f, 4.71239f);
 			dl->PathLineTo(ImVec2(textX - 6, cy - 2));
-			dl->PathStroke(Col(0x4e5058), 0, 2.0f);
+			dl->PathStroke(Col(QUOTE_BAR), 0, 2.0f);
 			float x = textX;
 			UserAvatar(dl, x, cy - 8, 16, ref.m_author_snowflake, ref.m_avatar, ref.m_author, -1, CHAT_BG);
 			x += 20;
@@ -213,7 +211,7 @@ namespace
 				dl->AddCircleFilled(ImVec2(avX + geo.avatar / 2.0f, y + geo.avatar / 2.0f), geo.avatar / 2.0f, Col(AvatarColor(m.m_author_snowflake)));
 				std::string ini = Initials(m.m_author).substr(0, 1);
 				int iw = Gfx::Measure(ini, FS_BOLD, 18);
-				TextMid(dl, avX + (geo.avatar - iw) / 2.0f, y + geo.avatar / 2.0f, ini, FS_BOLD, 18, 0xffffff);
+				TextMid(dl, avX + (geo.avatar - iw) / 2.0f, y + geo.avatar / 2.0f, ini, FS_BOLD, 18, ON_ACCENT);
 			}
 
 			// the name, a BOT tag, then the time, as Discord sets them
@@ -225,7 +223,7 @@ namespace
 			if (m.m_bIsAuthorBot || m.IsWebHook()) {
 				int bw = Gfx::Measure("BOT", FS_BOLD, 10) + 8;
 				Fill(dl, x, y + asc - 13, (float) bw, 15, BLURPLE, 3.0f);
-				TextMid(dl, x + 4, y + asc - 5.5f, "BOT", FS_BOLD, 10, 0xffffff);
+				TextMid(dl, x + 4, y + asc - 5.5f, "BOT", FS_BOLD, 10, ON_ACCENT);
 				x += bw + 6;
 			}
 			std::string when = m.m_dateFull.empty() ? m.m_dateCompact : m.m_dateFull;
@@ -275,7 +273,7 @@ namespace
 			const Reaction& r = m.m_reactions[i];
 			const Rect& rc = ex.reactionRects[i];
 			float x = o.x + rc.left, y = top + rc.top, w = (float) rc.Width(), h = (float) rc.Height();
-			Fill(dl, x, y, w, h, r.m_bMe ? 0x373a54 : 0x2b2d31, 8.0f);
+			Fill(dl, x, y, w, h, r.m_bMe ? REACT_ME_BG : SURFACE, 8.0f);
 			if (r.m_bMe)
 				dl->AddRect(ImVec2(x, y), ImVec2(x + w, y + h), Col(BLURPLE), 8.0f);
 			float cy = y + h / 2;
@@ -289,7 +287,7 @@ namespace
 			}
 			else
 				ex2 += TextMid(dl, ex2, cy, r.m_emojiName, FS_REGULAR, rpx, TEXT);
-			TextMid(dl, ex2 + 5, cy, std::to_string(r.m_count), FS_BOLD, rpx, r.m_bMe ? 0xc9cdfb : MUTED);
+			TextMid(dl, ex2 + 5, cy, std::to_string(r.m_count), FS_BOLD, rpx, r.m_bMe ? REACT_ME_FG : MUTED);
 		}
 
 		// embeds
@@ -299,8 +297,8 @@ namespace
 			float y = top + ex.embedTops[i];
 			float w = std::min(right, textX + geo.embedWidth) - textX;
 			float bx = textX;
-			Fill(dl, bx, y, w, (float) ex.embedHeights[i], 0x2b2d31, 4.0f);
-			Fill(dl, bx, y, 4, (float) ex.embedHeights[i], em.m_color ? (uint32_t) em.m_color : 0x1e1f22, 4.0f);
+			Fill(dl, bx, y, w, (float) ex.embedHeights[i], SURFACE, 4.0f);
+			Fill(dl, bx, y, 4, (float) ex.embedHeights[i], em.m_color ? (uint32_t) em.m_color : SURFACE_EDGE, 4.0f);
 			float x = bx + 12;
 			y += 6;
 			if (!em.m_providerName.empty()) {
@@ -339,7 +337,7 @@ namespace
 		float right = o.x + viewW - geo.margin;
 		dl->AddLine(ImVec2(o.x + geo.margin, y), ImVec2(right - 34, y), Col(RED), 1.0f);
 		Fill(dl, right - 36, y - 7, 36, 14, RED, 3.0f);
-		TextMid(dl, right - 31, y, "NEW", FS_BOLD, 10, 0xffffff);
+		TextMid(dl, right - 31, y, "NEW", FS_BOLD, 10, ON_ACCENT);
 	}
 
 	// Whether the view follows the newest messages: while it is at the
@@ -381,15 +379,15 @@ namespace
 		bool hovered = ImGui::IsWindowHovered() && mp.x >= x0 && mp.x < x1 && mp.y >= y0 && mp.y < y0 + h;
 		uint32_t bg = unseen > 0 ? BLURPLE : SIDEBAR_BG;
 		if (hovered)
-			bg = unseen > 0 ? 0x4752c4 : HOVER;
+			bg = unseen > 0 ? BLURPLE_HOVER : HOVER;
 		dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + h), Col(bg), 8.0f);
 		std::string left = unseen > 0
 			? std::to_string(unseen) + (unseen == 1 ? " new message" : " new messages")
 			: "You're viewing older messages";
 		const char* right = "Jump to Present \xe2\x86\x93";
 		int rw = Gfx::Measure(right, FS_BOLD, 13);
-		TextMid(dl, x0 + 12, y0 + h / 2, Gfx::Elide(left, FS_REGULAR, 13, (int) (x1 - x0 - rw - 36)), FS_REGULAR, 13, unseen > 0 ? 0xffffff : TEXT);
-		TextMid(dl, x1 - 12 - rw, y0 + h / 2, right, FS_BOLD, 13, unseen > 0 ? 0xffffff : TEXT_BRIGHT);
+		TextMid(dl, x0 + 12, y0 + h / 2, Gfx::Elide(left, FS_REGULAR, 13, (int) (x1 - x0 - rw - 36)), FS_REGULAR, 13, unseen > 0 ? ON_ACCENT : TEXT);
+		TextMid(dl, x1 - 12 - rw, y0 + h / 2, right, FS_BOLD, 13, unseen > 0 ? ON_ACCENT : TEXT_BRIGHT);
 		if (hovered) {
 			ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
@@ -527,7 +525,7 @@ namespace
 					focusInput = true;
 				}
 				if (list->CanDelete(*menuMessage)) {
-					ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(Col(0xf23f43)));
+					ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(Col(RED)));
 					if (ImGui::MenuItem("Delete Message"))
 						deleteMessage = menuMessage;
 					ImGui::PopStyleColor();
@@ -564,7 +562,7 @@ namespace
 
 		// "Replying to ..." above the box
 		if (!bar.empty()) {
-			Fill(dl, x0, start.y, boxW, 34, 0x2b2d31, 8.0f);
+			Fill(dl, x0, start.y, boxW, 34, SURFACE, 8.0f);
 			TextMid(dl, x0 + 16, start.y + 17, bar, FS_REGULAR, 13, MUTED);
 			ImGui::SetCursorScreenPos(ImVec2(x0 + boxW - 30, start.y + 5));
 			if (ImGui::InvisibleButton("cancel reply", ImVec2(24, 24))) {
@@ -591,7 +589,7 @@ namespace
 
 		// "+": uploading is not there yet
 		float pcx = x0 + 28, pcy = start.y + 22;
-		dl->AddCircleFilled(ImVec2(pcx, pcy), 12, Col(0xb5bac1));
+		dl->AddCircleFilled(ImVec2(pcx, pcy), 12, Col(EMOJI_BUTTON));
 		dl->AddLine(ImVec2(pcx - 6, pcy), ImVec2(pcx + 6, pcy), Col(COMPOSER_BG), 2.5f);
 		dl->AddLine(ImVec2(pcx, pcy - 6), ImVec2(pcx, pcy + 6), Col(COMPOSER_BG), 2.5f);
 

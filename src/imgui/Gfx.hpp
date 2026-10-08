@@ -29,6 +29,9 @@ const Palette& GetPalette();
 // (menus, buttons, the message box) use ImGui's font: Inter, as the text.
 namespace Gfx
 {
+	// The palette GetPalette gives: Discord's dark theme's, or its light one's.
+	void SetPaletteDark(bool dark);
+
 	// ImGui's font for its widgets; shared/Fonts must be loaded first.
 	bool LoadUiFont(std::string& err);
 

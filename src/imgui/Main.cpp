@@ -83,6 +83,7 @@ void UseProgramResources();
 #include "shared/Timers.hpp"
 #include "shared/Typing.hpp"
 #include "App.hpp"
+#include "SystemTheme.hpp"
 #include "WebLogin.hpp"
 #include "Gfx.hpp"
 
@@ -323,6 +324,13 @@ static size_t CacheLimit(const char* name, size_t def)
 	return (mb > 0 ? (size_t) mb : def) * 1024 * 1024;
 }
 
+// The system's theme, every few seconds where asking is cheap.
+static void PollSystemTheme()
+{
+	App::CheckSystemTheme();
+	Timers::After(3000, PollSystemTheme);
+}
+
 static void SaveHistory()
 {
 	GetMessageCache()->SaveDirty();
@@ -448,6 +456,13 @@ int main(int argc, char** argv)
 	if (const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor()))
 		App::SetScreenSize(mode->width, mode->height);
 	App::Init(demo);
+	// the theme: as the system and the setting say, the window frames to match
+	App::SetFrameHook([](bool dark, bool followSystem) { SystemTheme::FrameWindows(g_window, dark, followSystem); });
+	App::ApplyTheme();
+	if (SystemTheme::CheapToPoll())
+		PollSystemTheme();
+	else
+		App::CheckSystemTheme();
 	// DM_TEST_WEBLOGIN: discord.com's login page (or =captcha, the
 	// captcha's) in a hidden browser view, then quit (a check that the page
 	// and the token watcher load)
@@ -464,6 +479,7 @@ int main(int argc, char** argv)
 	// frames for a little while after anything happens (ImGui settles over
 	// a couple of frames), then sleep until the next event or timer
 	int busyFrames = 3;
+	bool wasFocused = true;
 	while (!g_bQuit && !App::QuitRequested() && !glfwWindowShouldClose(g_window))
 	{
 		if (busyFrames > 0)
@@ -480,7 +496,12 @@ int main(int argc, char** argv)
 			io.DisplayFramebufferScale = ImVec2(1, 1); // the off-screen frame
 		ImGui::NewFrame();
 		ImGui::GetStyle().FontSizeBase = (float) GetTextSize();
-		App::Frame(glfwGetWindowAttrib(g_window, GLFW_FOCUSED) != 0);
+		// back in front: the system's theme may have changed meanwhile
+		bool isFocused = glfwGetWindowAttrib(g_window, GLFW_FOCUSED) != 0;
+		if (isFocused && !wasFocused)
+			App::CheckSystemTheme();
+		wasFocused = isFocused;
+		App::Frame(isFocused);
 		ImGui::Render();
 		int fbW, fbH;
 		glfwGetFramebufferSize(g_window, &fbW, &fbH);

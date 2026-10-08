@@ -13,6 +13,8 @@ static bool g_notify[NOTIFY_COUNT] = { true, true };
 static const char* const g_notifyKeys[NOTIFY_COUNT] = { "notifysound", "notifypopup" };
 static Snowflake g_lastGuild = 0, g_lastChannel = 0;
 static bool g_haveLast = false;
+static ColorScheme g_scheme = SCHEME_SYSTEM;
+static const char* const g_schemeNames[] = { "system", "dark", "light" };
 
 static std::string g_fileName = "client.conf";
 
@@ -45,6 +47,9 @@ void LoadClientConfig(const std::string& fileName)
 			}
 			if (!strcmp(key, "lastchannel"))
 				g_lastChannel = strtoull(val, NULL, 10);
+			for (int s = 0; s < 3; s++)
+				if (!strcmp(key, "theme") && !strcmp(val, g_schemeNames[s]))
+					g_scheme = (ColorScheme) s;
 		}
 		fclose(f);
 	}
@@ -67,6 +72,8 @@ void SaveClientConfig()
 		fprintf(f, "lastserver = %llu\n", (unsigned long long) g_lastGuild);
 		fprintf(f, "lastchannel = %llu\n", (unsigned long long) g_lastChannel);
 	}
+	if (g_scheme != SCHEME_SYSTEM) // (the default goes unwritten)
+		fprintf(f, "theme = %s\n", g_schemeNames[g_scheme]);
 	if (fclose(f) == 0)
 		RenameOver(tmp, path);
 	else
@@ -124,3 +131,13 @@ void SetLastChannel(Snowflake guild, Snowflake channel)
 	g_haveLast = true;
 }
 
+
+ColorScheme GetColorScheme()
+{
+	return g_scheme;
+}
+
+void SetColorScheme(ColorScheme s)
+{
+	g_scheme = s;
+}

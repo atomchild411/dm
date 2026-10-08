@@ -222,8 +222,9 @@ client with sample servers and messages, without connecting.
 - IRIX: a sound for mentions and direct messages, unread counts in the window's icon name, and the
   Messages menu, listing direct messages with the unread ones first, each conversation in a window
   of its own; showing or hiding the server, channel and member lists, larger or smaller text
-- macOS, Linux and Windows: the layout of Discord's own client, and a bar to jump back to the
-  newest messages when you have scrolled up
+- macOS, Linux and Windows: the layout of Discord's own client, in its dark or light theme as the
+  system is set (or either one, from the settings menu), and a bar to jump back to the newest
+  messages when you have scrolled up
 
 ### Unimplemented
 
