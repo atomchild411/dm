@@ -73,6 +73,7 @@ MainWindow::MainWindow(Widget toplevel, const PixelFormat& fmt)
 
 	Widget menubar = XmCreateMenuBar(m_main, (char*) "menubar", NULL, 0);
 	BuildMenus(menubar);
+	BuildMessagesMenu(menubar);
 	XtManageChild(menubar);
 
 	m_form = XtVaCreateWidget("form", xmFormWidgetClass, m_main,
@@ -303,6 +304,82 @@ void MainWindow::BuildMenus(Widget menubar)
 			}
 		}
 	}
+}
+
+// Messages, after View: the direct messages, made afresh each time the menu
+// opens; its title counts the unread ones.
+void MainWindow::BuildMessagesMenu(Widget menubar)
+{
+	Arg args[4];
+	int n = AddVisualArgs(args, 0);
+	m_dmMenu = XmCreatePulldownMenu(menubar, (char*) "messagesMenu", args, n);
+	m_dmCascade = XtVaCreateManagedWidget("Messages", xmCascadeButtonWidgetClass, menubar,
+		XmNsubMenuId, m_dmMenu,
+		XmNmnemonic, (KeySym) 'M',
+		NULL);
+	XtAddCallback(m_dmCascade, XmNcascadingCallback, MessagesCascadingCB, this);
+}
+
+void MainWindow::MessagesCascadingCB(Widget, XtPointer client, XtPointer)
+{
+	MainWindow* self = (MainWindow*) client;
+	WidgetList kids = nullptr;
+	Cardinal count = 0;
+	XtVaGetValues(self->m_dmMenu, XmNchildren, &kids, XmNnumChildren, &count, NULL);
+	std::vector<Widget> old(kids, kids + count);
+	for (Widget w : old)
+		XtDestroyWidget(w);
+	self->m_dmItems.clear();
+
+	auto add = [self](const std::string& label, Snowflake channel) {
+		XmString xs = MakeXmString(label);
+		Widget b = XtVaCreateManagedWidget("dm", xmPushButtonWidgetClass, self->m_dmMenu,
+			XmNlabelString, xs, NULL);
+		XmStringFree(xs);
+		XtAddCallback(b, XmNactivateCallback, MessagesItemCB, (XtPointer) (long) self->m_dmItems.size());
+		self->m_dmItems.push_back(channel);
+	};
+	add("All Direct Messages", 0);
+
+	DiscordInstance* pInst = GetDiscordInstance();
+	Guild* dms = pInst ? pInst->GetGuild(0) : nullptr;
+	if (!dms || dms->m_channels.empty())
+		return;
+	XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, self->m_dmMenu, NULL);
+
+	// unread first, then the most recently active
+	std::vector<const Channel*> chans;
+	for (auto& ch : dms->m_channels)
+		if (ch.IsDM() || ch.m_channelType == Channel::GROUPDM)
+			chans.push_back(&ch);
+	std::sort(chans.begin(), chans.end(), [](const Channel* a, const Channel* b) {
+		bool ua = a->m_mentionCount > 0, ub = b->m_mentionCount > 0;
+		if (ua != ub)
+			return ua;
+		return a->m_lastSentMsg > b->m_lastSentMsg;
+	});
+	const size_t MAX_ITEMS = 25;
+	for (size_t i = 0; i < chans.size() && i < MAX_ITEMS; i++) {
+		const Channel* ch = chans[i];
+		std::string label = ch->m_name.empty() ? std::string("(unnamed)") : ch->m_name;
+		if (ch->m_mentionCount > 0)
+			label += "  (" + std::to_string(ch->m_mentionCount) + ")";
+		add(label, ch->m_snowflake);
+	}
+}
+
+void MainWindow::MessagesItemCB(Widget, XtPointer client, XtPointer)
+{
+	MainWindow* self = g_pMainWindow;
+	size_t i = (size_t) (long) client;
+	DiscordInstance* pInst = GetDiscordInstance();
+	if (!pInst || i >= self->m_dmItems.size())
+		return;
+	Snowflake channel = self->m_dmItems[i];
+	if (channel)
+		pInst->OnSelectGuild(0, channel);
+	else
+		pInst->OnSelectGuild(0);
 }
 
 void MainWindow::MenuCB(Widget w, XtPointer client, XtPointer)
@@ -566,6 +643,12 @@ void MainWindow::UpdateGuildList()
 		if (sf == 0) {
 			r.text = GetFrontend()->GetDirectMessagesText();
 			r.glyph = "@";
+			// unread direct messages (each counts as a mention)
+			if (Guild* dms = pInst->GetGuild(0)) {
+				for (auto& ch : dms->m_channels)
+					r.mentions += ch.m_mentionCount;
+				r.unread = r.mentions > 0;
+			}
 		}
 		else {
 			Guild* pGuild = pInst->GetGuild(sf);
@@ -892,15 +975,24 @@ void MainWindow::UpdateIconName()
 		return;
 	std::vector<Snowflake> ids;
 	pInst->GetGuildIDsOrdered(ids, true);
-	int total = 0;
+	int total = 0, dms = 0;
 	for (Snowflake sf : ids) {
 		if (sf == 1 || (sf & BIT_FOLDER))
 			continue;
 		Guild* pGuild = pInst->GetGuild(sf); // 0: the direct messages
 		if (!pGuild)
 			continue;
-		for (auto& ch : pGuild->m_channels)
+		for (auto& ch : pGuild->m_channels) {
 			total += ch.m_mentionCount;
+			if (sf == 0)
+				dms += ch.m_mentionCount;
+		}
+	}
+	if (dms != m_dmUnread && m_dmCascade) {
+		m_dmUnread = dms;
+		XmString xs = MakeXmString(dms ? "Messages (" + std::to_string(dms) + ")" : std::string("Messages"));
+		XtVaSetValues(m_dmCascade, XmNlabelString, xs, NULL);
+		XmStringFree(xs);
 	}
 	std::string name = total ? "Discord (" + std::to_string(total) + ")" : std::string("Discord");
 	if (name != m_iconName) {

@@ -97,6 +97,13 @@ private:
 	Snowflake m_replyTo = 0;
 	Snowflake m_editing = 0;
 	std::string m_iconName = "Discord";
+	// the Messages menu: the direct messages, unread first
+	Widget m_dmCascade = nullptr, m_dmMenu = nullptr;
+	std::vector<Snowflake> m_dmItems;   // the channel each item opens; 0: all
+	int m_dmUnread = -1;                // what the menu's title says
+	static void MessagesCascadingCB(Widget, XtPointer, XtPointer);
+	static void MessagesItemCB(Widget, XtPointer, XtPointer);
+	void BuildMessagesMenu(Widget menubar);
 	Widget m_emojiButton = nullptr;
 	const PixelFormat* m_fmt = nullptr;
 	static void EmojiCB(Widget, XtPointer, XtPointer);
