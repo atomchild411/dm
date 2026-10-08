@@ -29,6 +29,7 @@
 #include "ImageViewer.hpp"
 #include "ReactionPicker.hpp"
 #include "Shortcodes.hpp"
+#include "Notifier.hpp"
 #include "Fonts.hpp"
 #include "Perf.hpp"
 #include "models/ActiveStatus.hpp"
@@ -51,6 +52,8 @@ enum
 	MI_GUILDS,
 	MI_CHANNELS,
 	MI_MEMBERS,
+	MI_NOTIFY_SOUND,
+	MI_NOTIFY_POPUP,
 	MI_MARKREAD,
 	MI_ABOUT,
 };
@@ -253,6 +256,9 @@ void MainWindow::BuildMenus(Widget menubar)
 			{ "Server List", MI_GUILDS, 'v' },
 			{ "Channel List", MI_CHANNELS, 'C' },
 			{ "Member List", MI_MEMBERS, 'M' },
+			{ "-", 0, 0 },
+			{ "Sound for Mentions and DMs", MI_NOTIFY_SOUND, 'o' },
+			{ "Popups for Mentions and DMs", MI_NOTIFY_POPUP, 'P' },
 		} },
 		{ "Help", 'H', {
 			{ "About Discord Messenger", MI_ABOUT, 'A' },
@@ -278,7 +284,13 @@ void MainWindow::BuildMenus(Widget menubar)
 				continue;
 			}
 			Widget b;
-			if (item.id == MI_GUILDS || item.id == MI_CHANNELS || item.id == MI_MEMBERS) {
+			if (item.id == MI_NOTIFY_SOUND || item.id == MI_NOTIFY_POPUP) {
+				Notify kind = item.id == MI_NOTIFY_SOUND ? NOTIFY_SOUND : NOTIFY_POPUP;
+				b = XtVaCreateManagedWidget(item.label, xmToggleButtonWidgetClass, pulldown,
+					XmNset, IsNotifyOn(kind) ? True : False, XmNmnemonic, (KeySym) item.mnemonic, NULL);
+				XtAddCallback(b, XmNvalueChangedCallback, MenuCB, (XtPointer) (long) item.id);
+			}
+			else if (item.id == MI_GUILDS || item.id == MI_CHANNELS || item.id == MI_MEMBERS) {
 				Pane pane = item.id == MI_GUILDS ? PANE_GUILDS : item.id == MI_CHANNELS ? PANE_CHANNELS : PANE_MEMBERS;
 				b = XtVaCreateManagedWidget(item.label, xmToggleButtonWidgetClass, pulldown,
 					XmNset, IsPaneShown(pane) ? True : False, XmNmnemonic, (KeySym) item.mnemonic, NULL);
@@ -315,6 +327,11 @@ void MainWindow::MenuCB(Widget w, XtPointer client, XtPointer)
 			self->UpdateGuildList();
 			self->UpdateChannelList();
 			self->UpdateMemberList();
+			break;
+		case MI_NOTIFY_SOUND:
+		case MI_NOTIFY_POPUP:
+			SetNotifyOn((int) (long) client == MI_NOTIFY_SOUND ? NOTIFY_SOUND : NOTIFY_POPUP, XmToggleButtonGetState(w));
+			SaveMotifConfig();
 			break;
 		case MI_GUILDS:
 		case MI_CHANNELS:
@@ -841,6 +858,7 @@ void MainWindow::OnImagesChanged()
 	m_messages->ImagesChanged();
 	ImageViewer::ImagesChanged();
 	ReactionPicker::ImagesChanged();
+	Notifier::ImagesChanged();
 	if (!m_listRepaintTimer)
 		m_listRepaintTimer = XtAppAddTimeOut(XtWidgetToApplicationContext(m_shell), 100, ListRepaintCB, this);
 }

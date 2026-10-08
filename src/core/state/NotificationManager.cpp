@@ -23,6 +23,7 @@ void NotificationManager::OnMessageCreate(Snowflake guildID, Snowflake channelID
 	notif.m_author = msg.m_author;
 	notif.m_contents = msg.m_message;
 	notif.m_avatarLnk = msg.m_avatar;
+	notif.m_authorID = msg.m_author_snowflake;
 	notif.m_sourceGuild = guildID;
 	notif.m_sourceChannel = channelID;
 	notif.m_sourceMessage = msg.m_snowflake;

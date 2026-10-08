@@ -10,6 +10,8 @@
 static int g_textSize = 0;
 static bool g_paneShown[PANE_COUNT] = { true, true, true };
 static const char* const g_paneKeys[PANE_COUNT] = { "servers", "channels", "members" };
+static bool g_notify[NOTIFY_COUNT] = { true, true };
+static const char* const g_notifyKeys[NOTIFY_COUNT] = { "notifysound", "notifypopup" };
 static Snowflake g_lastGuild = 0, g_lastChannel = 0;
 static bool g_haveLast = false;
 static Palette g_palette = {
@@ -91,6 +93,9 @@ void LoadMotifConfig()
 			for (int p = 0; p < PANE_COUNT; p++)
 				if (!strcmp(key, g_paneKeys[p]))
 					g_paneShown[p] = atoi(val) != 0;
+			for (int k = 0; k < NOTIFY_COUNT; k++)
+				if (!strcmp(key, g_notifyKeys[k]))
+					g_notify[k] = atoi(val) != 0;
 			if (!strcmp(key, "lastserver")) {
 				g_lastGuild = strtoull(val, NULL, 10);
 				g_haveLast = true;
@@ -113,6 +118,8 @@ void SaveMotifConfig()
 	fprintf(f, "textsize = %d\n", GetTextSize());
 	for (int p = 0; p < PANE_COUNT; p++)
 		fprintf(f, "%s = %d\n", g_paneKeys[p], g_paneShown[p] ? 1 : 0);
+	for (int k = 0; k < NOTIFY_COUNT; k++)
+		fprintf(f, "%s = %d\n", g_notifyKeys[k], g_notify[k] ? 1 : 0);
 	if (g_haveLast) {
 		fprintf(f, "lastserver = %llu\n", (unsigned long long) g_lastGuild);
 		fprintf(f, "lastchannel = %llu\n", (unsigned long long) g_lastChannel);
@@ -142,6 +149,16 @@ bool IsPaneShown(Pane p)
 void SetPaneShown(Pane p, bool shown)
 {
 	g_paneShown[p] = shown;
+}
+
+bool IsNotifyOn(Notify n)
+{
+	return g_notify[n];
+}
+
+void SetNotifyOn(Notify n, bool on)
+{
+	g_notify[n] = on;
 }
 
 void GetLastChannel(Snowflake& guild, Snowflake& channel)

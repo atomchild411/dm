@@ -29,6 +29,7 @@
 #include "QrLogin.hpp"
 #include "MainWindow.hpp"
 #include "MessageView.hpp"
+#include "Notifier.hpp"
 #include "Perf.hpp"
 #include "Theme.hpp"
 
@@ -179,6 +180,14 @@ public:
 	}
 	void RequestQuit() override {
 		g_bQuit = true;
+	}
+	// a mention or a direct message: a sound, and a popup if the window
+	// is not in front
+	void OnNotification() override {
+		Notifier::OnNotification();
+	}
+	bool IsWindowFocused() override {
+		return Notifier::IsFocused();
 	}
 	bool IsWindowMinimized() override {
 		return GetMainWindow()->IsIconic();
@@ -366,6 +375,8 @@ static void LoadDemo()
 	GetMainWindow()->GetMessageView()->SetChannel(0, chan);
 	GetMainWindow()->ShowDemoLists();
 	GetMainWindow()->SetStatus("Demo: sample messages, not connected.");
+	if (getenv("DM_TEST_NOTIFY"))
+		XtAppAddTimeOut(g_app, 5000, [](XtPointer, XtIntervalId*) { Notifier::Test(); }, NULL);
 }
 
 // Size limits of the caches, in megabytes: name's value, else def.
@@ -550,6 +561,7 @@ int main(int argc, char** argv)
 	}
 
 	new MainWindow(g_toplevel, g_pixelFormat);
+	Notifier::Init(g_toplevel, g_pixelFormat);
 	ImageCache::SetChangedCallback([] { GetMainWindow()->OnImagesChanged(); });
 
 	Atom wmDelete = XmInternAtom(dpy, (char*) "WM_DELETE_WINDOW", False);

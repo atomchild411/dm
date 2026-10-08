@@ -12,6 +12,7 @@ struct Notification
 	std::string m_author;
 	std::string m_contents;
 	std::string m_avatarLnk;
+	Snowflake m_authorID = 0;
 	time_t m_timeReceived = 0;
 	Snowflake m_sourceGuild = 0, m_sourceChannel = 0, m_sourceMessage = 0;
 	bool m_bRead = false;
