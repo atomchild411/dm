@@ -345,12 +345,13 @@ static void LoadDemo()
 		}
 		if (sm.author == 1002 && sm.minutesAgo == 12) {
 			Attachment a;
-			a.m_fileName = "transparency.png";
-			a.m_size = 226933;
-			a.m_width = 800;
-			a.m_height = 600;
-			a.m_contentType = ContentType::PNG;
-			a.m_proxyUrl = a.m_actualUrl = "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png";
+			// WebP: pictures from anywhere but Discord's servers must be
+			a.m_fileName = "rose.webp";
+			a.m_size = 81836;
+			a.m_width = 400;
+			a.m_height = 301;
+			a.m_contentType = ContentType::WEBP;
+			a.m_proxyUrl = a.m_actualUrl = "https://www.gstatic.com/webp/gallery3/1_webp_ll.webp";
 			a.UpdatePreviewSize();
 			m.m_attachments.push_back(a);
 		}

@@ -26,10 +26,7 @@ A Discord server about this client can be joined here: https://discord.gg/cEDjgD
 
 ## Screenshots
 
-![Windows 11 screenshot](doc/ss_11.png)
-![Windows XP screenshot](doc/ss_xp.png)
-![Windows 95 screenshot](doc/ss_95.png)
-![Windows NT 3.1 screenshot](doc/ss_nt31.png)
+![IRIX screenshot: the Motif client in demo mode on the 4Dwm desktop](doc/ss_irix.png)
 
 ## Minimum System Requirements
 
