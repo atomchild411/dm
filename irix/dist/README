@@ -74,7 +74,7 @@ Speed:   DM_PERF=1 prints how often and how long its drawing and network
          already on screen.
 
 Source, and how it was built: https://github.com/atomchild411/dm
-(branch irix; irix/dist has this package's recipe).
+(irix/dist has this package's recipe).
 
 Licenses: licenses/ -- Discord Messenger is MIT licensed.  Linked in:
 OpenSSL (Apache License 2.0), LLVM's libc++ (Apache License 2.0 with LLVM
