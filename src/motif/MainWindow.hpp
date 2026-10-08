@@ -40,6 +40,10 @@ public:
 	void UpdateHeader();
 	// Shows and hides the server, channel and member lists as View says.
 	void ApplyPanes();
+	// The next message sent replies to this one (a bar above the editor
+	// says so, with Cancel); CancelReply takes that back.
+	void BeginReply(Snowflake message, const std::string& author);
+	void CancelReply();
 	void UpdateTitle();
 
 	void OnTyping(Snowflake user, Snowflake guild, Snowflake channel, time_t when);
@@ -81,6 +85,9 @@ private:
 	IconList* m_members;
 	XtIntervalId m_listRepaintTimer = 0;
 	XtIntervalId m_listUpdateTimer = 0;
+	Widget m_replyBar = nullptr, m_replyLabel = nullptr;
+	Snowflake m_replyTo = 0;
+	static void CancelReplyCB(Widget, XtPointer, XtPointer);
 	int m_pendingLists = 0;
 
 

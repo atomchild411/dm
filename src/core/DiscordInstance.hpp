@@ -467,6 +467,8 @@ public:
 
 	// Request a message to be unpinned.
 	void RequestUnpinMessage(Snowflake chan, Snowflake msg);
+	// Adds the user's reaction to a message, or takes it away.
+	void RequestReaction(Snowflake chan, Snowflake msg, const Reaction& emoji, bool add);
 
 	// Request to leave a guild.
 	void RequestLeaveGuild(Snowflake guild);
@@ -535,6 +537,11 @@ private:
 	void HandleREADY_SUPPLEMENTAL(nlohmann::json& j);
 	void HandleMESSAGE_CREATE(nlohmann::json& j);
 	void HandleMESSAGE_DELETE(nlohmann::json& j);
+	void HandleMESSAGE_REACTION_ADD(nlohmann::json& j);
+	void HandleMESSAGE_REACTION_REMOVE(nlohmann::json& j);
+	void HandleMESSAGE_REACTION_REMOVE_ALL(nlohmann::json& j);
+	void HandleMESSAGE_REACTION_REMOVE_EMOJI(nlohmann::json& j);
+	void ChangeReactions(nlohmann::json& data, int delta, bool all, bool wholeEmoji);
 	void HandleMESSAGE_UPDATE(nlohmann::json& j);
 	void HandleMESSAGE_ACK(nlohmann::json& j);
 	void HandleUSER_GUILD_SETTINGS_UPDATE(nlohmann::json& j);

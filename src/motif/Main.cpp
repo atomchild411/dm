@@ -347,6 +347,17 @@ static void LoadDemo()
 			e.m_imageHeight = 368;
 			m.m_embeds.push_back(e);
 		}
+		// reactions on a few, one of them the user's
+		if (sm.author == 1005 || sm.author == 1003) {
+			const char* emoji[] = { "\xf0\x9f\x98\x82", "\xf0\x9f\x91\x8d", "\xe2\x9d\xa4\xef\xb8\x8f" };
+			for (int k = 0; k < (sm.author == 1005 ? 3 : 1); k++) {
+				Reaction r;
+				r.m_emojiName = emoji[k];
+				r.m_count = k + 1;
+				r.m_bMe = k == 1;
+				m.m_reactions.push_back(r);
+			}
+		}
 		GetMessageCache()->AddMessage(chan, m);
 	}
 	GetMainWindow()->GetMessageView()->SetChannel(0, chan);

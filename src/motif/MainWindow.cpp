@@ -172,6 +172,27 @@ MainWindow::MainWindow(Widget toplevel, const PixelFormat& fmt)
 	XtAddCallback(m_editor, XmNactivateCallback, SendCB, this);
 	XtAddCallback(m_editor, XmNvalueChangedCallback, EditorChangedCB, this);
 
+	// "Replying to ...": shown above the editor while a reply is being written
+	m_replyBar = XtVaCreateWidget("replyBar", xmFormWidgetClass, m_form,
+		XmNbottomAttachment, XmATTACH_WIDGET,
+		XmNbottomWidget, XtParent(m_editor),
+		XmNbottomOffset, 4,
+		NULL);
+	Widget cancelReply = XtVaCreateManagedWidget("Cancel", xmPushButtonWidgetClass, m_replyBar,
+		XmNtopAttachment, XmATTACH_FORM,
+		XmNbottomAttachment, XmATTACH_FORM,
+		XmNrightAttachment, XmATTACH_FORM,
+		NULL);
+	XtAddCallback(cancelReply, XmNactivateCallback, CancelReplyCB, this);
+	m_replyLabel = XtVaCreateManagedWidget("replyLabel", xmLabelWidgetClass, m_replyBar,
+		XmNtopAttachment, XmATTACH_FORM,
+		XmNbottomAttachment, XmATTACH_FORM,
+		XmNleftAttachment, XmATTACH_FORM,
+		XmNrightAttachment, XmATTACH_WIDGET,
+		XmNrightWidget, cancelReply,
+		XmNalignment, XmALIGNMENT_BEGINNING,
+		NULL);
+
 	m_messages = new MessageView(m_form, fmt);
 	XtVaSetValues(m_messages->GetWidget(),
 		XmNtopAttachment, XmATTACH_WIDGET,
@@ -325,14 +346,14 @@ void MainWindow::ApplyPanes()
 		XtVaSetValues(m_channelList, XmNleftAttachment, XmATTACH_FORM, XmNleftOffset, 4, NULL);
 
 	Widget left = channels ? m_channelList : guilds ? m_guildList : NULL;
-	Widget middle[] = { m_header, m_messages->GetWidget(), XtParent(m_editor), m_status };
+	Widget middle[] = { m_header, m_messages->GetWidget(), XtParent(m_editor), m_status, m_replyBar };
 	for (Widget mw : middle) {
 		if (left)
 			XtVaSetValues(mw, XmNleftAttachment, XmATTACH_WIDGET, XmNleftWidget, left, XmNleftOffset, 6, NULL);
 		else
 			XtVaSetValues(mw, XmNleftAttachment, XmATTACH_FORM, XmNleftOffset, 4, NULL);
 	}
-	Widget right[] = { m_header, m_messages->GetWidget(), m_sendButton, m_status };
+	Widget right[] = { m_header, m_messages->GetWidget(), m_sendButton, m_status, m_replyBar };
 	for (Widget rw : right) {
 		if (members)
 			XtVaSetValues(rw, XmNrightAttachment, XmATTACH_WIDGET, XmNrightWidget, m_memberPane, XmNrightOffset, 6, NULL);
@@ -343,6 +364,34 @@ void MainWindow::ApplyPanes()
 	for (auto& p : panes)
 		if (!p.shown)
 			XtUnmanageChild(p.w);
+}
+
+void MainWindow::BeginReply(Snowflake message, const std::string& author)
+{
+	m_replyTo = message;
+	XmString xs = MakeXmString("Replying to " + author);
+	XtVaSetValues(m_replyLabel, XmNlabelString, xs, NULL);
+	XmStringFree(xs);
+	// shown first, then the messages made to end above it (see ApplyPanes)
+	if (!XtIsManaged(m_replyBar)) {
+		XtManageChild(m_replyBar);
+		XtVaSetValues(m_messages->GetWidget(), XmNbottomWidget, m_replyBar, NULL);
+	}
+	XmProcessTraversal(m_editor, XmTRAVERSE_CURRENT);
+}
+
+void MainWindow::CancelReply()
+{
+	m_replyTo = 0;
+	if (XtIsManaged(m_replyBar)) {
+		XtVaSetValues(m_messages->GetWidget(), XmNbottomWidget, XtParent(m_editor), NULL);
+		XtUnmanageChild(m_replyBar);
+	}
+}
+
+void MainWindow::CancelReplyCB(Widget, XtPointer client, XtPointer)
+{
+	((MainWindow*) client)->CancelReply();
 }
 
 void MainWindow::ShowError(const std::string& text)
@@ -543,6 +592,7 @@ void MainWindow::UpdateChannelList()
 void MainWindow::UpdateSelectedChannel()
 {
 	DiscordInstance* pInst = GetDiscordInstance();
+	CancelReply(); // a reply belongs to its channel
 	UpdateChannelList();
 	UpdateHeader();
 	UpdateTitle();
@@ -883,7 +933,8 @@ void MainWindow::SendFromEditor()
 
 	std::string utf8 = Latin1ToUtf8(text);
 	Snowflake tempSf = 0;
-	if (pInst->SendMessageToCurrentChannel(utf8, tempSf)) {
+	if (pInst->SendMessageToCurrentChannel(utf8, tempSf, m_replyTo)) {
+		CancelReply();
 		XmTextSetString(m_editor, (char*) "");
 		m_lastTypingSent = 0;
 		m_messages->ScrollToBottom();

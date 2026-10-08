@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cctype>
 #include <nlohmann/json.h>
 #include <boost/base64/base64.hpp>
 
@@ -1578,6 +1580,35 @@ void DiscordInstance::RequestPinMessage(Snowflake chan, Snowflake msg)
 	);
 }
 
+void DiscordInstance::RequestReaction(Snowflake chan, Snowflake msg, const Reaction& emoji, bool add)
+{
+	// a Unicode emoji as itself, a custom one as name:id; percent-encoded
+	std::string e = emoji.m_emojiId ? emoji.m_emojiName + ":" + std::to_string(emoji.m_emojiId) : emoji.m_emojiName;
+	std::string enc;
+	static const char hex[] = "0123456789ABCDEF";
+	for (unsigned char c : e) {
+		if (isalnum(c) || c == '_' || c == '-' || c == '.' || c == '~' || c == ':')
+			enc += (char) c;
+		else {
+			enc += '%';
+			enc += hex[c >> 4];
+			enc += hex[c & 15];
+		}
+	}
+	std::string url = GetDiscordAPI() + "channels/" + std::to_string(chan) + "/messages/" + std::to_string(msg) +
+		"/reactions/" + enc + "/@me";
+
+	GetHTTPClient()->PerformRequest(
+		true,
+		add ? NetRequest::PUT : NetRequest::DELETE_,
+		url,
+		0,
+		DiscordRequest::REACTION,
+		"",
+		m_token
+	);
+}
+
 void DiscordInstance::RequestUnpinMessage(Snowflake chan, Snowflake msg)
 {
 	std::string url = GetDiscordAPI() + "channels/" + std::to_string(chan) + "/messages/pins/" + std::to_string(msg);
@@ -2319,6 +2350,10 @@ void DiscordInstance::InitDispatchFunctions()
 	DECL(MESSAGE_CREATE);
 	DECL(MESSAGE_UPDATE);
 	DECL(MESSAGE_DELETE);
+	DECL(MESSAGE_REACTION_ADD);
+	DECL(MESSAGE_REACTION_REMOVE);
+	DECL(MESSAGE_REACTION_REMOVE_ALL);
+	DECL(MESSAGE_REACTION_REMOVE_EMOJI);
 	DECL(MESSAGE_ACK);
 	DECL(USER_SETTINGS_PROTO_UPDATE);
 	DECL(USER_GUILD_SETTINGS_UPDATE);
@@ -2705,6 +2740,76 @@ void DiscordInstance::HandleMESSAGE_DELETE(Json& j)
 		return;
 
 	GetFrontend()->OnDeleteMessage(messageId);
+}
+
+void DiscordInstance::HandleMESSAGE_REACTION_ADD(Json& j)
+{
+	ChangeReactions(j["d"], 1, false, false);
+}
+
+void DiscordInstance::HandleMESSAGE_REACTION_REMOVE(Json& j)
+{
+	ChangeReactions(j["d"], -1, false, false);
+}
+
+void DiscordInstance::HandleMESSAGE_REACTION_REMOVE_ALL(Json& j)
+{
+	ChangeReactions(j["d"], 0, true, false);
+}
+
+void DiscordInstance::HandleMESSAGE_REACTION_REMOVE_EMOJI(Json& j)
+{
+	ChangeReactions(j["d"], 0, false, true);
+}
+
+// A reaction came or went: the loaded message (if it is) gets new counts.
+void DiscordInstance::ChangeReactions(Json& data, int delta, bool all, bool wholeEmoji)
+{
+	Snowflake channelId = GetSnowflake(data, "channel_id");
+	Snowflake messageId = GetSnowflake(data, "message_id");
+	MessagePtr old = GetMessageCache()->GetLoadedMessage(channelId, messageId);
+	if (!old)
+		return;
+	Message msg = *old;
+	std::vector<Reaction> rs = msg.m_reactions;
+
+	Reaction r;
+	Json& emoji = data["emoji"];
+	if (emoji.is_object()) {
+		r.m_emojiId = emoji["id"].is_string() ? GetSnowflake(emoji, "id") : 0;
+		r.m_emojiName = GetFieldSafe(emoji, "name");
+		r.m_bAnimated = GetFieldSafeBool(emoji, "animated", false);
+	}
+	bool mine = data.contains("user_id") && GetSnowflake(data, "user_id") == m_mySnowflake;
+
+	auto it = std::find_if(rs.begin(), rs.end(), [&](const Reaction& e) { return e.SameEmoji(r); });
+	if (all)
+		rs.clear();
+	else if (wholeEmoji) {
+		if (it != rs.end())
+			rs.erase(it);
+	}
+	else if (delta > 0) {
+		if (it == rs.end()) {
+			r.m_count = 1;
+			r.m_bMe = mine;
+			rs.push_back(r);
+		}
+		else {
+			it->m_count++;
+			if (mine)
+				it->m_bMe = true;
+		}
+	}
+	else if (it != rs.end()) {
+		if (mine)
+			it->m_bMe = false;
+		if (--it->m_count <= 0)
+			rs.erase(it);
+	}
+
+	msg.SetReactions(rs);
+	GetFrontend()->OnUpdateMessage(channelId, msg);
 }
 
 void DiscordInstance::HandleMESSAGE_ACK(nlohmann::json& j)

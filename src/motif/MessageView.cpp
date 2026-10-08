@@ -7,6 +7,8 @@
 #include <ctime>
 
 #include <Xm/DrawingA.h>
+#include <Xm/PushB.h>
+#include <Xm/RowColumn.h>
 #include <Xm/Form.h>
 #include <Xm/ScrollBar.h>
 
@@ -16,6 +18,8 @@
 #include "Theme.hpp"
 #include "ImageCache.hpp"
 #include "ImageViewer.hpp"
+#include "MainWindow.hpp"
+#include "ReactionPicker.hpp"
 #include "Perf.hpp"
 
 // Geometry, in pixels
@@ -47,6 +51,7 @@ struct MessageView::ItemExtra
 	std::vector<Pic> attachPics;       // one per attachment; empty url: a file line
 	std::vector<Pic> embedThumbs;      // one per embed; empty url: none
 	std::vector<Pic> embedImages;      // one per embed; empty url: none
+	std::vector<Rect> reactionRects;   // one pill per reaction
 	int attachTop = 0;
 	int replyTop = 0;
 	int headerTop = 0;
@@ -505,6 +510,25 @@ void MessageView::LayoutItem(Item& item, int width)
 			ex.links.push_back(ItemLink{ Rect(TEXT_X, top, std::min(right, TEXT_X + 520), top + 40), em.m_url });
 	}
 
+	// reactions: a pill each (the emoji and how many), wrapping
+	ex.reactionRects.clear();
+	if (!m.m_reactions.empty()) {
+		int rpx = m_ctx.px - 1;
+		int ph = ReactionHeight(rpx);
+		int x = TEXT_X;
+		y += 6;
+		for (auto& r : m.m_reactions) {
+			int w = ReactionWidth(r, rpx);
+			if (x > TEXT_X && x + w > right) {
+				x = TEXT_X;
+				y += ph + 4;
+			}
+			ex.reactionRects.push_back(Rect(x, y, x + w, y + ph));
+			x += w + 4;
+		}
+		y += ph;
+	}
+
 	y += 2;
 	item.height = y;
 }
@@ -592,6 +616,7 @@ void MessageView::InputEH(Widget, XtPointer client, XEvent* ev, Boolean*)
 	int step = 3 * (Fonts::LineHeight(FS_REGULAR, self->m_ctx.px) + 2);
 	switch (ev->xbutton.button) {
 		case Button1: self->OnClick(ev->xbutton.x, ev->xbutton.y); break;
+		case Button3: self->ShowMenu(ev->xbutton); break;
 		case Button4: self->SetScroll(self->m_scrollY - step); break;
 		case Button5: self->SetScroll(self->m_scrollY + step); break;
 	}
@@ -600,6 +625,72 @@ void MessageView::InputEH(Widget, XtPointer client, XEvent* ev, Boolean*)
 static bool Inside(const Rect& r, int x, int y)
 {
 	return x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+}
+
+int AddVisualArgs(Arg* args, int n); // Main.cpp
+
+enum { MENU_REACT = 1, MENU_REPLY };
+
+// Right-click on a message: react to it, or reply.
+void MessageView::ShowMenu(XButtonEvent& ev)
+{
+	int cy = ev.y + m_scrollY;
+	m_menuMessage.reset();
+	for (auto& it : m_items) {
+		if (cy < it.y || cy >= it.y + it.height)
+			continue;
+		const Message& m = *it.msg;
+		bool real = !m.IsLoadGap() && m.m_type != MessageType::CHANNEL_HEADER &&
+			m.m_type != MessageType::SENDING_MESSAGE && m.m_type != MessageType::UNSENT_MESSAGE &&
+			m.m_snowflake > 1;
+		if (real)
+			m_menuMessage = it.msg;
+		break;
+	}
+	if (!m_menuMessage)
+		return;
+	m_menuX = ev.x_root;
+	m_menuY = ev.y_root;
+
+	if (!m_menu) {
+		Arg args[4];
+		int n = AddVisualArgs(args, 0);
+		m_menu = XmCreatePopupMenu(m_area, (char*) "messageMenu", args, n);
+		struct { const char* label; int id; char mnemonic; } items[] = {
+			{ "Add Reaction...", MENU_REACT, 'A' },
+			{ "Reply", MENU_REPLY, 'R' },
+		};
+		for (auto& item : items) {
+			Widget b = XtVaCreateManagedWidget(item.label, xmPushButtonWidgetClass, m_menu,
+				XmNmnemonic, (KeySym) item.mnemonic, XmNuserData, (XtPointer) (long) item.id, NULL);
+			XtAddCallback(b, XmNactivateCallback, MenuCB, this);
+		}
+	}
+	XmMenuPosition(m_menu, &ev);
+	XtManageChild(m_menu);
+}
+
+void MessageView::MenuCB(Widget w, XtPointer client, XtPointer)
+{
+	MessageView* self = (MessageView*) client;
+	XtPointer data = nullptr;
+	XtVaGetValues(w, XmNuserData, &data, NULL);
+	MessagePtr msg = self->m_menuMessage;
+	if (!msg)
+		return;
+	Snowflake channel = self->m_channel, id = msg->m_snowflake;
+	switch ((int) (long) data) {
+		case MENU_REACT:
+			ReactionPicker::Show(self->m_area, self->m_fmt, self->m_menuX, self->m_menuY, [channel, id](const std::string& emoji) {
+				Reaction r;
+				r.m_emojiName = emoji;
+				GetDiscordInstance()->RequestReaction(channel, id, r, true);
+			});
+			break;
+		case MENU_REPLY:
+			GetMainWindow()->BeginReply(id, msg->m_author);
+			break;
+	}
 }
 
 void MessageView::OnClick(int x, int y)
@@ -620,6 +711,16 @@ void MessageView::OnClick(int x, int y)
 				return;
 			}
 		}
+		// a reaction: the user's own taken away, another added
+		const Message& m = *it.msg;
+		for (size_t i = 0; i < m.m_reactions.size() && i < it.extra->reactionRects.size(); i++) {
+			if (Inside(it.extra->reactionRects[i], x, iy)) {
+				const Reaction& r = m.m_reactions[i];
+				GetDiscordInstance()->RequestReaction(m_channel, m.m_snowflake, r, !r.m_bMe);
+				return;
+			}
+		}
+
 		// a picture opens in the image viewer
 		const std::vector<ItemExtra::Pic>* pics[] = { &it.extra->attachPics, &it.extra->embedImages, &it.extra->embedThumbs };
 		for (auto* list : pics) {
@@ -658,6 +759,20 @@ void MessageView::RequestVisibleGaps()
 }
 
 Rgb RoleColor(Snowflake user, Snowflake guild); // MainWindow.cpp
+
+// A reaction pill: padding, the emoji, a gap, the count, padding.
+static const int PILL_PAD = 7;
+
+int MessageView::ReactionHeight(int px)
+{
+	return Fonts::LineHeight(FS_REGULAR, px) + 8;
+}
+
+int MessageView::ReactionWidth(const Reaction& r, int px)
+{
+	int emoji = r.m_emojiId ? ReactionHeight(px) - 8 : Fonts::Measure(r.m_emojiName, FS_REGULAR, px);
+	return PILL_PAD + emoji + 5 + Fonts::Measure(std::to_string(r.m_count), FS_BOLD, px) + PILL_PAD;
+}
 
 static Rgb AvatarColor(Snowflake sf)
 {
@@ -827,6 +942,31 @@ void MessageView::PaintItem(Item& item, int top)
 		x += nameW;
 		Fonts::Draw(c, x + 8, ay + asc + 2, "(" + FormatSize(att.m_size) + ")", FS_REGULAR, m_ctx.px - 3, m_ctx.muted);
 		ay += lh;
+	}
+
+	// reactions; the user's own stand out
+	int rpx = m_ctx.px - 1;
+	for (size_t i = 0; i < m.m_reactions.size() && i < ex.reactionRects.size(); i++)
+	{
+		const Reaction& r = m.m_reactions[i];
+		const Rect& rc = ex.reactionRects[i];
+		int x = rc.left, y = top + rc.top, w = rc.Width(), h = rc.Height();
+		c.FillRounded(x, y, w, h, 7, r.m_bMe ? m_ctx.link : m_ctx.codeFrame);
+		c.FillRounded(x + 1, y + 1, w - 2, h - 2, 6, r.m_bMe ? LerpRgb(m_ctx.bg, m_ctx.link, 18, 100) : m_ctx.codeBg);
+		int base = y + (h + Fonts::Ascent(FS_REGULAR, rpx) - Fonts::Descent(FS_REGULAR, rpx)) / 2;
+		int ex2 = x + PILL_PAD;
+		if (r.m_emojiId) {
+			int s = h - 8;
+			const Image* img = ImageCache::Get(ImageCache::EMOJI, "", r.m_emojiId, s, s);
+			if (img)
+				c.BlendArgb(ex2 + (s - img->w) / 2, y + 4 + (s - img->h) / 2, img->px.data(), img->w, img->h, img->w);
+			else
+				c.FillRounded(ex2, y + 4, s, s, 3, LerpRgb(m_ctx.bg, m_ctx.muted, 1, 3));
+			ex2 += s;
+		}
+		else
+			ex2 += Fonts::Draw(c, ex2, base, r.m_emojiName, FS_REGULAR, rpx, m_ctx.fg);
+		Fonts::Draw(c, ex2 + 5, base, std::to_string(r.m_count), FS_BOLD, rpx, r.m_bMe ? m_ctx.link : m_ctx.muted);
 	}
 
 	// embeds

@@ -70,6 +70,8 @@ private:
 	static void InputEH(Widget, XtPointer, XEvent*, Boolean*);
 	static void VisibilityEH(Widget, XtPointer, XEvent*, Boolean*);
 	static void GraphicsExposeEH(Widget, XtPointer, XEvent*, Boolean*);
+	static void MenuCB(Widget, XtPointer, XtPointer);
+	void ShowMenu(XButtonEvent& ev);
 
 	// Brings the items up to date with the cache; true when the only change
 	// is messages added after the last one.
@@ -90,6 +92,8 @@ private:
 	void DrawPicture(const Rect& r, const std::string& url, int top, const std::string& label);
 	static void RepaintTimerCB(XtPointer, XtIntervalId*);
 	int ContentWidth() const;
+	static int ReactionHeight(int px);
+	static int ReactionWidth(const Reaction& r, int px);
 
 	Widget m_form, m_area, m_scroll;
 	const PixelFormat& m_fmt;
@@ -105,6 +109,11 @@ private:
 	int m_viewW = 1, m_viewH = 1;
 	bool m_stickToBottom = true;
 	XtIntervalId m_repaintTimer = 0;
+
+	// the right-click menu: Add Reaction, Reply
+	Widget m_menu = nullptr;
+	MessagePtr m_menuMessage;
+	int m_menuX = 0, m_menuY = 0; // where it was asked for, on the screen
 
 	// what the canvas (and the window) show
 	bool m_canvasValid = false;   // the view as of m_paintedScrollY

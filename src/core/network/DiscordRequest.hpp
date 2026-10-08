@@ -25,5 +25,6 @@ namespace DiscordRequest
 		ACK_BULK,
 		USER_NOTE,
 		SET_USER_NOTE,
+		REACTION,
 	};
 };

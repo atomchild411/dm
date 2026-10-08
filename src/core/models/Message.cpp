@@ -253,6 +253,29 @@ void Message::Load(Json& data, Snowflake guild)
 	m_rawJson = merged.dump();
 }
 
+void Message::SetReactions(const std::vector<Reaction>& reactions)
+{
+	m_reactions = reactions;
+	if (!s_keepJson || m_rawJson.empty())
+		return;
+	Json kept = Json::parse(m_rawJson, nullptr, false);
+	if (!kept.is_object())
+		return;
+	Json list = Json::array();
+	for (auto& r : reactions) {
+		Json e;
+		e["emoji"]["id"] = r.m_emojiId ? Json(std::to_string(r.m_emojiId)) : Json(nullptr);
+		e["emoji"]["name"] = r.m_emojiName;
+		if (r.m_bAnimated)
+			e["emoji"]["animated"] = true;
+		e["count"] = r.m_count;
+		e["me"] = r.m_bMe;
+		list.push_back(e);
+	}
+	kept["reactions"] = list;
+	m_rawJson = kept.dump();
+}
+
 void Message::LoadFields(Json& data, Snowflake guild)
 {
 	Json& author = data["author"];
@@ -341,6 +364,26 @@ void Message::LoadFields(Json& data, Snowflake guild)
 
 	if (data.contains("poll"))
 		m_pMessagePoll = std::make_shared<MessagePoll>(data["poll"]);
+
+	// (an update without them leaves them as they were)
+	if (data["reactions"].is_array())
+	{
+		m_reactions.clear();
+		for (auto& rd : data["reactions"])
+		{
+			Reaction r;
+			Json& emoji = rd["emoji"];
+			if (emoji.is_object()) {
+				r.m_emojiId = emoji["id"].is_string() ? GetSnowflake(emoji, "id") : 0;
+				r.m_emojiName = GetFieldSafe(emoji, "name");
+				r.m_bAnimated = GetFieldSafeBool(emoji, "animated", false);
+			}
+			r.m_count = rd["count"].is_number() ? (int) rd["count"] : 0;
+			r.m_bMe = GetFieldSafeBool(rd, "me", false);
+			if (r.m_count > 0 && (r.m_emojiId || !r.m_emojiName.empty()))
+				m_reactions.push_back(r);
+		}
+	}
 
 	Json& msgRef = data["message_reference"];
 	Json& refdMsg = data["referenced_message"];

@@ -88,6 +88,20 @@ struct RichEmbed
 	void Load(nlohmann::json& j);
 };
 
+// One emoji's reactions on a message.
+struct Reaction
+{
+	Snowflake m_emojiId = 0;     // a custom emoji; 0 for a Unicode one
+	std::string m_emojiName;     // the Unicode emoji, or the custom one's name
+	bool m_bAnimated = false;
+	int m_count = 0;
+	bool m_bMe = false;          // one of them is the user's
+
+	bool SameEmoji(const Reaction& o) const {
+		return m_emojiId ? m_emojiId == o.m_emojiId : (!o.m_emojiId && m_emojiName == o.m_emojiName);
+	}
+};
+
 class Message
 {
 public:
@@ -103,6 +117,9 @@ public:
 	// message cache stores history on disk (s_keepJson), empty otherwise.
 	std::string m_rawJson;
 	static bool s_keepJson;
+	std::vector<Reaction> m_reactions;
+	// Changes the reactions (a gateway event), in the kept JSON too.
+	void SetReactions(const std::vector<Reaction>& reactions);
 	std::vector<Attachment> m_attachments;
 	std::string m_dateFull = "";
 	std::string m_dateCompact = "";
