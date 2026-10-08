@@ -297,9 +297,33 @@ static void SaveHistory()
 	Timers::After(30000, SaveHistory);
 }
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <climits>
+
+// In an app bundle (Contents/MacOS/the program): the fonts are in
+// Contents/Resources/fonts, unless DM_FONT_DIR names others.
+static void UseBundleResources()
+{
+	char path[PATH_MAX], real[PATH_MAX];
+	uint32_t size = sizeof path;
+	if (_NSGetExecutablePath(path, &size) != 0 || !realpath(path, real))
+		return;
+	std::string dir = real;
+	dir = dir.substr(0, dir.rfind('/'));          // Contents/MacOS
+	std::string res = dir.substr(0, dir.rfind('/')) + "/Resources";
+	struct stat st;
+	if (!getenv("DM_FONT_DIR") && stat((res + "/fonts").c_str(), &st) == 0)
+		setenv("DM_FONT_DIR", (res + "/fonts").c_str(), 1);
+}
+#endif
+
 int main(int argc, char** argv)
 {
 	bool demo = argc > 1 && !strcmp(argv[1], "--demo");
+#if defined(__APPLE__)
+	UseBundleResources();
+#endif
 
 	srand((unsigned) time(NULL));
 	MainQueue::Init();

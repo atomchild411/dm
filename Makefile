@@ -22,6 +22,9 @@ X_LIBS      ?= -lXm -lXt -lXext -lX11
 FT_CFLAGS   ?= -I$(PREFIX_DEPS)/include/freetype2
 FT_LIBS     ?= -lfreetype
 GLFW_PREFIX ?= $(PREFIX_DEPS)
+# (a static GLFW on macOS: $(GLFW_PREFIX)/lib/libglfw3.a and the frameworks
+# Cocoa, IOKit, CoreFoundation and QuartzCore)
+GLFW_LIBS   ?= -L$(GLFW_PREFIX)/lib -lglfw
 UNAME       := $(shell uname -s)
 
 BUILD_DIR ?= build-unix/$(FRONTEND)
@@ -80,7 +83,7 @@ CXXFLAGS += -Ideps/imgui -Ideps/imgui/backends -I$(GLFW_PREFIX)/include -DIMGUI_
 IMGUI_FILES := deps/imgui/imgui.cpp deps/imgui/imgui_draw.cpp deps/imgui/imgui_tables.cpp \
 	deps/imgui/imgui_widgets.cpp deps/imgui/backends/imgui_impl_glfw.cpp \
 	deps/imgui/backends/imgui_impl_opengl3.cpp
-LIBS += -L$(GLFW_PREFIX)/lib -lglfw
+LIBS += $(GLFW_LIBS)
 ifeq ($(UNAME),Darwin)
 LIBS += -framework OpenGL
 else
