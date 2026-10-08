@@ -18,6 +18,7 @@
 #include "Fonts.hpp"
 #include "shared/ImageCache.hpp"
 #include "shared/Shortcodes.hpp"
+#include "shared/EmojiChoices.hpp"
 #include "Theme.hpp"
 
 int AddVisualArgs(Arg* args, int n); // Main.cpp
@@ -235,32 +236,11 @@ void ReactionPicker::Show(Widget parent, const PixelFormat& fmt, const char* tit
 	p->picked = picked;
 
 	// the common ones, then the server's own (usable ones, by name)
-	for (int i = 0; i < Shortcodes::PICKER_COUNT; i++) {
-		Reaction r;
-		r.m_emojiName = Shortcodes::PickerEmoji(i);
-		p->emoji.push_back(r);
+	for (auto& section : EmojiChoices::For(guild)) {
+		int first = (int) p->emoji.size();
+		p->emoji.insert(p->emoji.end(), section.emoji.begin(), section.emoji.end());
+		AddSection(p, section.title, first, (int) section.emoji.size());
 	}
-	int common = (int) p->emoji.size();
-	std::string server;
-	Guild* pGuild = guild ? GetDiscordInstance()->GetGuild(guild) : nullptr;
-	if (pGuild) {
-		server = pGuild->m_name;
-		std::vector<Reaction> own;
-		for (auto& e : pGuild->m_emoji) {
-			if (!e.second.m_bAvailable || !e.second.m_id)
-				continue;
-			Reaction r;
-			r.m_emojiId = e.second.m_id;
-			r.m_emojiName = e.second.m_name;
-			r.m_bAnimated = e.second.m_bAnimated;
-			own.push_back(r);
-		}
-		std::sort(own.begin(), own.end(), [](const Reaction& a, const Reaction& b) { return a.m_emojiName < b.m_emojiName; });
-		p->emoji.insert(p->emoji.end(), own.begin(), own.end());
-	}
-	AddSection(p, "", 0, common);
-	if ((int) p->emoji.size() > common)
-		AddSection(p, server, common, (int) p->emoji.size() - common);
 
 	int w = COLUMNS * CELL;
 	int h = std::min(p->contentHeight, VISIBLE_ROWS * CELL + HEADER);

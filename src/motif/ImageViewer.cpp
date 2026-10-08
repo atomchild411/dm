@@ -218,14 +218,6 @@ namespace
 		Close();
 	}
 
-	// w x h scaled to fit in maxW x maxH, never enlarged.
-	void Fit(int& w, int& h, int maxW, int maxH)
-	{
-		if (w > maxW) { h = (int) ((long) h * maxW / w); w = maxW; }
-		if (h > maxH) { w = (int) ((long) w * maxH / h); h = maxH; }
-		w = std::max(1, w);
-		h = std::max(1, h);
-	}
 }
 
 void ImageViewer::Show(Widget parent, const PixelFormat& fmt, const Picture& pic)
@@ -240,15 +232,10 @@ void ImageViewer::Show(Widget parent, const PixelFormat& fmt, const Picture& pic
 	// window manager's frame
 	Screen* scr = XtScreen(parent);
 	int maxW = WidthOfScreen(scr) * 9 / 10, maxH = HeightOfScreen(scr) * 9 / 10 - 80;
-	v->w = pic.width > 0 ? pic.width : maxW / 2;
-	v->h = pic.height > 0 ? pic.height : maxH / 2;
-	Fit(v->w, v->h, maxW, maxH);
-	// Discord's media proxy makes the size asked for, so a 4000-pixel photo
-	// is not decoded here at full size
-	v->url = pic.url;
-	if (pic.width > 0 && pic.height > 0 && (v->w != pic.width || v->h != pic.height))
-		v->url += (v->url.find('?') == std::string::npos ? "?" : "&") +
-			std::string("width=") + std::to_string(v->w) + "&height=" + std::to_string(v->h);
+	PictureFetch fetch = FetchFor(pic, maxW, maxH);
+	v->w = fetch.w;
+	v->h = fetch.h;
+	v->url = fetch.url;
 
 	Arg args[8];
 	int n = 0;
