@@ -1,4 +1,4 @@
-# Discord Messenger for IRIX (and other Unix-like systems).
+# Discord Messenger: IRIX (Motif), macOS and Linux (Dear ImGui).
 #
 #   make [FRONTEND=motif|imgui|cli] [CXX=...] [PREFIX_DEPS=...]
 #
