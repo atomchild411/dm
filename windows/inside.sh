@@ -126,7 +126,7 @@ for arch in "$@"; do
 	pkg=DiscordMessenger-$VERSION-windows-$name
 	d=$W/pkg/$pkg
 	rm -rf $d && mkdir -p $d/fonts $d/licenses
-	cp $W/out-$arch/dm-imgui.exe "$d/Discord Messenger.exe"
+	cp $W/out-$arch/dm-imgui.exe $d/DiscordMessenger.exe
 	for f in Inter-Regular.ttf Inter-SemiBold.ttf Inter-Italic.ttf Inter-SemiBoldItalic.ttf \
 		DejaVuSans.ttf DejaVuSans-Bold.ttf DejaVuSans-Oblique.ttf DejaVuSans-BoldOblique.ttf \
 		DejaVuSansMono.ttf DejaVuSansMono-Bold.ttf NotoColorEmoji.ttf; do

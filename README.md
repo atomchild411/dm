@@ -101,7 +101,7 @@ describes logging in, every feature and the environment variables it reads.
 
 There are no releases yet: build the client as below. On macOS that gives you
 `bin/Discord Messenger.app`, which you can copy to `/Applications`; on Windows a zip to unpack
-anywhere, with `Discord Messenger.exe` and its `fonts` folder.
+anywhere, with `DiscordMessenger.exe` and its `fonts` folder.
 
 ## Building
 

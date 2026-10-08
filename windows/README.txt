@@ -4,7 +4,7 @@ Discord Messenger for Windows
 Discord Messenger is a messenger application designed to be compatible
 with Discord.  https://github.com/atomchild411/dm
 
-Run "Discord Messenger.exe".  Keep the "fonts" folder beside it.
+Run DiscordMessenger.exe.  Keep the "fonts" folder beside it.
 
 Logging in: scan the QR code with the Discord app on your phone, log in on
 discord.com's own page (email and password) in a window of the program, or
