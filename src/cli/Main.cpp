@@ -9,6 +9,9 @@
 //   dm-cli --connect wss://host/
 //                     open a websocket to that address and print whether
 //                     TLS let it through (a wrong host name must not).
+//   dm-cli --get https://host/path
+//                     fetch that address over HTTPS and print the status
+//                     (a certificate that is not trusted must fail).
 
 #include <cerrno>
 #include <cstdio>
@@ -33,6 +36,7 @@ static DiscordInstance* g_pDiscordInstance;
 static bool g_bQuit;
 static bool g_bProbe;
 static const char* g_connectUrl; // --connect: one websocket, no session
+static const char* g_getUrl;     // --get: one HTTPS request, no session
 
 DiscordInstance* GetDiscordInstance()
 {
@@ -209,8 +213,10 @@ int main(int argc, char** argv)
 			g_bProbe = true;
 		else if (!strcmp(argv[i], "--connect") && i + 1 < argc)
 			g_connectUrl = argv[++i];
+		else if (!strcmp(argv[i], "--get") && i + 1 < argc)
+			g_getUrl = argv[++i];
 		else {
-			fprintf(stderr, "usage: %s [--probe | --connect wss://host/]\n", argv[0]);
+			fprintf(stderr, "usage: %s [--probe | --connect wss://host/ | --get https://host/path]\n", argv[0]);
 			return 2;
 		}
 	}
@@ -224,7 +230,7 @@ int main(int argc, char** argv)
 	g_pHTTPClient = new NetworkerThreadManager;
 	GetLocalSettings()->Load();
 
-	if (g_connectUrl)
+	if (g_connectUrl || g_getUrl)
 		g_bProbe = true; // no token is read or sent
 	std::string token = g_bProbe ? "" : GetLocalSettings()->GetToken();
 	const char* envToken = getenv("DM_TOKEN");
@@ -235,12 +241,22 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	printf("* CA bundle: %s\n", GetCACertFile().empty() ? "(OpenSSL default)" : GetCACertFile().c_str());
+	printf("* trusting: %s\n", TrustDescription().c_str());
 
 	g_pHTTPClient->Init();
 	GetWebsocketClient()->Init();
 	g_pDiscordInstance = new DiscordInstance(token);
-	if (g_connectUrl) {
+	if (g_getUrl) {
+		printf("* fetching %s\n", g_getUrl);
+		g_pHTTPClient->PerformRequest(true, NetRequest::GET, g_getUrl, 0, 0, "", "", "", [](NetRequest* req) {
+			if (req->result < 0)
+				printf("* could not fetch it: %s\n", req->response.c_str());
+			else
+				printf("* HTTP %d, %zu bytes\n", req->result, req->response.size());
+			MainQueue::Post([] { g_bQuit = true; });
+		});
+	}
+	else if (g_connectUrl) {
 		printf("* connecting to %s\n", g_connectUrl);
 		if (GetWebsocketClient()->Connect(g_connectUrl) < 0)
 			return 1;

@@ -55,14 +55,6 @@ std::string GetCACertFile()
 	return s_file;
 }
 
-// Used by the gateway's TLS context (core/network/WebsocketClient.cpp).
-void LoadSystemCertsOnPosix(SSL_CTX* ctx)
-{
-	std::string file = GetCACertFile();
-	if (!file.empty())
-		SSL_CTX_load_verify_locations(ctx, file.c_str(), nullptr);
-}
-
 int NetRequest::Priority() const
 {
 	int prio = 0;
@@ -214,9 +206,14 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 	Client client(hostName);
 
 	client.enable_server_certificate_verification(GetLocalSettings()->EnableTLSVerification());
+#if defined(__APPLE__)
+	if (GetLocalSettings()->EnableTLSVerification())
+		UseSystemTrust(client.ssl_context());
+#else
 	std::string caFile = GetCACertFile();
 	if (!caFile.empty())
 		client.set_ca_cert_path(caFile.c_str());
+#endif
 
 	// Follow redirects (CDN links), but never with the login token: httplib
 	// sends the same headers to wherever a redirect points, http:// included.

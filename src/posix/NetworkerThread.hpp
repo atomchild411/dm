@@ -95,3 +95,11 @@ private:
 // The CA bundle used to verify servers: DM_CA_FILE, the one installed with
 // the program, or the system's.  Empty if none was found.
 std::string GetCACertFile();
+
+// Has the servers' certificates checked as the system wants it (SystemTrust.cpp):
+// on macOS by the Security framework, elsewhere against GetCACertFile().
+struct ssl_ctx_st;
+void UseSystemTrust(struct ssl_ctx_st* ctx);
+
+// What UseSystemTrust trusts, for logs.
+std::string TrustDescription();

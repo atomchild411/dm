@@ -96,6 +96,11 @@ LIBS += -lGL -ldl
 endif
 endif
 
+# macOS checks the servers' certificates itself (src/posix/SystemTrust.cpp)
+ifeq ($(UNAME),Darwin)
+LIBS += -framework Security -framework CoreFoundation
+endif
+
 CXXFILES := \
 	$(shell find src/core src/posix src/shared src/$(FRONTEND) -type f -name '*.cpp') \
 	$(IMGUI_FILES) \

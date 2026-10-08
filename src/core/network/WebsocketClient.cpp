@@ -9,7 +9,7 @@
 
 static WebsocketClient g_WSCSingleton;
 
-void LoadSystemCertsOnPosix(SSL_CTX* ctx);
+void UseSystemTrust(SSL_CTX* ctx); // posix/SystemTrust.cpp
 
 WebsocketClient* GetWebsocketClient()
 {
@@ -147,7 +147,7 @@ AsioSslContextSharedPtr WebsocketClient::HandleTLSInit(websocketpp::connection_h
 		if (GetLocalSettings()->EnableTLSVerification())
 		{
 			ctx->set_default_verify_paths();
-			LoadSystemCertsOnPosix(ctx->native_handle());
+			UseSystemTrust(ctx->native_handle());
 		}
 	}
 	catch (std::exception& e)
