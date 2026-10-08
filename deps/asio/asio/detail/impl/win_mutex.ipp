@@ -17,12 +17,8 @@
 
 #include "asio/detail/config.hpp"
 
-
 #if defined(ASIO_WINDOWS)
 
-#ifdef _WIN32
-#include "ri/reimpl.hpp"
-#endif
 #include "asio/detail/throw_error.hpp"
 #include "asio/detail/win_mutex.hpp"
 #include "asio/error.hpp"
@@ -51,9 +47,8 @@ int win_mutex::do_init()
   if (!::InitializeCriticalSectionEx(&crit_section_, 0, 0))
     return ::GetLastError();
 # else
-  if (!ri::InitializeCriticalSectionAndSpinCount(&crit_section_, 0x80000000))
-    // just initialize it normally
-    ::InitializeCriticalSection(&crit_section_);
+  if (!::InitializeCriticalSectionAndSpinCount(&crit_section_, 0x80000000))
+    return ::GetLastError();
 # endif
   return 0;
 #else
@@ -65,9 +60,8 @@ int win_mutex::do_init()
     if (!::InitializeCriticalSectionEx(&crit_section_, 0, 0))
       return ::GetLastError();
 # else
-    if (!ri::InitializeCriticalSectionAndSpinCount(&crit_section_, 0x80000000))
-      // just initialize it normally
-      ::InitializeCriticalSection(&crit_section_);
+    if (!::InitializeCriticalSectionAndSpinCount(&crit_section_, 0x80000000))
+      return ::GetLastError();
 # endif
   }
   __except(GetExceptionCode() == STATUS_NO_MEMORY

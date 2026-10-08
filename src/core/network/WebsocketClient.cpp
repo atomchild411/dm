@@ -9,11 +9,7 @@
 
 static WebsocketClient g_WSCSingleton;
 
-#ifdef _WIN32
-void LoadSystemCertsOnWindows(SSL_CTX* ctx);
-#else
 void LoadSystemCertsOnPosix(SSL_CTX* ctx);
-#endif
 
 WebsocketClient* GetWebsocketClient()
 {
@@ -73,18 +69,11 @@ void WSConnectionMetadata::OnFail(WSClient* c, websocketpp::connection_hdl hdl)
 
 	bool mayRetry = timedOut;
 	switch (sysError) {
-#ifdef _WIN32
-		case WSAHOST_NOT_FOUND:
-		case WSATRY_AGAIN:
-		case WSAEDISCON:
-		case WSAETIMEDOUT:
-#else
 		case ETIMEDOUT:
 		case ECONNRESET:
 		case ECONNREFUSED:
 		case ENETUNREACH:
 		case EHOSTUNREACH:
-#endif
 			mayRetry = true;
 	}
 	switch (socketError) {
@@ -158,11 +147,7 @@ AsioSslContextSharedPtr WebsocketClient::HandleTLSInit(websocketpp::connection_h
 		if (GetLocalSettings()->EnableTLSVerification())
 		{
 			ctx->set_default_verify_paths();
-#ifdef _WIN32
-			LoadSystemCertsOnWindows(ctx->native_handle());
-#else
 			LoadSystemCertsOnPosix(ctx->native_handle());
-#endif
 		}
 	}
 	catch (std::exception& e)

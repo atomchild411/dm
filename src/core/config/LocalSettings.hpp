@@ -113,22 +113,6 @@ public:
 	void SetDiscordCDN(const std::string& str) {
 		m_discordCdn = str;
 	}
-	void SetCheckUpdates(bool b) {
-		m_bCheckUpdates = b;
-		m_bAskToCheckUpdates = false;
-	}
-	bool CheckUpdates() const {
-		if (!m_bCheckUpdates)
-			return false;
-
-		return time(NULL) >= m_remindUpdatesOn;
-	}
-	bool CheckUpdatesOption() const {
-		return m_bCheckUpdates;
-	}
-	bool AskToCheckUpdates() const {
-		return m_bAskToCheckUpdates;
-	}
 	bool EnableTLSVerification() const {
 		return m_bEnableTLSVerification;
 	}
@@ -141,7 +125,6 @@ public:
 	void SetAddExtraHeaders(bool b) {
 		m_bAddExtraHeaders = b;
 	}
-	void StopUpdateCheckTemporarily();
 	bool DisableFormatting() const {
 		return m_bDisableFormatting;
 	}
@@ -243,8 +226,6 @@ private:
 	bool m_bMinimizeToNotif = true;
 	bool m_bMaximized = false;
 	bool m_bIsFirstStart = false;
-	bool m_bCheckUpdates = false;
-	bool m_bAskToCheckUpdates = true;
 	bool m_bEnableTLSVerification = true;
 	bool m_bDisableFormatting = false;
 	bool m_bShowScrollBarOnGuildList = false;
@@ -258,7 +239,6 @@ private:
 	bool m_bUse12HourTime = false;
 	bool m_bShowBlockedMessages = false;
 	bool m_bUseDoubleBuffering = false;
-	time_t m_remindUpdatesOn = 0;
 	int m_width = 1000;
 	int m_height = 700;
 	int m_userScale = 1000;

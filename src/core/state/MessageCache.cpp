@@ -7,13 +7,11 @@
 #include <cstdio>
 #include <set>
 #include <vector>
-#ifndef _WIN32
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <utime.h>
 #include <sys/stat.h>
-#endif
 
 constexpr int MESSAGES_PER_REQUEST = 50;
 
@@ -78,7 +76,6 @@ std::string MessageCache::CachedFile(Snowflake channel) const
 	return m_diskDir + "/" + std::to_string(channel) + ".json";
 }
 
-#ifndef _WIN32
 
 void MessageCache::LoadCachedChannel(Snowflake channel, Snowflake guild)
 {
@@ -191,14 +188,6 @@ void MessageCache::ClearDiskCache()
 			remove((m_diskDir + "/" + name).c_str());
 }
 
-#else
-
-void MessageCache::LoadCachedChannel(Snowflake, Snowflake) {}
-void MessageCache::SaveDirty() {}
-void MessageCache::TrimDisk() {}
-void MessageCache::ClearDiskCache() {}
-
-#endif
 
 bool MessageCache::IsMessageLoaded(Snowflake channel, Snowflake message)
 {

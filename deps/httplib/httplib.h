@@ -8,17 +8,6 @@
 #ifndef CPPHTTPLIB_HTTPLIB_H
 #define CPPHTTPLIB_HTTPLIB_H
 
-#ifdef _WIN32
-#include "ri/resock2.hpp"
-#endif
-
-extern int g_latestSSLError; // HACK - To debug an "SSL connection failed" issue.
-
-#ifdef MINGW_SPECIFIC_HACKS // iProgramInCpp
-#define _REMOVE_IPV6
-#define HCRYPTPROV_LEGACY HCRYPTPROV
-#endif
-
 #define CPPHTTPLIB_VERSION "0.11.4"
 
 /*
@@ -107,8 +96,8 @@ extern int g_latestSSLError; // HACK - To debug an "SSL connection failed" issue
 
 #ifndef CPPHTTPLIB_THREAD_POOL_COUNT
 #define CPPHTTPLIB_THREAD_POOL_COUNT                                           \
-  ((std::max)(8u, L_thread::hardware_concurrency() > 0                      \
-                      ? L_thread::hardware_concurrency() - 1                \
+  ((std::max)(8u, std::thread::hardware_concurrency() > 0                      \
+                      ? std::thread::hardware_concurrency() - 1                \
                       : 0))
 #endif
 
@@ -167,61 +156,12 @@ using ssize_t = long;
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#ifdef MINGW_SPECIFIC_HACKS
-
-// gotta do this crap to avoid importing those functions and making W2K not work
-#include "asio/detail/socket_ops.hpp"
-
-//__attribute__((always_inline))
-static int hl__getaddrinfo(const char* pNodeName, const char* pServiceName, const struct addrinfo* pHints, struct addrinfo** pResult)
-{
-    asio::error_code ec;
-    ec = asio::detail::socket_ops::getaddrinfo(pNodeName, pServiceName, *pHints, pResult, ec);
-    return ec.value();
-}
-
-//__attribute__((always_inline))
-static int hl__getnameinfo(const struct sockaddr* sa, socklen_t sl, char* nb, DWORD nbs, char* sb, DWORD sbs, INT fl)
-{
-    asio::error_code ec;
-    ec = asio::detail::socket_ops::sync_getnameinfo((const void*)sa, (size_t)sl, nb, (size_t)nbs, sb, (size_t)sbs, fl, ec);
-    return ec.value();
-}
-
-//__attribute__((always_inline))
-static void hl__freeaddrinfo(struct addrinfo* ai)
-{
-    asio::detail::socket_ops::freeaddrinfo(ai);
-}
-
-#define GET_ADDR_INFO  hl__getaddrinfo
-#define GET_NAME_INFO  hl__getnameinfo
-#define FREE_ADDR_INFO hl__freeaddrinfo
-
-#else
-    
-#define GET_ADDR_INFO getaddrinfo
-#define GET_NAME_INFO getnameinfo
-#define FREE_ADDR_INFO freeaddrinfo
-
-#endif
-
 #ifndef WSA_FLAG_NO_HANDLE_INHERIT
 #define WSA_FLAG_NO_HANDLE_INHERIT 0x80
 #endif
 
 #ifndef strcasecmp
-
-#ifdef MINGW_SPECIFIC_HACKS // iProgram
-#define strcasecmp MinGW_strcasecmp
-static int strcasecmp(const char* s1, const char* s2) {
-    while (tolower(*s1) == tolower(*s2) && *s1 != 0) s1++, s2++;
-    return *s1 - *s2;
-}
-#else
 #define strcasecmp _stricmp
-#endif // MINGW_SPECIFIC_HACKS
-
 #endif // strcasecmp
 
 using socket_t = SOCKET;
@@ -258,18 +198,13 @@ using socket_t = int;
 #endif
 #endif //_WIN32
 
-#ifndef GET_ADDR_INFO // not Windows
-#define GET_ADDR_INFO getaddrinfo
-#define GET_NAME_INFO getnameinfo
-#define FREE_ADDR_INFO freeaddrinfo
-#endif
-
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cassert>
 #include <cctype>
 #include <climits>
+#include <condition_variable>
 #include <cstring>
 #include <errno.h>
 #include <fcntl.h>
@@ -280,17 +215,18 @@ using socket_t = int;
 #include <list>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <random>
 #include <regex>
 #include <set>
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
+#include <thread>
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
 #ifdef _WIN32
 #include <wincrypt.h>
-#include "ri/recrypt.hpp"
 
 // these are defined in wincrypt.h and it breaks compilation if BoringSSL is
 // used
@@ -339,64 +275,10 @@ using socket_t = int;
 #include <brotli/encode.h>
 #endif
 
-#ifdef MINGW_SPECIFIC_HACKS
-#include <iprog/mutex.hpp>
-#include <iprog/thread.hpp>
-#include <iprog/call_once.hpp>
-#include <iprog/lock_guard.hpp>
-#include <iprog/unique_lock.hpp>
-#include <iprog/condition_variable.hpp>
-#else
-#include <condition_variable>
-#include <mutex>
-#include <thread>
-#endif
-
 /*
  * Declaration
  */
 namespace httplib {
-
-#ifdef MINGW_SPECIFIC_HACKS
-using L_mutex = iprog::mutex;
-using L_thread = iprog::thread;
-using L_once_flag = iprog::once_flag;
-using L_this_thread = iprog::this_thread;
-using L_recursive_mutex = iprog::recursive_mutex;
-using L_condition_variable = iprog::condition_variable;
-
-template<typename M>
-using L_lock_guard = typename iprog::lock_guard<M>;
-
-template<typename M>
-using L_unique_lock = typename iprog::unique_lock<M>;
-
-template<class Callable, class... Args>
-void L_call_once(L_once_flag& once, Callable&& f, Args&&... args) {
-    iprog::call_once(once, f, std::forward(args)...);
-}
-
-#else
-
-using L_mutex = std::mutex;
-using L_thread = std::thread;
-using L_once_flag = std::once_flag;
-using L_recursive_mutex = std::recursive_mutex;
-using L_condition_variable = std::condition_variable;
-
-namespace L_this_thread = std::this_thread;
-
-template<typename M>
-using L_lock_guard = typename std::lock_guard<M>;
-
-template<typename M>
-using L_unique_lock = typename std::unique_lock<M>;
-
-template<class Callable, class... Args>
-void L_call_once(L_once_flag& once, Callable&& f, Args&&... args) {
-    std::call_once(once, f, std::forward(args)...);
-}
-#endif
 
 namespace detail {
 
@@ -681,7 +563,7 @@ public:
 
   void enqueue(std::function<void()> fn) override {
     {
-      L_unique_lock<L_mutex> lock(mutex_);
+      std::unique_lock<std::mutex> lock(mutex_);
       jobs_.push_back(std::move(fn));
     }
 
@@ -691,7 +573,7 @@ public:
   void shutdown() override {
     // Stop all worker threads...
     {
-      L_unique_lock<L_mutex> lock(mutex_);
+      std::unique_lock<std::mutex> lock(mutex_);
       shutdown_ = true;
     }
 
@@ -711,7 +593,7 @@ private:
       for (;;) {
         std::function<void()> fn;
         {
-          L_unique_lock<L_mutex> lock(pool_.mutex_);
+          std::unique_lock<std::mutex> lock(pool_.mutex_);
 
           pool_.cond_.wait(
               lock, [&] { return !pool_.jobs_.empty() || pool_.shutdown_; });
@@ -731,13 +613,13 @@ private:
   };
   friend struct worker;
 
-  std::vector<L_thread> threads_;
+  std::vector<std::thread> threads_;
   std::list<std::function<void()>> jobs_;
 
   bool shutdown_;
 
-  L_condition_variable cond_;
-  L_mutex mutex_;
+  std::condition_variable cond_;
+  std::mutex mutex_;
 };
 
 using Logger = std::function<void(const Request &, const Response &)>;
@@ -1248,12 +1130,12 @@ protected:
 
   // Current open socket
   Socket socket_;
-  mutable L_mutex socket_mutex_;
-  L_recursive_mutex request_mutex_;
+  mutable std::mutex socket_mutex_;
+  std::recursive_mutex request_mutex_;
 
   // These are all protected under socket_mutex
   size_t socket_requests_in_flight_ = 0;
-  L_thread::id socket_requests_are_from_thread_ = L_thread::id();
+  std::thread::id socket_requests_are_from_thread_ = std::thread::id();
   bool socket_should_be_closed_when_request_is_done_ = false;
 
   // Hostname-IP map
@@ -1617,7 +1499,7 @@ private:
   bool process_and_close_socket(socket_t sock) override;
 
   SSL_CTX *ctx_;
-  L_mutex ctx_mutex_;
+  std::mutex ctx_mutex_;
 };
 
 class SSLClient : public ClientImpl {
@@ -1664,8 +1546,8 @@ private:
   bool check_host_name(const char *pattern, size_t pattern_len) const;
 
   SSL_CTX *ctx_;
-  L_mutex ctx_mutex_;
-  L_once_flag initialize_cert_;
+  std::mutex ctx_mutex_;
+  std::once_flag initialize_cert_;
 
   std::vector<std::string> host_components_;
 
@@ -2165,7 +2047,7 @@ inline std::string base64_encode(const std::string &in) {
 }
 
 inline bool is_file(const std::string &path) {
-#if defined(_WIN32) && !defined(MINGW_SPECIFIC_HACKS)
+#ifdef _WIN32
   return _access_s(path.c_str(), 0) == 0;
 #else
   struct stat st;
@@ -2481,7 +2363,7 @@ inline ssize_t select_read(socket_t sock, time_t sec, time_t usec) {
   if (sock >= FD_SETSIZE) { return 1; }
 #endif
 
-  fd_set fds{};
+  fd_set fds;
   FD_ZERO(&fds);
   FD_SET(sock, &fds);
 
@@ -2509,7 +2391,7 @@ inline ssize_t select_write(socket_t sock, time_t sec, time_t usec) {
   if (sock >= FD_SETSIZE) { return 1; }
 #endif
 
-  fd_set fds{};
+  fd_set fds;
   FD_ZERO(&fds);
   FD_SET(sock, &fds);
 
@@ -2657,7 +2539,7 @@ inline bool keep_alive(socket_t sock, time_t keep_alive_timeout_sec) {
       auto duration = duration_cast<milliseconds>(current - start);
       auto timeout = keep_alive_timeout_sec * 1000;
       if (duration.count() > timeout) { return false; }
-      L_this_thread::sleep_for(std::chrono::milliseconds(1));
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
     } else {
       return true;
     }
@@ -2771,7 +2653,7 @@ socket_t create_socket(const std::string &host, const std::string &ip, int port,
 
   auto service = std::to_string(port);
 
-  if (GET_ADDR_INFO(node, service.c_str(), &hints, &result)) {
+  if (getaddrinfo(node, service.c_str(), &hints, &result)) {
 #if defined __linux__ && !defined __ANDROID__
     res_init();
 #endif
@@ -2782,8 +2664,8 @@ socket_t create_socket(const std::string &host, const std::string &ip, int port,
     // Create a socket
 #ifdef _WIN32
     auto sock =
-        ri::WSASocketA(rp->ai_family, rp->ai_socktype, rp->ai_protocol, nullptr, 0,
-                       WSA_FLAG_NO_HANDLE_INHERIT | WSA_FLAG_OVERLAPPED);
+        WSASocketW(rp->ai_family, rp->ai_socktype, rp->ai_protocol, nullptr, 0,
+                   WSA_FLAG_NO_HANDLE_INHERIT | WSA_FLAG_OVERLAPPED);
     /**
      * Since the WSA_FLAG_NO_HANDLE_INHERIT is only supported on Windows 7 SP1
      * and above the socket creation fails on older Windows Systems.
@@ -2804,7 +2686,7 @@ socket_t create_socket(const std::string &host, const std::string &ip, int port,
 #else
     auto sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 #endif
-	if (sock == INVALID_SOCKET) { continue; }
+    if (sock == INVALID_SOCKET) { continue; }
 
 #ifndef _WIN32
     if (fcntl(sock, F_SETFD, FD_CLOEXEC) == -1) { continue; }
@@ -2819,30 +2701,26 @@ socket_t create_socket(const std::string &host, const std::string &ip, int port,
     if (socket_options) { socket_options(sock); }
 
     if (rp->ai_family == AF_INET6) {
-#ifndef _REMOVE_IPV6
       int no = 0;
       setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char *>(&no),
                  sizeof(no));
-#endif
     }
 
     // bind or connect
     if (bind_or_connect(sock, *rp)) {
-      FREE_ADDR_INFO(result);
+      freeaddrinfo(result);
       return sock;
     }
 
     close_socket(sock);
   }
 
-  FREE_ADDR_INFO(result);
+  freeaddrinfo(result);
   return INVALID_SOCKET;
 }
 
 inline void set_nonblocking(socket_t sock, bool nonblocking) {
 #ifdef _WIN32
-  if (!ri::SupportsWSARecv())
-    nonblocking = false;
   auto flags = nonblocking ? 1UL : 0UL;
   ioctlsocket(sock, FIONBIO, &flags);
 #else
@@ -2869,7 +2747,7 @@ inline bool bind_ip_address(socket_t sock, const std::string &host) {
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = 0;
 
-  if (GET_ADDR_INFO(host.c_str(), "0", &hints, &result)) { return false; }
+  if (getaddrinfo(host.c_str(), "0", &hints, &result)) { return false; }
 
   auto ret = false;
   for (auto rp = result; rp; rp = rp->ai_next) {
@@ -2880,7 +2758,7 @@ inline bool bind_ip_address(socket_t sock, const std::string &host) {
     }
   }
 
-  FREE_ADDR_INFO(result);
+  freeaddrinfo(result);
   return ret;
 }
 
@@ -2951,7 +2829,7 @@ inline socket_t create_client_socket(
 
         auto ret =
             ::connect(sock2, ai.ai_addr, static_cast<socklen_t>(ai.ai_addrlen));
-        
+
         if (ret < 0) {
           if (is_connection_error()) {
             error = Error::Connection;
@@ -3017,9 +2895,9 @@ inline bool get_ip_and_port(const struct sockaddr_storage &addr,
   }
 
   std::array<char, NI_MAXHOST> ipstr{};
-  if (GET_NAME_INFO(reinterpret_cast<const struct sockaddr *>(&addr), addr_len,
-                    ipstr.data(), static_cast<socklen_t>(ipstr.size()), nullptr,
-                    0, NI_NUMERICHOST)) {
+  if (getnameinfo(reinterpret_cast<const struct sockaddr *>(&addr), addr_len,
+                  ipstr.data(), static_cast<socklen_t>(ipstr.size()), nullptr,
+                  0, NI_NUMERICHOST)) {
     return false;
   }
 
@@ -3222,8 +3100,6 @@ inline bool can_compress_content_type(const std::string &content_type) {
 
   auto tag = str2tag(content_type);
 
-#pragma warning(push)
-#pragma warning(disable : 4307)
   switch (tag) {
   case "image/svg+xml"_t:
   case "application/javascript"_t:
@@ -3231,7 +3107,6 @@ inline bool can_compress_content_type(const std::string &content_type) {
   case "application/xml"_t:
   case "application/protobuf"_t:
   case "application/xhtml+xml"_t: return true;
-#pragma warning(pop)
 
   default:
     return !content_type.rfind("text/", 0) && tag != "text/event-stream"_t;
@@ -4517,12 +4392,12 @@ inline std::string SHA_512(const std::string &s) {
 // NOTE: This code came up with the following stackoverflow post:
 // https://stackoverflow.com/questions/9507184/can-openssl-on-windows-use-the-system-certificate-store
 inline bool load_system_certs_on_windows(X509_STORE *store) {
-  auto hStore = ri::CertOpenSystemStoreA((HCRYPTPROV_LEGACY)NULL, "ROOT");
+  auto hStore = CertOpenSystemStoreW((HCRYPTPROV_LEGACY)NULL, L"ROOT");
 
   if (!hStore) { return false; }
 
   PCCERT_CONTEXT pContext = NULL;
-  while ((pContext = ri::CertEnumCertificatesInStore(hStore, pContext)) !=
+  while ((pContext = CertEnumCertificatesInStore(hStore, pContext)) !=
          nullptr) {
     auto encoded_cert =
         static_cast<const unsigned char *>(pContext->pbCertEncoded);
@@ -4534,8 +4409,8 @@ inline bool load_system_certs_on_windows(X509_STORE *store) {
     }
   }
 
-  ri::CertFreeCertificateContext(pContext);
-  ri::CertCloseStore(hStore, 0);
+  CertFreeCertificateContext(pContext);
+  CertCloseStore(hStore, 0);
 
   return true;
 }
@@ -4545,7 +4420,7 @@ class WSInit {
 public:
   WSInit() {
     WSADATA wsaData;
-    if (WSAStartup(ri::GetWSVersion(), &wsaData) == 0) is_valid_ = true;
+    if (WSAStartup(0x0002, &wsaData) == 0) is_valid_ = true;
   }
 
   ~WSInit() {
@@ -4700,7 +4575,7 @@ inline void hosted_at(const std::string &hostname,
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = 0;
 
-  if (GET_ADDR_INFO(hostname.c_str(), nullptr, &hints, &result)) {
+  if (getaddrinfo(hostname.c_str(), nullptr, &hints, &result)) {
 #if defined __linux__ && !defined __ANDROID__
     res_init();
 #endif
@@ -4718,7 +4593,7 @@ inline void hosted_at(const std::string &hostname,
     }
   }
 
-  FREE_ADDR_INFO(result);
+  freeaddrinfo(result);
 }
 
 inline std::string append_query_params(const std::string &path,
@@ -5681,7 +5556,7 @@ inline bool Server::listen_internal() {
         if (errno == EMFILE) {
           // The per-process limit of open file descriptors has been reached.
           // Try to accept new connections after a short sleep.
-          L_this_thread::sleep_for(std::chrono::milliseconds(1));
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
           continue;
         } else if (errno == EINTR || errno == EAGAIN) {
           continue;
@@ -6124,7 +5999,7 @@ inline ClientImpl::ClientImpl(const std::string &host, int port,
       client_cert_path_(client_cert_path), client_key_path_(client_key_path) {}
 
 inline ClientImpl::~ClientImpl() {
-  L_lock_guard<L_mutex> guard(socket_mutex_);
+  std::lock_guard<std::mutex> guard(socket_mutex_);
   shutdown_socket(socket_);
   close_socket(socket_);
 }
@@ -6209,7 +6084,7 @@ inline void ClientImpl::shutdown_ssl(Socket & /*socket*/,
   // If there are any requests in flight from threads other than us, then it's
   // a thread-unsafe race because individual ssl* objects are not thread-safe.
   assert(socket_requests_in_flight_ == 0 ||
-         socket_requests_are_from_thread_ == L_this_thread::get_id());
+         socket_requests_are_from_thread_ == std::this_thread::get_id());
 }
 
 inline void ClientImpl::shutdown_socket(Socket &socket) {
@@ -6225,7 +6100,7 @@ inline void ClientImpl::close_socket(Socket &socket) {
   // suddenly they will be operating on a live socket that is different
   // than the one they intended!
   assert(socket_requests_in_flight_ == 0 ||
-         socket_requests_are_from_thread_ == L_this_thread::get_id());
+         socket_requests_are_from_thread_ == std::this_thread::get_id());
 
   // It is also a bug if this happens while SSL is still active
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
@@ -6273,10 +6148,10 @@ inline bool ClientImpl::read_response_line(Stream &strm, const Request &req,
 }
 
 inline bool ClientImpl::send(Request &req, Response &res, Error &error) {
-  L_lock_guard<L_recursive_mutex> request_mutex_guard(request_mutex_);
+  std::lock_guard<std::recursive_mutex> request_mutex_guard(request_mutex_);
 
   {
-    L_lock_guard<L_mutex> guard(socket_mutex_);
+    std::lock_guard<std::mutex> guard(socket_mutex_);
 
     // Set this to false immediately - if it ever gets set to true by the end of
     // the request, we know another thread instructed us to close the socket.
@@ -6298,7 +6173,7 @@ inline bool ClientImpl::send(Request &req, Response &res, Error &error) {
     }
 
     if (!is_alive) {
-	  if (!create_and_connect_socket(socket_, error)) { return false; }
+      if (!create_and_connect_socket(socket_, error)) { return false; }
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
       // TODO: refactoring
@@ -6320,10 +6195,10 @@ inline bool ClientImpl::send(Request &req, Response &res, Error &error) {
     // anyone else while this request is ongoing, even though we will be
     // releasing the mutex.
     if (socket_requests_in_flight_ > 1) {
-      assert(socket_requests_are_from_thread_ == L_this_thread::get_id());
+      assert(socket_requests_are_from_thread_ == std::this_thread::get_id());
     }
     socket_requests_in_flight_ += 1;
-    socket_requests_are_from_thread_ = L_this_thread::get_id();
+    socket_requests_are_from_thread_ = std::this_thread::get_id();
   }
 
   for (const auto &header : default_headers_) {
@@ -6339,11 +6214,11 @@ inline bool ClientImpl::send(Request &req, Response &res, Error &error) {
 
   // Briefly lock mutex in order to mark that a request is no longer ongoing
   {
-    L_lock_guard<L_mutex> guard(socket_mutex_);
+    std::lock_guard<std::mutex> guard(socket_mutex_);
     socket_requests_in_flight_ -= 1;
     if (socket_requests_in_flight_ <= 0) {
       assert(socket_requests_in_flight_ == 0);
-      socket_requests_are_from_thread_ = L_thread::id();
+      socket_requests_are_from_thread_ = std::thread::id();
     }
 
     if (socket_should_be_closed_when_request_is_done_ || close_connection ||
@@ -6511,7 +6386,7 @@ inline bool ClientImpl::write_content_with_provider(Stream &strm,
     return detail::write_content(strm, req.content_provider_, 0,
                                  req.content_length_, is_shutting_down, error);
   }
-}
+} // namespace httplib
 
 inline bool ClientImpl::write_request(Stream &strm, Request &req,
                                       bool close_connection, Error &error) {
@@ -6811,7 +6686,7 @@ inline bool ClientImpl::process_request(Stream &strm, Request &req,
     // mutex during the process. It would be a bug to call it from a different
     // thread since it's a thread-safety issue to do these things to the socket
     // if another thread is using the socket.
-    L_lock_guard<L_mutex> guard(socket_mutex_);
+    std::lock_guard<std::mutex> guard(socket_mutex_);
     shutdown_ssl(socket_, true);
     shutdown_socket(socket_);
     close_socket(socket_);
@@ -7350,14 +7225,14 @@ inline Result ClientImpl::Options(const std::string &path,
 }
 
 inline size_t ClientImpl::is_socket_open() const {
-  L_lock_guard<L_mutex> guard(socket_mutex_);
+  std::lock_guard<std::mutex> guard(socket_mutex_);
   return socket_.is_open();
 }
 
 inline socket_t ClientImpl::socket() const { return socket_.sock; }
 
 inline void ClientImpl::stop() {
-  L_lock_guard<L_mutex> guard(socket_mutex_);
+  std::lock_guard<std::mutex> guard(socket_mutex_);
 
   // If there is anything ongoing right now, the ONLY thread-safe thing we can
   // do is to shutdown_socket, so that threads using this socket suddenly
@@ -7499,11 +7374,11 @@ inline void ClientImpl::set_logger(Logger logger) {
 namespace detail {
 
 template <typename U, typename V>
-inline SSL *ssl_new(socket_t sock, SSL_CTX *ctx, L_mutex &ctx_mutex,
+inline SSL *ssl_new(socket_t sock, SSL_CTX *ctx, std::mutex &ctx_mutex,
                     U SSL_connect_or_accept, V setup) {
   SSL *ssl = nullptr;
   {
-    L_lock_guard<L_mutex> guard(ctx_mutex);
+    std::lock_guard<std::mutex> guard(ctx_mutex);
     ssl = SSL_new(ctx);
   }
 
@@ -7516,7 +7391,7 @@ inline SSL *ssl_new(socket_t sock, SSL_CTX *ctx, L_mutex &ctx_mutex,
     if (!setup(ssl) || SSL_connect_or_accept(ssl) != 1) {
       SSL_shutdown(ssl);
       {
-        L_lock_guard<L_mutex> guard(ctx_mutex);
+        std::lock_guard<std::mutex> guard(ctx_mutex);
         SSL_free(ssl);
       }
       set_nonblocking(sock, false);
@@ -7529,7 +7404,7 @@ inline SSL *ssl_new(socket_t sock, SSL_CTX *ctx, L_mutex &ctx_mutex,
   return ssl;
 }
 
-inline void ssl_delete(L_mutex &ctx_mutex, SSL *ssl,
+inline void ssl_delete(std::mutex &ctx_mutex, SSL *ssl,
                        bool shutdown_gracefully) {
   // sometimes we may want to skip this to try to avoid SIGPIPE if we know
   // the remote has closed the network connection
@@ -7537,7 +7412,7 @@ inline void ssl_delete(L_mutex &ctx_mutex, SSL *ssl,
   // best-efforts.
   if (shutdown_gracefully) { SSL_shutdown(ssl); }
 
-  L_lock_guard<L_mutex> guard(ctx_mutex);
+  std::lock_guard<std::mutex> guard(ctx_mutex);
   SSL_free(ssl);
 }
 
@@ -7558,8 +7433,6 @@ bool ssl_connect_or_accept_nonblocking(socket_t sock, SSL *ssl,
       break;
     default: break;
     }
-    // To debug an issue, setting a global:
-    g_latestSSLError = err;
     return false;
   }
   return true;
@@ -7640,7 +7513,7 @@ inline ssize_t SSLSocketStream::read(char *ptr, size_t size) {
         if (SSL_pending(ssl_) > 0) {
           return SSL_read(ssl_, ptr, static_cast<int>(size));
         } else if (is_readable()) {
-          L_this_thread::sleep_for(std::chrono::milliseconds(1));
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
           ret = SSL_read(ssl_, ptr, static_cast<int>(size));
           if (ret >= 0) { return ret; }
           err = SSL_get_error(ssl_, ret);
@@ -7671,7 +7544,7 @@ inline ssize_t SSLSocketStream::write(const char *ptr, size_t size) {
       while (--n >= 0 && err == SSL_ERROR_WANT_WRITE) {
 #endif
         if (is_writable()) {
-          L_this_thread::sleep_for(std::chrono::milliseconds(1));
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
           ret = SSL_write(ssl_, ptr, static_cast<int>(handle_size));
           if (ret >= 0) { return ret; }
           err = SSL_get_error(ssl_, ret);
@@ -7953,8 +7826,8 @@ inline bool SSLClient::connect_with_proxy(Socket &socket, Response &res,
 inline bool SSLClient::load_certs() {
   bool ret = true;
 
-  L_call_once(initialize_cert_, [&]() {
-    L_lock_guard<L_mutex> guard(ctx_mutex_);
+  std::call_once(initialize_cert_, [&]() {
+    std::lock_guard<std::mutex> guard(ctx_mutex_);
     if (!ca_cert_file_path_.empty()) {
       if (!SSL_CTX_load_verify_locations(ctx_, ca_cert_file_path_.c_str(),
                                          nullptr)) {
@@ -8169,7 +8042,8 @@ inline bool SSLClient::verify_host_with_common_name(X509 *server_cert) const {
 #else
     char name[BUFSIZ];
     auto name_len = X509_NAME_get_text_by_NID(subject_name, NID_commonName,
-                                               name, sizeof(name));
+                                              name, sizeof(name));
+
     if (name_len != -1) {
       return check_host_name(name, static_cast<size_t>(name_len));
     }

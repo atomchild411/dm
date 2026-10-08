@@ -31,10 +31,8 @@ public:
 	void OnAttachmentFailed(bool bIsProfilePicture, const std::string& additData) override {}
 	void OnRequestDone(NetRequest* pRequest) override;
 	void OnLoadedPins(Snowflake channel, const std::string& data) override {}
-	void OnUpdateAvailable(const std::string& url, const std::string& version) override {}
 	void OnFailedToSendMessage(Snowflake channel, Snowflake message) override {}
 	void OnFailedToUploadFile(const std::string& file, int error) override;
-	void OnFailedToCheckForUpdates(int result, const std::string& response) override {}
 	void OnStartProgress(Snowflake key, const std::string& fileName, bool isUploading) override {}
 	bool OnUpdateProgress(Snowflake key, size_t offset, size_t length) override { return true; }
 	void OnStopProgress(Snowflake key) override {}

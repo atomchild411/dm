@@ -20,10 +20,9 @@
 constexpr size_t REPORT_PROGRESS_EVERY_BYTES = 15360; // arbitrary
 
 // Connection failures are retried this many times, a second apart and then
-// two, before the request fails (the Win32 client asks the user instead).
+// two, before the request fails.
 constexpr int MAX_ATTEMPTS = 3;
 
-int g_latestSSLError = 0; // used by httplib.h
 
 static bool FileExists(const std::string& path)
 {

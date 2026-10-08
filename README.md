@@ -72,7 +72,7 @@ You need:
 After cloning, check out the submodules with `git submodule update --init`. Then:
 
 ```
-make -f Makefile.unix FRONTEND=motif STATIC_DEPS=1 \
+make FRONTEND=motif STATIC_DEPS=1 \
     CXX=mipseb-sgi-irix6.5-clang++ CC=mipseb-sgi-irix6.5-clang \
     PREFIX_DEPS=<prefix> X_CFLAGS=-I<irix>/usr/include \
     X_LIBS='-L<irix>/usr/lib32 -lSgm -lXm -lXt -lX11 -lXext' \
@@ -83,7 +83,7 @@ make -f Makefile.unix FRONTEND=motif STATIC_DEPS=1 \
 
 The program is `bin/dm-motif`. `FRONTEND=cli` builds `dm-cli`, a text client that drives the same
 core without a GUI, for testing a port (`dm-cli --probe` checks HTTPS, TLS and the gateway without
-logging in). The top of `Makefile.unix` lists every setting.
+logging in). The top of the `Makefile` lists every setting.
 
 To make the package, copy the program and the `irix/dist` directory to an IRIX machine and run
 `irix/dist/make-tardist.sh` there; it uses IRIX's `gendist`. The script's comments give its

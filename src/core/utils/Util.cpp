@@ -10,13 +10,8 @@
 
 #include "../Frontend.hpp"
 
-#ifdef _WIN32
-#define PATH_SEP '\\'
-#define PATH_SEP_STR "\\"
-#else
 #define PATH_SEP '/'
 #define PATH_SEP_STR "/"
-#endif
 
 std::string g_BasePath = "";
 std::string g_ProgramNamePath = "";
@@ -402,13 +397,7 @@ time_t ParseTime(const std::string& iso8601)
 
 	// Convert to time_t
 	// XXX timegm on linux
-#ifdef _WIN32
-	extern time_t MakeGMTime(const tm* ptime);
-	time_t t = MakeGMTime(&ptime);
-	//time_t t = _mkgmtime(&ptime);
-#else
 	time_t t = timegm(&ptime);
-#endif
 	return t;
 }
 

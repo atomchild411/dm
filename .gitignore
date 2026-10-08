@@ -1,15 +1,6 @@
 bin/
-obj/
 build/
+build-unix/
 keep/
-*.exe
-*.obj
 *.o
 *.d
-*.tlog
-*.aps
-.vs/
-*.user
-/vs/x64/*
-/vs/DiscordMessenger/x64/**/*
-build-unix/

@@ -150,17 +150,6 @@ bool LocalSettings::Load()
 		m_height = GetFrontend()->GetDefaultHeight();
 	}
 
-	if (j.contains("CheckUpdates")) {
-		m_bCheckUpdates = j["CheckUpdates"];
-		m_bAskToCheckUpdates = false;
-	}
-	else {
-		m_bAskToCheckUpdates = true;
-	}
-
-	if (j.contains("RemindUpdateCheckOn"))
-		m_remindUpdatesOn = (time_t) (long long) j["RemindUpdateCheckOn"];
-
 	if (j.contains("AddExtraHeaders"))
 		m_bAddExtraHeaders = j["AddExtraHeaders"];
 	return true;
@@ -185,12 +174,10 @@ bool LocalSettings::Save()
 	j["StartMinimized"] = m_bStartMinimized;
 	j["MinimizeToNotif"] = m_bMinimizeToNotif;
 	j["Maximized"] = m_bMaximized;
-	j["CheckUpdates"] = m_bCheckUpdates;
 	j["EnableTLSVerification"] = m_bEnableTLSVerification;
 	j["DisableFormatting"] = m_bDisableFormatting;
 	j["ShowScrollBarOnGuildList"] = m_bShowScrollBarOnGuildList;
 	j["CompactMemberList"] = m_bCompactMemberList;
-	j["RemindUpdateCheckOn"] = (long long)(m_remindUpdatesOn);
 	j["ImageBackgroundFileName"] = m_imageBackgroundFileName;
 	j["WatermarkAlignment"] = int(m_imageAlignment);
 	j["UserScale"] = m_userScale;
@@ -220,8 +207,3 @@ bool LocalSettings::CheckTrustedDomain(const std::string& url)
 	return m_trustedDomains.find(domain) != m_trustedDomains.end();
 }
 
-void LocalSettings::StopUpdateCheckTemporarily()
-{
-	// Remind again in 3 days
-	m_remindUpdatesOn = time(NULL) + time_t(3LL * 24 * 60 * 60);
-}

@@ -7,7 +7,7 @@
 #
 # PROGRAM     the Motif client built for n32 MIPS III, everything but IRIX
 #             linked in, DM_DATADIR=/usr/local/lib/discord-messenger
-#             (Makefile.unix FRONTEND=motif STATIC_DEPS=1)
+#             (make FRONTEND=motif STATIC_DEPS=1)
 # CACERT.PEM  Mozilla's roots of trust (pkgsrc security/mozilla-rootcerts:
 #             share/mozilla-rootcerts/cacert.pem)
 # FONTS       a directory with DejaVuSans.ttf, -Bold, -Oblique,

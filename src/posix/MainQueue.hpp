@@ -2,9 +2,9 @@
 
 #include <functional>
 
-// Work handed to the UI thread: what SendMessage and PostMessage to the main
-// window do in the Win32 frontend.  The UI thread watches WakeFd() (with
-// XtAppAddInput, select, ...) and calls Drain() when it becomes readable.
+// Work handed to the UI thread from the network threads.  The UI thread
+// watches WakeFd() (with XtAppAddInput, select, ...) and calls Drain() when
+// it becomes readable.
 namespace MainQueue
 {
 	// Call once, on the UI thread.

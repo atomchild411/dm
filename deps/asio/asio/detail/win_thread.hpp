@@ -22,9 +22,6 @@
   && !defined(UNDER_CE)
 
 #include <cstddef>
-#ifdef _WIN32
-#include "ri/reimpl.hpp"
-#endif
 #include "asio/detail/noncopyable.hpp"
 #include "asio/detail/socket_types.hpp"
 
@@ -47,7 +44,7 @@ class win_thread_base
 public:
   static bool terminate_threads()
   {
-    return ri::InterlockedExchangeAdd(&terminate_threads_, 0) != 0;
+    return ::InterlockedExchangeAdd(&terminate_threads_, 0) != 0;
   }
 
   static void set_terminate_threads(bool b)

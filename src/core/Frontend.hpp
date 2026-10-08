@@ -31,10 +31,8 @@ public:
 	virtual void OnAttachmentFailed(bool bIsProfilePicture, const std::string& additData) = 0;
 	virtual void OnRequestDone(NetRequest* pRequest) = 0;
 	virtual void OnLoadedPins(Snowflake channel, const std::string& data) = 0;
-	virtual void OnUpdateAvailable(const std::string& url, const std::string& version) = 0;
 	virtual void OnFailedToSendMessage(Snowflake channel, Snowflake message) = 0;
 	virtual void OnFailedToUploadFile(const std::string& file, int error) = 0;
-	virtual void OnFailedToCheckForUpdates(int result, const std::string& response) = 0;
 	virtual void OnStartProgress(Snowflake key, const std::string& fileName, bool isUploading) = 0;
 	virtual bool OnUpdateProgress(Snowflake key, size_t offset, size_t length) = 0;
 	virtual void OnStopProgress(Snowflake key) = 0;

@@ -90,7 +90,7 @@ struct Word
 	std::string m_content;
 	std::string m_contentOverride;
 
-	// Interface content. On Windows, a 16-bit wide character version of m_content
+	// Interface content: m_content as the front end draws it
 	String m_ifContent;
 
 	// The rectangle this word will occupy.
