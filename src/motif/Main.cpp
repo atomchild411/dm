@@ -23,7 +23,7 @@
 #include "Canvas.hpp"
 #include "Fonts.hpp"
 #include "shared/ImageCache.hpp"
-#include "AppIcon.hpp"
+#include "shared/AppIcon.hpp"
 #include "Bench.hpp"
 #include "LogonDialog.hpp"
 #include "QrLoginDialog.hpp"

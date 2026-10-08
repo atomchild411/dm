@@ -211,11 +211,11 @@ void MessageList::LayoutItem(Item& item, DrawingContext* ctx, int px, int width)
 {
 	ItemExtra& ex = *item.extra;
 	const Message& m = *item.msg;
-	int right = width - MARGIN;
+	int right = width - m_geo.margin;
 	int y = 0;
 
 	if (!ex.dateSep.empty())
-		y += DATE_SEP;
+		y += m_geo.dateSep;
 
 	if (item.systemLine) {
 		y += m.IsLoadGap() ? 8 : 6;
@@ -225,7 +225,7 @@ void MessageList::LayoutItem(Item& item, DrawingContext* ctx, int px, int width)
 		return;
 	}
 
-	y += item.grouped ? LINE_GAP : GROUP_GAP;
+	y += item.grouped ? m_geo.lineGap : m_geo.groupGap;
 
 	// reply: one small line above the header
 	if (m.IsReply() && !item.grouped) {
@@ -254,7 +254,7 @@ void MessageList::LayoutItem(Item& item, DrawingContext* ctx, int px, int width)
 		GetDiscordInstance()->ResolveLinks(&item.text, item.interactables, m_guild);
 	}
 	if (!item.text.Empty()) {
-		item.text.Layout(ctx, Rect(TEXT_X, y, right, y + 100000));
+		item.text.Layout(ctx, Rect(m_geo.textX, y, right, y + 100000));
 		Rect ext = item.text.GetExtent();
 		y = std::max(y, ext.bottom);
 	}
@@ -268,9 +268,9 @@ void MessageList::LayoutItem(Item& item, DrawingContext* ctx, int px, int width)
 		if (att.IsImage() && att.m_width > 0 && att.m_height > 0) {
 			int w = att.m_previewWidth > 0 ? att.m_previewWidth : att.m_width;
 			int h = att.m_previewHeight > 0 ? att.m_previewHeight : att.m_height;
-			FitBox(w, h, std::min(300, right - TEXT_X), 300);
+			FitBox(w, h, std::min(m_geo.pictureMax, right - m_geo.textX), m_geo.pictureMax);
 			y += 4;
-			Rect r(TEXT_X, y, TEXT_X + w, y + h);
+			Rect r(m_geo.textX, y, m_geo.textX + w, y + h);
 			PictureInfo view;
 			view.url = att.m_proxyUrl;
 			view.width = att.m_width;
@@ -281,8 +281,8 @@ void MessageList::LayoutItem(Item& item, DrawingContext* ctx, int px, int width)
 			y += h + 4;
 			continue;
 		}
-		ex.attachPics.push_back({ Rect(TEXT_X, y, right, y + lh), "", PictureInfo() });
-		ex.links.push_back(Link{ Rect(TEXT_X, y, right, y + lh), att.m_actualUrl });
+		ex.attachPics.push_back({ Rect(m_geo.textX, y, right, y + lh), "", PictureInfo() });
+		ex.links.push_back(Link{ Rect(m_geo.textX, y, right, y + lh), att.m_actualUrl });
 		y += lh;
 	}
 
@@ -296,10 +296,10 @@ void MessageList::LayoutItem(Item& item, DrawingContext* ctx, int px, int width)
 	{
 		y += 4;
 		int top = y;
-		int boxRight = std::min(right, TEXT_X + EMBED_WIDTH);
+		int boxRight = std::min(right, m_geo.textX + m_geo.embedWidth);
 		// a thumbnail sits at the top right, beside the text
 		bool thumb = em.m_bHasThumbnail && !em.m_thumbnailProxiedUrl.empty() && !em.m_bHasImage;
-		int textRight = thumb ? boxRight - THUMB - 12 : boxRight;
+		int textRight = thumb ? boxRight - m_geo.thumb - 12 : boxRight;
 		y += 6;
 		if (!em.m_providerName.empty())
 			y += m_metrics.LineHeight(FS_REGULAR, px - 3) + 2;
@@ -315,14 +315,14 @@ void MessageList::LayoutItem(Item& item, DrawingContext* ctx, int px, int width)
 		if (!body.empty()) {
 			ft.reset(new FormattedText);
 			ft->SetMessage(body);
-			ft->Layout(ctx, Rect(TEXT_X + 12, y, textRight, y + 100000));
+			ft->Layout(ctx, Rect(m_geo.textX + 12, y, textRight, y + 100000));
 			y = std::max(y, ft->GetExtent().bottom);
 		}
 
 		ItemExtra::Pic img, th;
 		if (thumb) {
 			int w = em.m_thumbnailWidth, h = em.m_thumbnailHeight;
-			FitBox(w, h, THUMB, THUMB);
+			FitBox(w, h, m_geo.thumb, m_geo.thumb);
 			th.rect = Rect(boxRight - 8 - w, top + 8, boxRight - 8, top + 8 + h);
 			th.url = PreviewURL(em.m_thumbnailProxiedUrl, w, h, em.m_thumbnailWidth, em.m_thumbnailHeight);
 			if (em.m_type != RichEmbed::VIDEO) { // a video plays in the browser
@@ -339,9 +339,9 @@ void MessageList::LayoutItem(Item& item, DrawingContext* ctx, int px, int width)
 			int ow = em.m_bHasImage ? em.m_imageWidth : em.m_thumbnailWidth;
 			int oh = em.m_bHasImage ? em.m_imageHeight : em.m_thumbnailHeight;
 			int w = ow, h = oh;
-			FitBox(w, h, std::min(300, boxRight - TEXT_X - 24), 300);
+			FitBox(w, h, std::min(m_geo.pictureMax, boxRight - m_geo.textX - 24), m_geo.pictureMax);
 			y += 6;
-			img.rect = Rect(TEXT_X + 12, y, TEXT_X + 12 + w, y + h);
+			img.rect = Rect(m_geo.textX + 12, y, m_geo.textX + 12 + w, y + h);
 			img.url = PreviewURL(imgUrl, w, h, ow, oh);
 			if (em.m_type != RichEmbed::VIDEO) {
 				img.view.url = imgUrl;
@@ -361,7 +361,7 @@ void MessageList::LayoutItem(Item& item, DrawingContext* ctx, int px, int width)
 		ex.embedHeights.push_back(y - top);
 		ex.embedTexts.push_back(std::move(ft));
 		if (!em.m_url.empty())
-			ex.links.push_back(Link{ Rect(TEXT_X, top, std::min(right, TEXT_X + EMBED_WIDTH), top + 40), em.m_url });
+			ex.links.push_back(Link{ Rect(m_geo.textX, top, std::min(right, m_geo.textX + m_geo.embedWidth), top + 40), em.m_url });
 	}
 
 	// reactions: a pill each (the emoji and how many), wrapping
@@ -369,12 +369,12 @@ void MessageList::LayoutItem(Item& item, DrawingContext* ctx, int px, int width)
 	if (!m.m_reactions.empty()) {
 		int rpx = px - 1;
 		int ph = ReactionHeight(rpx);
-		int x = TEXT_X;
+		int x = m_geo.textX;
 		y += 6;
 		for (auto& r : m.m_reactions) {
 			int w = ReactionWidth(r, rpx);
-			if (x > TEXT_X && x + w > right) {
-				x = TEXT_X;
+			if (x > m_geo.textX && x + w > right) {
+				x = m_geo.textX;
 				y += ph + 4;
 			}
 			ex.reactionRects.push_back(Rect(x, y, x + w, y + ph));
@@ -396,7 +396,7 @@ int MessageList::ReactionHeight(int px)
 int MessageList::ReactionWidth(const Reaction& r, int px)
 {
 	int emoji = r.m_emojiId ? ReactionHeight(px) - 8 : m_metrics.Measure(r.m_emojiName, FS_REGULAR, px);
-	return PILL_PAD + emoji + 5 + m_metrics.Measure(std::to_string(r.m_count), FS_BOLD, px) + PILL_PAD;
+	return m_geo.pillPad + emoji + 5 + m_metrics.Measure(std::to_string(r.m_count), FS_BOLD, px) + m_geo.pillPad;
 }
 
 MessageList::Item* MessageList::ItemAt(int contentY)

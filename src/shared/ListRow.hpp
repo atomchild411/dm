@@ -15,6 +15,7 @@ struct ListRow
 	Snowflake id = 0;          // what selecting the row reports
 	bool selectable = true;
 	std::string text;          // UTF-8
+	std::string subtext;       // a second line (a member's custom status), or ""
 	int indent = 0;            // pixels
 
 	// the icon: an image, else a glyph (e.g. "#"), else initials on a disc
@@ -35,7 +36,7 @@ struct ListRow
 
 	bool operator==(const ListRow& o) const
 	{
-		return type == o.type && id == o.id && selectable == o.selectable && text == o.text &&
+		return type == o.type && id == o.id && selectable == o.selectable && text == o.text && subtext == o.subtext &&
 			indent == o.indent && hasImage == o.hasImage && imageKind == o.imageKind &&
 			imagePlace == o.imagePlace && imageSf == o.imageSf && roundImage == o.roundImage &&
 			glyph == o.glyph && initials == o.initials && colorSeed == o.colorSeed &&

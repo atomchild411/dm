@@ -229,6 +229,7 @@ std::vector<ListRow> Lists::MemberRows()
 			r.status = p ? (int) p->m_activeStatus : -1;
 			r.dim = p && p->m_activeStatus == STATUS_OFFLINE;
 			r.textColor = RoleColor(gm->m_user, pGuild->m_snowflake);
+			r.subtext = p ? p->m_status : std::string();
 			rows.push_back(r);
 		}
 	}

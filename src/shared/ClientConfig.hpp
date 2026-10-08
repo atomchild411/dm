@@ -11,6 +11,8 @@
 void LoadClientConfig(const std::string& fileName);
 void SaveClientConfig();
 int GetTextSize();
+// The size until the user picks one (14 unless the front end says).
+void SetDefaultTextSize(int px);
 void SetTextSize(int px);
 enum Pane { PANE_GUILDS, PANE_CHANNELS, PANE_MEMBERS, PANE_COUNT };
 bool IsPaneShown(Pane p);
