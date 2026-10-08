@@ -60,9 +60,13 @@ else
 DEFINES += -DDISABLE_WEBP
 endif
 
+# FreeType sets the text (shared/Fonts) for every front end
+CXXFLAGS += $(FT_CFLAGS)
+LIBS += $(FT_LIBS)
+
 ifeq ($(FRONTEND),motif)
-CXXFLAGS += $(X_CFLAGS) $(FT_CFLAGS)
-LIBS += $(FT_LIBS) $(X_LIBS)
+CXXFLAGS += $(X_CFLAGS)
+LIBS += $(X_LIBS)
 endif
 
 CXXFILES := \
