@@ -43,7 +43,7 @@ namespace Ui
 	extern Composer composer;
 	extern char input[4000];
 	extern std::string bar;        // "Replying to ...", "Editing your message"
-	extern bool stick;             // the view follows the newest messages
+	extern bool stick;             // the view goes to the newest messages next frame
 	extern bool justOpened;
 	extern Snowflake unreadAfter;  // messages after this are new (the NEW line)
 	extern bool focusInput;        // the message box takes the keyboard next frame

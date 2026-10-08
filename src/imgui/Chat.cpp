@@ -3,6 +3,8 @@
 
 #include "Ui.hpp"
 
+#include <cstdlib>
+
 #include <algorithm>
 #include <cstring>
 #include <map>
@@ -340,6 +342,62 @@ namespace
 		TextMid(dl, right - 31, y, "NEW", FS_BOLD, 10, 0xffffff);
 	}
 
+	// Whether the view follows the newest messages: while it is at the
+	// bottom.  Scrolled up, the messages that came since are counted.
+	bool following = true;
+	Snowflake newestSeen = 0;
+
+	Snowflake Newest()
+	{
+		auto& items = list->Items();
+		for (auto it = items.rbegin(); it != items.rend(); ++it)
+			if (!it->msg->IsLoadGap())
+				return it->msg->m_snowflake;
+		return 0;
+	}
+
+	int Unseen()
+	{
+		int n = 0;
+		auto& items = list->Items();
+		for (auto it = items.rbegin(); it != items.rend(); ++it) {
+			if (it->msg->IsLoadGap() || it->systemLine)
+				continue;
+			if (it->msg->m_snowflake <= newestSeen)
+				break;
+			n++;
+		}
+		return n;
+	}
+
+	// Over the bottom of the messages, once the view is well up from the
+	// newest (or messages came meanwhile): back to them with a click.
+	bool JumpBar(ImDrawList* dl, float viewW, float viewH, int unseen)
+	{
+		ImVec2 wp = ImGui::GetWindowPos();
+		const float h = 32, side = 16;
+		float x0 = wp.x + side, x1 = wp.x + viewW - side, y0 = wp.y + viewH - h - 8;
+		ImVec2 mp = ImGui::GetMousePos();
+		bool hovered = ImGui::IsWindowHovered() && mp.x >= x0 && mp.x < x1 && mp.y >= y0 && mp.y < y0 + h;
+		uint32_t bg = unseen > 0 ? BLURPLE : SIDEBAR_BG;
+		if (hovered)
+			bg = unseen > 0 ? 0x4752c4 : HOVER;
+		dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + h), Col(bg), 8.0f);
+		std::string left = unseen > 0
+			? std::to_string(unseen) + (unseen == 1 ? " new message" : " new messages")
+			: "You're viewing older messages";
+		const char* right = "Jump to Present \xe2\x86\x93";
+		int rw = Gfx::Measure(right, FS_BOLD, 13);
+		TextMid(dl, x0 + 12, y0 + h / 2, Gfx::Elide(left, FS_REGULAR, 13, (int) (x1 - x0 - rw - 36)), FS_REGULAR, 13, unseen > 0 ? 0xffffff : TEXT);
+		TextMid(dl, x1 - 12 - rw, y0 + h / 2, right, FS_BOLD, 13, unseen > 0 ? 0xffffff : TEXT_BRIGHT);
+		if (hovered) {
+			ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+				return true;
+		}
+		return false;
+	}
+
 	void Messages(float width, float height)
 	{
 		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::ColorConvertU32ToFloat4(Col(CHAT_BG)));
@@ -358,9 +416,10 @@ namespace
 			return;
 		}
 
-		// following the bottom: stays there when messages come
+		// at the bottom, the view stays there when messages come; scrolled
+		// up, it stays where it is
 		float scrollY = ImGui::GetScrollY();
-		bool atBottom = stick || scrollY >= ImGui::GetScrollMaxY() - 4;
+		bool atBottom = stick || scrollY >= ImGui::GetScrollMaxY() - 1;
 		Snowflake anchor = 0;
 		float anchorOffset = 0;
 		if (frameDirty & App::MESSAGES) {
@@ -387,7 +446,20 @@ namespace
 		}
 		if (atBottom)
 			ImGui::SetScrollY((float) list->ContentHeight() + 8);
-		stick = atBottom;
+		stick = false;
+		// DM_TEST_SCROLL=px: scrolled up that far once the view settled (for
+		// screenshots: it must stay there)
+		static int testFrames = 0;
+		if (const char* t = getenv("DM_TEST_SCROLL"))
+			if (++testFrames == 10) {
+				ImGui::SetScrollY(std::max(0.0f, ImGui::GetScrollMaxY() - (float) atoi(t)));
+				atBottom = false;
+			}
+		following = atBottom;
+		if (following)
+			newestSeen = Newest();
+		int unseen = following ? 0 : Unseen();
+		bool jumpBar = !following && (unseen > 0 || ImGui::GetScrollMaxY() - scrollY > viewH);
 
 		ImVec4 clip(o.x, ImGui::GetWindowPos().y, o.x + viewW, ImGui::GetWindowPos().y + viewH);
 		ImVec2 mp = ImGui::GetMousePos();
@@ -408,6 +480,14 @@ namespace
 				NewLine(dl, it, o, viewW);
 		}
 		ctx.dl = nullptr;
+
+		if (jumpBar) {
+			ImVec2 mpos = ImGui::GetMousePos(), wp = ImGui::GetWindowPos();
+			if (mpos.y >= wp.y + viewH - 40)
+				overView = false; // the bar's, not the message's under it
+			if (JumpBar(dl, viewW, viewH, unseen))
+				stick = true;
+		}
 
 		// clicks: links, reactions, pictures; the right button's menu
 		if (overView) {
@@ -460,7 +540,7 @@ namespace
 		scrollY = ImGui::GetScrollY();
 		if (!demo) {
 			list->RequestGaps((int) scrollY, (int) (scrollY + viewH));
-			if (list->NewestShown(stick)) {
+			if (list->NewestShown(following)) {
 				bool opened = justOpened;
 				justOpened = false;
 				if ((opened || focused) && list->AcknowledgeIfUnread())
