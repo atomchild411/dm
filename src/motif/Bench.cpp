@@ -189,6 +189,17 @@ namespace
 			if (back != s)
 				return std::string("did not come back unchanged: ") + s + " -> " + box + " -> " + back;
 		}
+		// a server's emoji: :Tezro: becomes its tag, and a tag already in the
+		// text (a message being edited) is left alone
+		auto server = [](const std::string& name) -> std::string {
+			if (name == "Tezro") return "<:Tezro:580192120707481601>";
+			if (name == "spin") return "<a:spin:42>";
+			return "";
+		};
+		std::string edited = Shortcodes::FromEditor("<:Tezro:580192120707481601> and :Tezro: and :spin: and <a:spin:42> and <@1234> and <t:1700000000:R>", server);
+		if (edited != "<:Tezro:580192120707481601> and <:Tezro:580192120707481601> and <a:spin:42> and <a:spin:42> and <@1234> and <t:1700000000:R>")
+			return "server emoji came out as: " + edited;
+
 		std::string typed = Shortcodes::FromEditor(":joy: :+1: :heart: :nosuchname: :U+1F600:", 0);
 		if (typed != "\xf0\x9f\x98\x82 \xf0\x9f\x91\x8d \xe2\x9d\xa4\xef\xb8\x8f :nosuchname: \xf0\x9f\x98\x80")
 			return "typed shortcodes came out as: " + typed;

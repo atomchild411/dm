@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <nlohmann/json.h>
 #include <boost/base64/base64.hpp>
 
@@ -1054,6 +1055,21 @@ std::string DiscordInstance::ResolveMentions(const std::string& str, Snowflake g
 
 	for (size_t i = 0; i < str.size(); )
 	{
+		// Discord's tags already in the text (<:name:id>, <a:name:id>,
+		// <@id>, <#id>, <t:...>) stay as they are: the :name: inside an
+		// emoji tag is not one to look up again
+		if (str[i] == '<' && i + 1 < str.size() && strchr(":a@#t", str[i + 1]))
+		{
+			size_t close = str.find('>', i);
+			size_t space = str.find_first_of(" \n\t", i);
+			if (close != std::string::npos && (space == std::string::npos || close < space))
+			{
+				finalStr.append(str, i, close - i + 1);
+				i = close + 1;
+				continue;
+			}
+		}
+
 		if (str[i] != '@' && str[i] != '#' && str[i] != ':')
 		{
 			finalStr += str[i];

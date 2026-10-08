@@ -882,6 +882,31 @@ void MainWindow::ListUpdateCB(XtPointer client, XtIntervalId*)
 		self->UpdateChannelList();
 	if (lists & LIST_MEMBERS)
 		self->UpdateMemberList();
+	self->UpdateIconName();
+}
+
+void MainWindow::UpdateIconName()
+{
+	DiscordInstance* pInst = GetDiscordInstance();
+	if (!pInst)
+		return;
+	std::vector<Snowflake> ids;
+	pInst->GetGuildIDsOrdered(ids, true);
+	int total = 0;
+	for (Snowflake sf : ids) {
+		if (sf == 1 || (sf & BIT_FOLDER))
+			continue;
+		Guild* pGuild = pInst->GetGuild(sf); // 0: the direct messages
+		if (!pGuild)
+			continue;
+		for (auto& ch : pGuild->m_channels)
+			total += ch.m_mentionCount;
+	}
+	std::string name = total ? "Discord (" + std::to_string(total) + ")" : std::string("Discord");
+	if (name != m_iconName) {
+		m_iconName = name;
+		XtVaSetValues(m_shell, XmNiconName, m_iconName.c_str(), NULL);
+	}
 }
 
 bool MainWindow::ShowsMember(Snowflake user) const
@@ -931,7 +956,7 @@ void MainWindow::UpdateTitle()
 	if (pChan)
 		title = (pChan->IsDM() ? "@" : "#") + pChan->m_name + " - " + title;
 	std::string l1 = Utf8ToLatin1(title);
-	XtVaSetValues(m_shell, XmNtitle, l1.c_str(), XmNiconName, "Discord", NULL);
+	XtVaSetValues(m_shell, XmNtitle, l1.c_str(), XmNiconName, m_iconName.c_str(), NULL);
 }
 
 void MainWindow::SetStatus(const std::string& text)

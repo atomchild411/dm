@@ -346,12 +346,14 @@ void FormattedText::Tokenize(const std::string& newmsg, const std::string& oldms
 				size_t beginningIdx = i;
 				i++;
 
-				if (i == msgSize || (msg[i] != '@' && msg[i] != '#' && msg[i] != 't' && msg[i] != ':')) {
+				if (i == msgSize || (msg[i] != '@' && msg[i] != '#' && msg[i] != 't' && msg[i] != ':' &&
+					!(msg[i] == 'a' && i + 1 < msgSize && msg[i + 1] == ':'))) {
 					i = beginningIdx;
 					goto _def;
 				}
 
-				char type = msg[i];
+				// <a:name:id>: an animated custom emoji (drawn still)
+				char type = msg[i] == 'a' ? ':' : msg[i];
 				size_t foundEnd = std::string::npos;
 				i++;
 				for (; i < msgSize; i++) {

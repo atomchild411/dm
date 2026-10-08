@@ -178,10 +178,36 @@ std::string Shortcodes::ToEditor(const std::string& utf8)
 std::string Shortcodes::FromEditor(const std::string& utf8, Snowflake guild)
 {
 	Guild* pGuild = guild ? GetDiscordInstance()->GetGuild(guild) : nullptr;
+	return FromEditor(utf8, [pGuild](const std::string& name) -> std::string {
+		if (!pGuild)
+			return "";
+		for (auto& e : pGuild->m_emoji)
+			if (e.second.m_name == name && e.second.m_bAvailable)
+				return std::string(e.second.m_bAnimated ? "<a:" : "<:") + name + ":" + std::to_string(e.second.m_id) + ">";
+		return "";
+	});
+}
+
+std::string Shortcodes::FromEditor(const std::string& utf8, std::function<std::string(const std::string&)> serverEmoji)
+{
 	std::string out;
 	size_t i = 0;
 	while (i < utf8.size())
 	{
+		// Discord's own tags (<:name:id>, <a:name:id>, <@user>, <#channel>,
+		// <t:...>) stay as they are: a message being edited has them, and
+		// the :name: inside one is not a shortcode
+		if (utf8[i] == '<') {
+			size_t close = utf8.find('>', i);
+			size_t space = utf8.find_first_of(" \n\t", i);
+			bool tag = close != std::string::npos && (space == std::string::npos || close < space) &&
+				i + 1 < utf8.size() && strchr(":a@#t", utf8[i + 1]);
+			if (tag) {
+				out.append(utf8, i, close - i + 1);
+				i = close + 1;
+				continue;
+			}
+		}
 		if (utf8[i] != ':') {
 			out += utf8[i++];
 			continue;
@@ -227,14 +253,9 @@ std::string Shortcodes::FromEditor(const std::string& utf8, Snowflake guild)
 				known = true;
 			}
 		}
-		if (!known && pGuild) {
-			for (auto& e : pGuild->m_emoji) {
-				if (e.second.m_name == name && e.second.m_bAvailable) {
-					replacement = std::string(e.second.m_bAnimated ? "<a:" : "<:") + name + ":" + std::to_string(e.second.m_id) + ">";
-					known = true;
-					break;
-				}
-			}
+		if (!known) {
+			replacement = serverEmoji(name);
+			known = !replacement.empty();
 		}
 		if (known) {
 			out += replacement;

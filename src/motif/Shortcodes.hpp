@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "models/Message.hpp"
@@ -22,4 +23,7 @@ namespace Shortcodes
 	// Text from the message box: shortcodes as the characters (a server's
 	// emoji as <:name:id>, from guild's); unknown ones are left alone.
 	std::string FromEditor(const std::string& utf8, Snowflake guild);
+	// The same with the server's emoji looked up by serverEmoji(name), which
+	// gives the <:name:id> to send, or "" (for the benchmark's check).
+	std::string FromEditor(const std::string& utf8, std::function<std::string(const std::string&)> serverEmoji);
 }

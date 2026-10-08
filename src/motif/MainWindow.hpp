@@ -50,6 +50,9 @@ public:
 	// client last ran, if they are still there.
 	void RestoreLastChannel();
 	void UpdateTitle();
+	// The icon's name says how many mentions and direct messages are unread:
+	// "Discord (3)".
+	void UpdateIconName();
 
 	void OnTyping(Snowflake user, Snowflake guild, Snowflake channel, time_t when);
 	void OnStopTyping(Snowflake channel, Snowflake user);
@@ -93,6 +96,7 @@ private:
 	Widget m_replyBar = nullptr, m_replyLabel = nullptr;
 	Snowflake m_replyTo = 0;
 	Snowflake m_editing = 0;
+	std::string m_iconName = "Discord";
 	Widget m_emojiButton = nullptr;
 	const PixelFormat* m_fmt = nullptr;
 	static void EmojiCB(Widget, XtPointer, XtPointer);

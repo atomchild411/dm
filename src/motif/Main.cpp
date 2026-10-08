@@ -82,6 +82,8 @@ public:
 	}
 	void OnAddMessage(Snowflake channelID, const Message& msg) override {
 		Frontend_Posix::OnAddMessage(channelID, msg);
+		// mention counts may have changed: the server badges and the icon's name
+		GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_GUILDS);
 		MainWindow* mw = GetMainWindow();
 		if (mw->GetMessageView()->GetChannel() == channelID) {
 			mw->GetMessageView()->Refresh();
@@ -113,7 +115,7 @@ public:
 	void UpdateChannelList() override { GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_CHANNELS); }
 	void UpdateMemberList() override { GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_MEMBERS); }
 	void UpdateChannelAcknowledge(Snowflake channelID, Snowflake messageID) override {
-		GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_CHANNELS);
+		GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_CHANNELS | MainWindow::LIST_GUILDS);
 	}
 	void RepaintGuildList() override { GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_GUILDS); }
 	void RefreshMessages(ScrollDir::eScrollDir sd, Snowflake gapCulprit) override {
