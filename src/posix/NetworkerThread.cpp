@@ -139,6 +139,17 @@ bool NetworkerThread::ProcessResult(NetRequest& req, const httplib::Result& res,
 	}
 	else
 	{
+		// Discord's front end sometimes cannot reach the service behind it
+		// (502, 503, 504): a request that is safe to make twice is made
+		// again (sending a message is not)
+		bool repeatable = req.type == NetRequest::GET || req.type == NetRequest::PUT ||
+			req.type == NetRequest::PATCH || req.type == NetRequest::DELETE_;
+		int status = res->status;
+		if (repeatable && (status == 502 || status == 503 || status == 504) && ++attempt < MAX_ATTEMPTS) {
+			DbgPrintF("Request to %s got %d, retrying", req.url.c_str(), status);
+			sleep(attempt);
+			return true;
+		}
 		req.result = res->status;
 		req.response = res->body;
 	}
@@ -272,7 +283,11 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 				retry = ProcessResult(req, client.Patch(path, headers, req.params, "application/json"), attempt);
 				break;
 			case NetRequest::DELETE_:
-				retry = ProcessResult(req, client.Delete(path, headers, req.params, "application/json"), attempt);
+				// no body, no content type (deleting a message or a reaction)
+				if (req.params.empty())
+					retry = ProcessResult(req, client.Delete(path, headers), attempt);
+				else
+					retry = ProcessResult(req, client.Delete(path, headers, req.params, "application/json"), attempt);
 				break;
 			default:
 				assert(!"Don't know how to handle that type of request!");
