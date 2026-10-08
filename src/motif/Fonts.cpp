@@ -700,6 +700,7 @@ namespace
 		int Ascent(FontStyle st, int px) override { return Fonts::Ascent(st, px); }
 		int Descent(FontStyle st, int px) override { return Fonts::Descent(st, px); }
 		int Measure(const std::string& s, FontStyle st, int px) override { return Fonts::Measure(s, st, px); }
+		size_t FitBytes(const char* s, size_t n, FontStyle st, int px, int maxWidth) override { return Fonts::FitBytes(s, n, st, px, maxWidth); }
 	};
 }
 

@@ -13,6 +13,11 @@ namespace MainQueue
 	// Readable while work is queued.
 	int WakeFd();
 
+	// Also called (on the posting thread) whenever work is queued, for UI
+	// loops that sleep in their toolkit rather than on WakeFd (GLFW's
+	// glfwPostEmptyEvent).  Set before other threads start.
+	void SetWakeHook(std::function<void()> fn);
+
 	// Runs fn later on the UI thread.
 	void Post(std::function<void()> fn);
 

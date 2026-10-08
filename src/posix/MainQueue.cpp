@@ -24,11 +24,15 @@ namespace
 	int g_pipe[2] = { -1, -1 };
 	bool g_shutdown = false;
 
+	std::function<void()> g_wakeHook;
+
 	void Wake()
 	{
 		char c = 0;
 		while (write(g_pipe[1], &c, 1) < 0 && errno == EINTR)
 			;
+		if (g_wakeHook)
+			g_wakeHook();
 	}
 }
 
@@ -46,6 +50,11 @@ void MainQueue::Init()
 int MainQueue::WakeFd()
 {
 	return g_pipe[0];
+}
+
+void MainQueue::SetWakeHook(std::function<void()> fn)
+{
+	g_wakeHook = fn;
 }
 
 bool MainQueue::OnMainThread()

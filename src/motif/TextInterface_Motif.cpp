@@ -6,105 +6,34 @@
 #include "text/FormattedText.hpp"
 #include "text/TextInterface.hpp"
 #include "shared/ImageCache.hpp"
+#include "shared/TextLayout.hpp"
 
-static const int CODE_PAD = 4;      // inside multi-line code blocks
-static const int QUOTE_INDENT = 12;
+static const int CODE_PAD = TextLayout::CODE_PAD;
+static const int QUOTE_INDENT = TextLayout::QUOTE_INDENT;
 
 void MdFontFor(const DrawingContext* ctx, int f, FontStyle& st, int& px)
 {
-	px = ctx->px;
-	if (f & (WORD_CODE | WORD_MLCODE)) {
-		st = (f & WORD_STRONG) ? FS_MONOBOLD : FS_MONO;
-		px = ctx->px - 1;
-		return;
-	}
-
-	bool bold = (f & (WORD_STRONG | WORD_HEADER1 | WORD_HEADER2)) != 0;
-	bool italic = (f & (WORD_ITALIC | WORD_ITALIE)) != 0;
-	st = bold ? (italic ? FS_BOLDITALIC : FS_BOLD) : (italic ? FS_ITALIC : FS_REGULAR);
-
-	if (f & WORD_HEADER1)
-		px = ctx->px * 3 / 2 + 2;
-	else if (f & WORD_HEADER2)
-		px = ctx->px * 5 / 4 + 1;
-	else if (f & WORD_SMALLER)
-		px = ctx->px - 3;
+	TextLayout::StyleFor(ctx->px, f, st, px);
 }
 
-// Text broken into lines: at newlines, and to fit maxWidth when it is > 0.
 static void WrapLines(const std::string& s, FontStyle st, int px, int maxWidth, std::vector<std::string>& lines, bool& wrapped)
 {
-	wrapped = false;
-	size_t pos = 0;
-	for (;;)
-	{
-		size_t nl = s.find('\n', pos);
-		std::string para = s.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
-		if (maxWidth <= 0) {
-			lines.push_back(para);
-		}
-		else {
-			size_t off = 0;
-			do {
-				size_t n = Fonts::FitBytes(para.data() + off, para.size() - off, st, px, maxWidth);
-				if (n < para.size() - off)
-					wrapped = true;
-				lines.push_back(para.substr(off, n));
-				off += n;
-			} while (off < para.size());
-		}
-		if (nl == std::string::npos)
-			break;
-		pos = nl + 1;
-	}
+	TextLayout::WrapLines(Fonts::Metrics(), s, st, px, maxWidth, lines, wrapped);
 }
 
 Point MdMeasureString(DrawingContext* ctx, const String& word, int styleFlags, bool& outWasWordWrapped, int maxWidth)
 {
-	outWasWordWrapped = false;
-	const std::string& s = word.GetWrapped();
-
-	if (styleFlags & WORD_CEMOJI) {
-		int h = MdLineHeight(ctx, styleFlags);
-		return Point(h, h);
-	}
-
-	FontStyle st;
-	int px;
-	MdFontFor(ctx, styleFlags, st, px);
-	int lh = Fonts::LineHeight(st, px);
-
-	bool block = (styleFlags & (WORD_MLCODE | WORD_NOFORMAT)) != 0;
-	int pad = (styleFlags & WORD_MLCODE) ? 2 * CODE_PAD : 0;
-
-	std::vector<std::string> lines;
-	WrapLines(s, st, px, block && maxWidth > 0 ? maxWidth - pad : 0, lines, outWasWordWrapped);
-
-	int w = 0;
-	for (auto& l : lines)
-		w = std::max(w, Fonts::Measure(l, st, px));
-
-	// a code block spans the whole width it was given
-	if ((styleFlags & WORD_MLCODE) && maxWidth > 0)
-		w = maxWidth - pad;
-
-	return Point(w + pad, (int) lines.size() * lh + pad);
+	return TextLayout::MeasureWord(Fonts::Metrics(), ctx->px, word.GetWrapped(), styleFlags, outWasWordWrapped, maxWidth);
 }
 
 int MdLineHeight(DrawingContext* ctx, int styleFlags)
 {
-	FontStyle st;
-	int px;
-	MdFontFor(ctx, styleFlags, st, px);
-	return Fonts::LineHeight(st, px) + 2;
+	return TextLayout::LineHeight(Fonts::Metrics(), ctx->px, styleFlags);
 }
 
 int MdSpaceWidth(DrawingContext* ctx, int styleFlags)
 {
-	FontStyle st;
-	int px;
-	MdFontFor(ctx, styleFlags, st, px);
-	return Fonts::Measure(" ", 1, st, px);
+	return TextLayout::SpaceWidth(Fonts::Metrics(), ctx->px, styleFlags);
 }
 
 void MdDrawString(DrawingContext* ctx, const Rect& rect, const String& str, int styleFlags)
