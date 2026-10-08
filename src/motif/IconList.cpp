@@ -9,7 +9,7 @@
 
 #include "Fonts.hpp"
 #include "Theme.hpp"
-#include "Perf.hpp"
+#include "shared/Perf.hpp"
 
 static const int PAD = 6;
 

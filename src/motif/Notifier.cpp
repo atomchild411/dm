@@ -14,8 +14,8 @@
 #include "DiscordInstance.hpp"
 #include "state/NotificationManager.hpp"
 #include "Fonts.hpp"
-#include "ImageCache.hpp"
-#include "Perf.hpp"
+#include "shared/ImageCache.hpp"
+#include "shared/Perf.hpp"
 #include "Theme.hpp"
 #include "ConversationWindow.hpp"
 

@@ -16,7 +16,7 @@
 #include "MainWindow.hpp"
 #include "MessageView.hpp"
 #include "ReactionPicker.hpp"
-#include "Shortcodes.hpp"
+#include "shared/Shortcodes.hpp"
 #include "Theme.hpp"
 
 int AddVisualArgs(Arg* args, int n); // Main.cpp

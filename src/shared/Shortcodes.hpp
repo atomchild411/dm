@@ -5,10 +5,11 @@
 
 #include "models/Message.hpp"
 
-// The message box (XmText) shows ISO 8859-1 only, so emoji are written in
-// it as shortcodes, as Discord's clients allow: :joy:, a server's :name:,
-// and :U+1F600: (or :U+1F468+200D+1F469:) for any other character it
-// cannot show.  They become the real characters when the message is sent.
+// Emoji shortcodes, as Discord's clients allow them: :joy:, a server's
+// :name:, and :U+1F600: (or :U+1F468+200D+1F469:) for any other character.
+// They become the real characters when the message is sent.  Motif's
+// message box (XmText) shows ISO 8859-1 only, so that client also writes
+// every emoji it cannot show this way (ToEditor).
 namespace Shortcodes
 {
 	// The emoji the picker offers, in its order (PICKER_COUNT of them).

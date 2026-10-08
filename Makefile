@@ -66,7 +66,7 @@ LIBS += $(FT_LIBS) $(X_LIBS)
 endif
 
 CXXFILES := \
-	$(shell find src/core src/posix src/$(FRONTEND) -type f -name '*.cpp') \
+	$(shell find src/core src/posix src/shared src/$(FRONTEND) -type f -name '*.cpp') \
 	deps/asio/src/asio.cpp \
 	deps/asio/src/asio_ssl.cpp \
 	deps/md5/MD5.cpp

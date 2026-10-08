@@ -7,7 +7,7 @@
 #include "Xm.hpp"
 #include "models/Snowflake.hpp"
 #include "Canvas.hpp"
-#include "ImageCache.hpp"
+#include "shared/ImageCache.hpp"
 
 // One row of an IconList.
 struct IconRow

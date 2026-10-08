@@ -9,7 +9,7 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/XShm.h>
 
-#include "Perf.hpp"
+#include "shared/Perf.hpp"
 
 Rgb LerpRgb(Rgb a, Rgb b, int num, int den)
 {

@@ -16,8 +16,8 @@
 
 #include "DiscordInstance.hpp"
 #include "Fonts.hpp"
-#include "ImageCache.hpp"
-#include "Shortcodes.hpp"
+#include "shared/ImageCache.hpp"
+#include "shared/Shortcodes.hpp"
 #include "Theme.hpp"
 
 int AddVisualArgs(Arg* args, int n); // Main.cpp

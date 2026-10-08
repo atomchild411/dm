@@ -17,12 +17,12 @@
 #include "Frontend.hpp"
 #include "state/MessageCache.hpp"
 #include "Theme.hpp"
-#include "ImageCache.hpp"
+#include "shared/ImageCache.hpp"
 #include "ImageViewer.hpp"
 #include "MainWindow.hpp"
 #include "Notifier.hpp"
 #include "ReactionPicker.hpp"
-#include "Perf.hpp"
+#include "shared/Perf.hpp"
 
 // Geometry, in pixels
 static const int MARGIN = 16;        // left and right

@@ -2,6 +2,7 @@
 
 #include <string>
 #include "Canvas.hpp"
+#include "shared/Utf8.hpp"
 
 // Text drawn with FreeType into a Canvas (the X server's own fonts have
 // neither Unicode coverage nor antialiasing on most SGI displays).
@@ -41,6 +42,3 @@ namespace Fonts
 	// Truncates text to maxWidth with an ellipsis.
 	std::string Elide(const std::string& s, FontStyle st, int px, int maxWidth);
 }
-
-// The next code point of UTF-8 text at *p (advancing it), U+FFFD on errors.
-unsigned DecodeUtf8(const char*& p, const char* end);

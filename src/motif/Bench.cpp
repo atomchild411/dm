@@ -17,11 +17,11 @@
 
 #include "Fonts.hpp"
 #include "IconList.hpp"
-#include "ImageCache.hpp"
+#include "shared/ImageCache.hpp"
 #include "MainWindow.hpp"
 #include "MessageView.hpp"
-#include "Perf.hpp"
-#include "Shortcodes.hpp"
+#include "shared/Perf.hpp"
+#include "shared/Shortcodes.hpp"
 #include "Theme.hpp"
 
 namespace

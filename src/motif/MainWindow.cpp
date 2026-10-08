@@ -28,11 +28,11 @@
 #include "IconList.hpp"
 #include "ImageViewer.hpp"
 #include "ReactionPicker.hpp"
-#include "Shortcodes.hpp"
+#include "shared/Shortcodes.hpp"
 #include "Notifier.hpp"
 #include "ConversationWindow.hpp"
 #include "Fonts.hpp"
-#include "Perf.hpp"
+#include "shared/Perf.hpp"
 #include "models/ActiveStatus.hpp"
 
 static MainWindow* g_pMainWindow;

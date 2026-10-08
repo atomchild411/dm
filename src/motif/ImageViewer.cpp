@@ -11,7 +11,7 @@
 #include <Xm/Separator.h>
 
 #include "Fonts.hpp"
-#include "ImageCache.hpp"
+#include "shared/ImageCache.hpp"
 #include "Theme.hpp"
 
 int AddVisualArgs(Arg* args, int n); // Main.cpp

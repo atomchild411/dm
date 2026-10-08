@@ -5,7 +5,7 @@
 
 #include "text/FormattedText.hpp"
 #include "text/TextInterface.hpp"
-#include "ImageCache.hpp"
+#include "shared/ImageCache.hpp"
 
 static const int CODE_PAD = 4;      // inside multi-line code blocks
 static const int QUOTE_INDENT = 12;

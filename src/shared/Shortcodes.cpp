@@ -5,7 +5,7 @@
 #include <cstring>
 
 #include "DiscordInstance.hpp"
-#include "Fonts.hpp"
+#include "Utf8.hpp"
 
 namespace
 {

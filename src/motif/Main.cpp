@@ -22,7 +22,7 @@
 
 #include "Canvas.hpp"
 #include "Fonts.hpp"
-#include "ImageCache.hpp"
+#include "shared/ImageCache.hpp"
 #include "AppIcon.hpp"
 #include "Bench.hpp"
 #include "LogonDialog.hpp"
@@ -31,7 +31,7 @@
 #include "MessageView.hpp"
 #include "Notifier.hpp"
 #include "ConversationWindow.hpp"
-#include "Perf.hpp"
+#include "shared/Perf.hpp"
 #include "Theme.hpp"
 
 static XtAppContext g_app;
