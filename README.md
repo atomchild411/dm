@@ -97,14 +97,19 @@ It upgrades any earlier release in place. Then run `/usr/local/bin/discord-messe
 Its README, installed as `/usr/local/lib/discord-messenger/README` (`irix/dist/README` here),
 describes logging in, every feature and the environment variables it reads.
 
-### macOS, Linux and Windows
+### Windows
+
+Download the newest Windows release from the [releases](https://github.com/atomchild411/dm/releases)
+(x64 for most PCs, arm64 for Windows-on-ARM ones). The installer (`.msi`) installs for you alone,
+needs no administrator, and adds a Start menu entry and an uninstall entry; later releases upgrade
+it in place. The zip is the same program to unpack anywhere: `DiscordMessenger.exe` with its
+`fonts` folder. Neither is signed yet, so Windows' SmartScreen asks first ("More info", then "Run
+anyway").
+
+### macOS and Linux
 
 There are no releases yet: build the client as below. On macOS that gives you
-`bin/Discord Messenger.app`, which you can copy to `/Applications`. On Windows it gives an installer
-(`.msi`): it installs for you alone, needs no administrator, and adds a Start menu entry and an
-uninstall entry. There is also a zip to unpack anywhere, with `DiscordMessenger.exe` and its `fonts`
-folder. Neither is signed yet, so Windows' SmartScreen asks first ("More info", then "Run
-anyway").
+`bin/Discord Messenger.app`, which you can copy to `/Applications`.
 
 ## Building
 
