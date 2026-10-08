@@ -113,6 +113,9 @@ bool NotificationManager::IsNotificationWorthy(Snowflake guildID, Snowflake chan
 
 		case NOTIF_ALL_MESSAGES:
 			return true;
+
+		default:
+			break;
 	}
 
 	assert(messageNotifications == NOTIF_ONLY_MENTIONS);

@@ -59,7 +59,7 @@ public:
 
 	std::list<AbstractGuildItem*>* GetItems() override { return &m_items; }
 
-	std::string GetAvatar() { return ""; }
+	std::string GetAvatar() override { return ""; }
 
 	void EraseGuild(Snowflake guildId) override
 	{
@@ -78,7 +78,7 @@ public:
 		}
 	}
 
-	bool ContainsGuild(Snowflake sf)
+	bool ContainsGuild(Snowflake sf) override
 	{
 		for (auto& item : m_items)
 		{
@@ -103,7 +103,7 @@ public:
 
 	std::list<AbstractGuildItem*>* GetItems() override { return nullptr; }
 
-	std::string GetAvatar() { return m_avatar; }
+	std::string GetAvatar() override { return m_avatar; }
 
 	GuildGuildItem(Snowflake guild, const std::string& name, const std::string& avatar) {
 		m_name = name;

@@ -41,6 +41,9 @@ OPT = -DNDEBUG -O2
 endif
 
 CXXFLAGS = $(INC_DIRS) $(DEFINES) -std=c++11 -pthread $(OPT) $(EXTRA_CXXFLAGS)
+# nlohmann/json and asio spell their literal operators the way newer clangs
+# call deprecated (operator "" _json): not ours to change
+CXXFLAGS += $(shell $(CXX) -Werror -Wno-deprecated-literal-operator -x c++ -fsyntax-only /dev/null 2>/dev/null && echo -Wno-deprecated-literal-operator)
 LDFLAGS  = -L$(PREFIX_DEPS)/lib -pthread $(EXTRA_LDFLAGS)
 # STATIC_DEPS=1 links OpenSSL and libwebp from their static archives, so the
 # program needs nothing but the system's own libraries.
