@@ -32,6 +32,12 @@ message offers Add Reaction (common emoji and the server's own), Reply and,
 on your own messages, Edit Message.  The client opens the server and
 channel you were last in.
 
+Mentions and direct messages (as your Discord notification settings say)
+play the desktop sound scheme's "ting" through sfplay (DM_SOUND names
+another sound file), and, when the window is not in front, show a popup in
+the corner of the screen for a few seconds; clicking it opens the channel.
+View has a switch for each.
+
 Emoji in your messages: the message box shows ISO 8859-1 only, so emoji
 are written there as shortcodes, as Discord's clients allow: the button by
 Send opens a picker that inserts :joy: or a server emoji's :name:, and you
