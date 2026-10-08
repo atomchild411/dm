@@ -59,11 +59,10 @@ the program, and the package brings its own fonts (DejaVu, Noto Color Emoji) and
 
 ### macOS
 
-- A Mac with Apple Silicon
-- The macOS version the app was built on, or later (the build records its SDK's version as the
-  minimum)
-- OpenGL is the system's own; OpenSSL, libwebp, FreeType, libpng and GLFW are linked into the app,
-  which also brings its fonts (Inter, DejaVu, Noto Color Emoji)
+- macOS 11 (Big Sur) or later, on Apple Silicon or Intel (the app is universal)
+- Nothing else: OpenSSL, libwebp, FreeType, libpng and GLFW are linked into the app, which also
+  brings its fonts (Inter, DejaVu, Noto Color Emoji). Server certificates are checked by macOS,
+  against the keychains
 
 ### Linux
 
@@ -106,10 +105,17 @@ it in place. The zip is the same program to unpack anywhere: `DiscordMessenger.e
 `fonts` folder. Neither is signed yet, so Windows' SmartScreen asks first ("More info", then "Run
 anyway").
 
-### macOS and Linux
+### macOS
 
-There are no releases yet: build the client as below. On macOS that gives you
-`bin/Discord Messenger.app`, which you can copy to `/Applications`.
+Download the newest macOS release from the [releases](https://github.com/atomchild411/dm/releases),
+open the disk image and drag Discord Messenger onto Applications. The app is not notarized by Apple
+yet, so macOS refuses it the first time: open System Settings → Privacy & Security and click "Open
+Anyway" (on macOS 14 and earlier, Control-click the app and choose Open). The disk image's "Read Me
+First" says the same.
+
+### Linux
+
+There are no releases yet: build the client as below.
 
 ## Building
 
@@ -160,6 +166,18 @@ DejaVu (`DejaVuSans*.ttf`, `DejaVuSansMono*.ttf`) and `NotoColorEmoji.ttf`, and 
 ```
 macos/make-app.sh <fonts directory>
 ```
+
+That app is for this Mac's architecture and macOS version (Homebrew's libraries are). For one that
+runs on every Mac from macOS 11, Apple Silicon and Intel, as the releases are:
+
+```
+macos/release.sh <fonts directory>
+```
+
+It builds OpenSSL, FreeType, libpng, libwebp and GLFW once, from their release tarballs checked by
+SHA-256, as universal static libraries (`macos/build-deps.sh`, into `build-mac/`), then the app,
+and leaves `bin/macos/DiscordMessenger-<version>-macos.dmg`. Homebrew is needed only for CMake and
+Ninja then.
 
 It builds `bin/Discord Messenger.app`, with the libraries linked in, signed ad hoc. For a quick
 build to run from the source tree instead:

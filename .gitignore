@@ -5,3 +5,4 @@ keep/
 *.o
 *.d
 build-win/
+build-mac/

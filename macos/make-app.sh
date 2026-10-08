@@ -7,19 +7,30 @@
 #           DejaVuSans*.ttf, DejaVuSansMono*.ttf, NotoColorEmoji.ttf and
 #           Inter-LICENSE.txt
 # PREFIX    where OpenSSL, libwebp, FreeType, libpng and GLFW are, with their
-#           static libraries (default /opt/homebrew)
+#           static libraries: build-mac/pfx when macos/build-deps.sh made it
+#           (universal, for macOS 11 on), else /opt/homebrew (this Mac's
+#           architecture and macOS version only)
 #
-# Those libraries are linked in, so the app needs only macOS.  It is signed
-# ad hoc (codesign -s -), as Apple Silicon requires of anything it runs.
+# Those libraries are linked in, so the app needs only macOS.  It is built
+# for the architectures they have, and signed ad hoc (codesign -s -), as
+# Apple Silicon requires of anything it runs.
 set -eu
 cd "$(dirname "$0")/.."
 fonts=$1
-prefix=${2:-/opt/homebrew}
+if [ -n "${2:-}" ]; then prefix=$2
+elif [ -f build-mac/pfx/.done ]; then prefix=$PWD/build-mac/pfx
+else prefix=/opt/homebrew; fi
 app="bin/Discord Messenger.app"
 
+# the architectures the libraries have; macOS 11 on, with ours
+archflags=
+for a in $(lipo -archs "$prefix/lib/libssl.a"); do archflags="$archflags -arch $a"; done
+minflag= objdir=build-unix/macapp
+[ -f "$prefix/.done" ] && minflag=-mmacosx-version-min=11.0 objdir=build-unix/macapp-universal
+
 make -j4 FRONTEND=imgui STATIC_DEPS=1 PREFIX_DEPS="$prefix" \
-	CXX=clang++ CC=clang \
-	BUILD_DIR=build-unix/macapp TARGET=bin/dm-imgui-app \
+	CXX=clang++ CC=clang EXTRA_CXXFLAGS="$archflags $minflag" EXTRA_LDFLAGS="$archflags $minflag" \
+	BUILD_DIR=$objdir TARGET=bin/dm-imgui-app \
 	FT_CFLAGS="-I$prefix/include/freetype2" \
 	FT_LIBS="$prefix/lib/libfreetype.a $prefix/lib/libpng16.a -lz -lbz2" \
 	GLFW_LIBS="$prefix/lib/libglfw3.a -framework Cocoa -framework IOKit -framework CoreFoundation -framework QuartzCore"
@@ -60,7 +71,8 @@ for l in irix/dist/licenses/*; do
 	esac
 done
 cp deps/imgui/LICENSE.txt "$app/Contents/Resources/licenses/Dear-ImGui-MIT"
-cp "$prefix/opt/glfw/LICENSE.md" "$app/Contents/Resources/licenses/GLFW-zlib"
+cp "$prefix/GLFW-LICENSE.md" "$app/Contents/Resources/licenses/GLFW-zlib" 2>/dev/null ||
+	cp "$prefix/opt/glfw/LICENSE.md" "$app/Contents/Resources/licenses/GLFW-zlib"
 cp "$fonts/Inter-LICENSE.txt" "$app/Contents/Resources/licenses/Inter-OFL-1.1"
 
 codesign --force --sign - "$app"
