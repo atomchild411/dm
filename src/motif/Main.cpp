@@ -33,6 +33,7 @@
 #include "Notifier.hpp"
 #include "ConversationWindow.hpp"
 #include "shared/Perf.hpp"
+#include "shared/Demo.hpp"
 #include "shared/Timers.hpp"
 #include "Theme.hpp"
 
@@ -297,93 +298,12 @@ void RequestReconnect()
 	}
 }
 
-// --demo: sample messages in the message view, without logging in (to see
-// how messages are drawn).
+// --demo: sample messages and lists, without logging in (to see how
+// messages are drawn).
 static void LoadDemo()
 {
-	const Snowflake chan = 4242;
-	time_t now = time(NULL);
-	struct Sample { Snowflake author; const char* name; int minutesAgo; const char* text; MessageType::eType type; };
-	const Sample samples[] = {
-		{ 1001, "Ada", 26 * 60, "Good morning! Has anyone got the **Indigo2** booting from the new disk yet?", MessageType::DEFAULT },
-		{ 1002, "Grace", 26 * 60 - 3, "Not yet, the PROM says `Unable to load bootp()` and stops.", MessageType::DEFAULT },
-		{ 1002, "Grace", 26 * 60 - 2, "I'll try `setenv netaddr` again after lunch.", MessageType::DEFAULT },
-		{ 1003, "Linus", 90, "", MessageType::USER_JOIN },
-		{ 1001, "Ada", 45, "Here is what fixed it for me:\n```\nsetenv netaddr 192.168.1.20\nboot -f bootp()/unix\n```\nThen it went straight to the miniroot.", MessageType::DEFAULT },
-		{ 1004, "Bjarne", 30, "> it went straight to the miniroot\nNice. *Italic*, __underlined__, ~~struck~~ and a link: https://www.sgi.com/ and caf\xc3\xa9 na\xc3\xafve \xe2\x80\x94 \xe2\x9c\x93 \xe2\x98\x85 \xf0\x9f\x98\x80", MessageType::DEFAULT },
-		{ 1002, "Grace", 12, "# Release notes\n- MIPS IV build\n- FreeType text\n- Motif UI\n-# small print: tested on an emulated R10000", MessageType::DEFAULT },
-		{ 1003, "Linus", 6, "Emoji: \xf0\x9f\x98\x80 \xf0\x9f\x8e\x89 \xe2\x9c\xa8 \xe2\x9d\xa4\xef\xb8\x8f \xf0\x9f\x91\x8d\xf0\x9f\x8f\xbd \xf0\x9f\x87\xa8\xf0\x9f\x87\xad \xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x91\xa7 1\xef\xb8\x8f\xe2\x83\xa3 \xf0\x9f\x96\xa5\xef\xb8\x8f and text \xe2\x98\x85 \xe2\x9c\x93 stays text", MessageType::DEFAULT },
-		{ 1005, "Dennis", 2, "A long line to see the wrapping: Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.", MessageType::DEFAULT },
-	};
-	Snowflake id = 1000000;
-	// enough older messages to need scrolling
-	for (int k = 0; k < 30; k++) {
-		Message m;
-		m.m_snowflake = ++id;
-		m.m_author_snowflake = (Snowflake) (1001 + k % 3) << 22;
-		m.m_author = k % 3 == 0 ? "Ada" : k % 3 == 1 ? "Grace" : "Dennis";
-		m.m_message = "Older message number " + std::to_string(k + 1) + ", to scroll back to.";
-		m.SetTime(now - (3 * 24 * 60 - k * 20) * 60);
-		GetMessageCache()->AddMessage(chan, m);
-	}
-	for (auto& sm : samples)
-	{
-		Message m;
-		m.m_snowflake = ++id;
-		m.m_author_snowflake = sm.author << 22;
-		m.m_author = sm.name;
-		m.m_message = sm.text;
-		m.m_type = sm.type;
-		m.SetTime(now - sm.minutesAgo * 60);
-		if (sm.author == 1001 && sm.minutesAgo == 45) {
-			Attachment a;
-			a.m_fileName = "bootp-setup.txt";
-			a.m_size = 1834;
-			a.m_actualUrl = "https://example.com/bootp-setup.txt";
-			m.m_attachments.push_back(a);
-		}
-		if (sm.author == 1002 && sm.minutesAgo == 12) {
-			Attachment a;
-			// WebP: pictures from anywhere but Discord's servers must be
-			a.m_fileName = "rose.webp";
-			a.m_size = 81836;
-			a.m_width = 400;
-			a.m_height = 301;
-			a.m_contentType = ContentType::WEBP;
-			a.m_proxyUrl = a.m_actualUrl = "https://www.gstatic.com/webp/gallery3/1_webp_ll.webp";
-			a.UpdatePreviewSize();
-			m.m_attachments.push_back(a);
-		}
-		if (sm.author == 1004) {
-			m.m_pReferencedMessage = std::make_shared<ReferenceMessage>();
-			m.m_pReferencedMessage->m_author = "Ada";
-			m.m_pReferencedMessage->m_message = "Then it went straight to the miniroot.";
-			RichEmbed e;
-			e.m_color = 0x2d8f9e;
-			e.m_providerName = "sgi.com";
-			e.m_title = "Silicon Graphics";
-			e.m_url = "https://www.sgi.com/";
-			e.m_description = "High-performance computing and *visualization* since 1982.";
-			e.m_footerText = "Embed footer";
-			e.m_bHasImage = true;
-			e.m_imageUrl = e.m_imageProxiedUrl = "https://www.gstatic.com/webp/gallery/1.webp";
-			e.m_imageWidth = 550;
-			e.m_imageHeight = 368;
-			m.m_embeds.push_back(e);
-		}
-		// reactions on a few, one of them the user's
-		if (sm.author == 1005 || sm.author == 1003) {
-			const char* emoji[] = { "\xf0\x9f\x98\x82", "\xf0\x9f\x91\x8d", "\xe2\x9d\xa4\xef\xb8\x8f" };
-			for (int k = 0; k < (sm.author == 1005 ? 3 : 1); k++) {
-				Reaction r;
-				r.m_emojiName = emoji[k];
-				r.m_count = k + 1;
-				r.m_bMe = k == 1;
-				m.m_reactions.push_back(r);
-			}
-		}
-		GetMessageCache()->AddMessage(chan, m);
-	}
+	Demo::LoadMessages();
+	const Snowflake chan = Demo::CHANNEL;
 	GetMainWindow()->GetMessageView()->SetChannel(0, chan);
 	GetMainWindow()->ShowDemoLists();
 	GetMainWindow()->SetStatus("Demo: sample messages, not connected.");

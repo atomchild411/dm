@@ -23,6 +23,7 @@
 #include "Notifier.hpp"
 #include "ReactionPicker.hpp"
 #include "shared/Perf.hpp"
+#include "shared/Lists.hpp"
 
 // Geometry, in pixels
 static const int MARGIN = 16;        // left and right
@@ -845,7 +846,6 @@ void MessageView::RequestVisibleGaps()
 	}
 }
 
-Rgb RoleColor(Snowflake user, Snowflake guild); // MainWindow.cpp
 
 // A reaction pill: padding, the emoji, a gap, the count, padding.
 static const int PILL_PAD = 7;
@@ -980,7 +980,7 @@ void MessageView::PaintItem(Item& item, int top)
 		if (!m.m_editedText.empty())
 			when += "  (edited)";
 		int whenW = Fonts::Measure(when, FS_REGULAR, m_ctx.px - 3);
-		Rgb nameColor = RoleColor(m.m_author_snowflake, m_guild);
+		Rgb nameColor = Lists::RoleColor(m.m_author_snowflake, m_guild);
 		std::string name = Fonts::Elide(m.m_author, FS_BOLD, m_ctx.px, std::max(40, right - x - whenW - 60));
 		x += Fonts::Draw(c, x, y + asc, name, FS_BOLD, m_ctx.px, nameColor ? nameColor : m_ctx.fg) + 8;
 		if (m.m_bIsAuthorBot || m.IsWebHook()) {

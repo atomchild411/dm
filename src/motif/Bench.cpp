@@ -70,18 +70,18 @@ namespace
 		return m;
 	}
 
-	std::vector<IconRow> MemberRows(int changed, int status)
+	std::vector<ListRow> MemberRows(int changed, int status)
 	{
-		std::vector<IconRow> rows;
+		std::vector<ListRow> rows;
 		for (int i = 0; i < MEMBERS; i++)
 		{
 			if (i % 50 == 0) {
-				IconRow h;
-				h.type = IconRow::HEADER;
+				ListRow h;
+				h.type = ListRow::HEADER;
 				h.text = "Role " + std::to_string(i / 50 + 1) + " \xe2\x80\x94 50";
 				rows.push_back(h);
 			}
-			IconRow r;
+			ListRow r;
 			r.id = (Snowflake) (2000 + i) << 22;
 			r.text = std::string(g_authors[i % 12]) + " " + std::to_string(i) + (i % 9 == 0 ? " \xe2\x9c\xa8" : "");
 			r.hasImage = true;

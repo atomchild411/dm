@@ -41,16 +41,6 @@ static std::string Initials(const std::string& s)
 	return out;
 }
 
-bool IconRow::operator==(const IconRow& o) const
-{
-	return type == o.type && id == o.id && selectable == o.selectable && text == o.text &&
-		indent == o.indent && hasImage == o.hasImage && imageKind == o.imageKind &&
-		imagePlace == o.imagePlace && imageSf == o.imageSf && roundImage == o.roundImage &&
-		glyph == o.glyph && initials == o.initials && colorSeed == o.colorSeed &&
-		textColor == o.textColor && unread == o.unread && dim == o.dim &&
-		mentions == o.mentions && status == o.status;
-}
-
 IconList::IconList(Widget parent, const char* name, const PixelFormat& fmt, int iconSize, bool darker) :
 	m_fmt(fmt), m_iconSize(iconSize), m_darker(darker)
 {
@@ -84,12 +74,12 @@ IconList::IconList(Widget parent, const char* name, const PixelFormat& fmt, int 
 	XtManageChild(m_form);
 }
 
-int IconList::RowHeight(const IconRow& r) const
+int IconList::RowHeight(const ListRow& r) const
 {
 	int px = GetTextSize() - 1;
 	switch (r.type) {
-		case IconRow::SPACE:  return 8;
-		case IconRow::HEADER: return Fonts::LineHeight(FS_BOLD, px - 2) + 14;
+		case ListRow::SPACE:  return 8;
+		case ListRow::HEADER: return Fonts::LineHeight(FS_BOLD, px - 2) + 14;
 		default:              return std::max(m_iconSize + 8, Fonts::LineHeight(FS_REGULAR, px) + 10);
 	}
 }
@@ -107,7 +97,7 @@ void IconList::Layout()
 	UpdateScrollbar();
 }
 
-void IconList::SetRows(const std::vector<IconRow>& rows, Snowflake selected)
+void IconList::SetRows(const std::vector<ListRow>& rows, Snowflake selected)
 {
 	Perf::Scope perf(Perf::LIST_SETROWS);
 
@@ -117,13 +107,13 @@ void IconList::SetRows(const std::vector<IconRow>& rows, Snowflake selected)
 		bool sameShape = true, visibleChange = false;
 		int sel = -1;
 		for (size_t i = 0; i < rows.size() && sameShape; i++) {
-			const IconRow& a = rows[i];
-			const IconRow& b = m_rows[i];
+			const ListRow& a = rows[i];
+			const ListRow& b = m_rows[i];
 			if (a.type != b.type || a.id != b.id || a.selectable != b.selectable) {
 				sameShape = false;
 				break;
 			}
-			if (sel < 0 && a.type == IconRow::ITEM && a.selectable && a.id == selected)
+			if (sel < 0 && a.type == ListRow::ITEM && a.selectable && a.id == selected)
 				sel = (int) i;
 			if (!visibleChange && a != b) {
 				int top = m_tops[i] - m_scrollY;
@@ -144,7 +134,7 @@ void IconList::SetRows(const std::vector<IconRow>& rows, Snowflake selected)
 	m_rows = rows;
 	m_selected = m_cursor = -1;
 	for (size_t i = 0; i < m_rows.size(); i++) {
-		if (m_rows[i].type == IconRow::ITEM && m_rows[i].selectable && m_rows[i].id == selected && m_selected < 0)
+		if (m_rows[i].type == ListRow::ITEM && m_rows[i].selectable && m_rows[i].id == selected && m_selected < 0)
 			m_selected = (int) i;
 		if (cursorId && m_rows[i].id == cursorId && m_cursor < 0)
 			m_cursor = (int) i;
@@ -208,7 +198,7 @@ void IconList::MoveCursor(int delta)
 		i += step;
 		if (i < 0 || i >= (int) m_rows.size())
 			break;
-		if (m_rows[i].type == IconRow::ITEM && m_rows[i].selectable) {
+		if (m_rows[i].type == ListRow::ITEM && m_rows[i].selectable) {
 			last = i;
 			remaining--;
 		}
@@ -224,8 +214,8 @@ void IconList::Activate(int row)
 {
 	if (row < 0 || row >= (int) m_rows.size())
 		return;
-	const IconRow& r = m_rows[row];
-	if (r.type != IconRow::ITEM || !r.selectable)
+	const ListRow& r = m_rows[row];
+	if (r.type != ListRow::ITEM || !r.selectable)
 		return;
 	m_cursor = row;
 	Repaint();
@@ -303,19 +293,19 @@ void IconList::InputCB(Widget w, XtPointer client, XtPointer call)
 	}
 }
 
-void IconList::PaintRow(const IconRow& r, int y, int h, bool selected, bool cursor)
+void IconList::PaintRow(const ListRow& r, int y, int h, bool selected, bool cursor)
 {
 	const Palette& p = GetPalette();
 	Canvas& c = m_canvas;
 	int px = GetTextSize() - 1;
 	Rgb bg = m_darker ? p.guildBg : p.listBg;
 
-	if (r.type == IconRow::SPACE) {
+	if (r.type == ListRow::SPACE) {
 		c.HLine(12, y + h / 2, m_viewW - 24, LerpRgb(bg, p.listMuted, 1, 3));
 		return;
 	}
 
-	if (r.type == IconRow::HEADER) {
+	if (r.type == ListRow::HEADER) {
 		int hpx = px - 2;
 		std::string t = Fonts::Elide(r.text, FS_BOLD, hpx, m_viewW - 12 - r.indent);
 		Fonts::Draw(c, 8 + r.indent, y + h - 6 - Fonts::Descent(FS_BOLD, hpx), t, FS_BOLD, hpx, p.listHeader);

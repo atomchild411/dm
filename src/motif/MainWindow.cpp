@@ -33,6 +33,8 @@
 #include "ConversationWindow.hpp"
 #include "Fonts.hpp"
 #include "shared/Perf.hpp"
+#include "shared/Lists.hpp"
+#include "shared/Demo.hpp"
 #include "models/ActiveStatus.hpp"
 
 static MainWindow* g_pMainWindow;
@@ -349,23 +351,11 @@ void MainWindow::MessagesCascadingCB(Widget, XtPointer client, XtPointer)
 	XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, self->m_dmMenu, NULL);
 
 	// unread first, then the most recently active
-	std::vector<const Channel*> chans;
-	for (auto& ch : dms->m_channels)
-		if (ch.IsDM() || ch.m_channelType == Channel::GROUPDM)
-			chans.push_back(&ch);
-	std::sort(chans.begin(), chans.end(), [](const Channel* a, const Channel* b) {
-		bool ua = a->m_mentionCount > 0, ub = b->m_mentionCount > 0;
-		if (ua != ub)
-			return ua;
-		return a->m_lastSentMsg > b->m_lastSentMsg;
-	});
-	const size_t MAX_ITEMS = 25;
-	for (size_t i = 0; i < chans.size() && i < MAX_ITEMS; i++) {
-		const Channel* ch = chans[i];
-		std::string label = ch->m_name.empty() ? std::string("(unnamed)") : ch->m_name;
-		if (ch->m_mentionCount > 0)
-			label += "  (" + std::to_string(ch->m_mentionCount) + ")";
-		add(label, ch->m_snowflake);
+	for (auto& c : Lists::Conversations(25)) {
+		std::string label = c.name.empty() ? std::string("(unnamed)") : c.name;
+		if (c.mentions > 0)
+			label += "  (" + std::to_string(c.mentions) + ")";
+		add(label, c.channel);
 	}
 }
 
@@ -606,71 +596,7 @@ void MainWindow::ShowError(const std::string& text)
 void MainWindow::UpdateGuildList()
 {
 	Perf::Scope perf(Perf::GUILDS);
-	DiscordInstance* pInst = GetDiscordInstance();
-	std::vector<Snowflake> ids;
-	pInst->GetGuildIDsOrdered(ids, true);
-
-	std::vector<IconRow> rows;
-	bool inFolder = false;
-	for (Snowflake sf : ids)
-	{
-		if (sf == 1) {
-			// the gap after Direct Messages
-			IconRow r;
-			r.type = IconRow::SPACE;
-			rows.push_back(r);
-			continue;
-		}
-		if (sf & BIT_FOLDER) {
-			inFolder = sf != BIT_FOLDER;
-			if (inFolder) {
-				IconRow r;
-				r.type = IconRow::HEADER;
-				r.text = pInst->GetGuildFolderName(sf & ~BIT_FOLDER);
-				rows.push_back(r);
-			}
-			continue;
-		}
-		IconRow r;
-		r.id = sf;
-		r.indent = inFolder ? 8 : 0;
-		if (sf == 0) {
-			r.text = GetFrontend()->GetDirectMessagesText();
-			r.glyph = "@";
-			// unread direct messages (each counts as a mention)
-			if (Guild* dms = pInst->GetGuild(0)) {
-				for (auto& ch : dms->m_channels)
-					r.mentions += ch.m_mentionCount;
-				r.unread = r.mentions > 0;
-			}
-		}
-		else {
-			Guild* pGuild = pInst->GetGuild(sf);
-			if (!pGuild)
-				continue;
-			r.text = pGuild->m_name;
-			r.initials = true;
-			if (!pGuild->m_avatarlnk.empty()) {
-				r.hasImage = true;
-				r.imageKind = ImageCache::ICON;
-				r.imagePlace = pGuild->m_avatarlnk;
-				r.imageSf = sf;
-			}
-			// unread: any channel the user can see with newer messages
-			int mentions = 0;
-			bool unread = false;
-			for (auto& ch : pGuild->m_channels) {
-				mentions += ch.m_mentionCount;
-				if (ch.HasUnreadMessages() && ch.HasPermissionConst(PERM_VIEW_CHANNEL) &&
-					!pInst->IsChannelMuted(sf, ch.m_snowflake))
-					unread = true;
-			}
-			r.unread = unread;
-			r.mentions = mentions;
-		}
-		rows.push_back(r);
-	}
-	m_guilds->SetRows(rows, pInst->GetCurrentGuildID());
+	m_guilds->SetRows(Lists::GuildRows(), GetDiscordInstance()->GetCurrentGuildID());
 }
 
 void MainWindow::UpdateSelectedGuild()
@@ -682,100 +608,10 @@ void MainWindow::UpdateSelectedGuild()
 	UpdateTitle();
 }
 
-static bool IsTextChannel(const Channel& ch)
-{
-	switch (ch.m_channelType) {
-		case Channel::TEXT: case Channel::DM: case Channel::GROUPDM: case Channel::NEWS:
-		case Channel::NEWSTHREAD: case Channel::PUBTHREAD: case Channel::PRIVTHREAD:
-			return true;
-		default:
-			return false;
-	}
-}
-
 void MainWindow::UpdateChannelList()
 {
 	Perf::Scope perf(Perf::CHANNELS);
-	DiscordInstance* pInst = GetDiscordInstance();
-	Guild* pGuild = pInst->GetCurrentGuild();
-	std::vector<IconRow> rows;
-
-	if (pGuild && !pGuild->m_bChannelsLoaded) {
-		pGuild->RequestFetchChannels();
-		IconRow r;
-		r.type = IconRow::HEADER;
-		r.text = GetFrontend()->GetPleaseWaitText();
-		rows.push_back(r);
-	}
-	else if (pGuild)
-	{
-		std::vector<const Channel*> chans;
-		for (auto& ch : pGuild->m_channels)
-			chans.push_back(&ch);
-		std::stable_sort(chans.begin(), chans.end(), [](const Channel* a, const Channel* b) { return *a < *b; });
-
-		auto addChannel = [&](const Channel* ch) {
-			if (!ch->HasPermissionConst(PERM_VIEW_CHANNEL))
-				return;
-			IconRow r;
-			r.id = ch->m_snowflake;
-			r.text = ch->m_name;
-			r.mentions = ch->m_mentionCount;
-			r.unread = ch->HasUnreadMessages() && !pInst->IsChannelMuted(pGuild->m_snowflake, ch->m_snowflake);
-			r.selectable = IsTextChannel(*ch);
-			r.dim = !r.selectable;
-			if (ch->m_channelType == Channel::DM) {
-				Snowflake who = ch->m_recipients.empty() ? 0 : ch->m_recipients[0];
-				r.hasImage = true;
-				r.imageKind = ch->m_avatarLnk.empty() ? ImageCache::DEFAULT_AVATAR : ImageCache::AVATAR;
-				r.imagePlace = ch->m_avatarLnk;
-				r.imageSf = who;
-				r.colorSeed = who;
-				Profile* pf = who ? GetProfileCache()->LookupProfile(who, "", "", "", false) : nullptr;
-				r.status = pf ? (int) pf->m_activeStatus : -1;
-			}
-			else if (ch->m_channelType == Channel::GROUPDM) {
-				r.initials = true;
-				if (!ch->m_avatarLnk.empty()) {
-					r.hasImage = true;
-					r.imageKind = ImageCache::CHANNEL_ICON;
-					r.imagePlace = ch->m_avatarLnk;
-					r.imageSf = ch->m_snowflake;
-				}
-			}
-			else if (ch->m_channelType == Channel::VOICE || ch->m_channelType == Channel::STAGEVOICE)
-				r.glyph = "\xe2\x99\xaa"; // a note: voice
-			else if (ch->m_channelType == Channel::FORUM || ch->m_channelType == Channel::MEDIA)
-				r.glyph = "\xe2\x96\xa4";
-			else
-				r.glyph = "#";
-			rows.push_back(r);
-		};
-
-		// channels outside categories first, then each category's
-		for (const Channel* ch : chans)
-			if (!ch->IsCategory() && ch->m_parentCateg == 0)
-				addChannel(ch);
-		for (const Channel* cat : chans)
-		{
-			if (!cat->IsCategory())
-				continue;
-			IconRow h;
-			h.type = IconRow::HEADER;
-			h.text = cat->m_name;
-			for (auto& c : h.text)
-				if (c >= 'a' && c <= 'z') c -= 32;
-			size_t before = rows.size();
-			rows.push_back(h);
-			for (const Channel* ch : chans)
-				if (!ch->IsCategory() && ch->m_parentCateg == cat->m_snowflake)
-					addChannel(ch);
-			if (rows.size() == before + 1)
-				rows.pop_back(); // an empty (or wholly hidden) category
-		}
-	}
-
-	m_channels->SetRows(rows, pInst->GetCurrentChannelID());
+	m_channels->SetRows(Lists::ChannelRows(), GetDiscordInstance()->GetCurrentChannelID());
 }
 
 void MainWindow::UpdateSelectedChannel()
@@ -805,129 +641,19 @@ void MainWindow::UpdateSelectedChannel()
 	m_messages->Refresh();
 }
 
-// The colour of the member's highest coloured role, or 0.
-Rgb RoleColor(Snowflake user, Snowflake guild)
-{
-	Guild* pGuild = GetDiscordInstance()->GetGuild(guild);
-	if (!pGuild || !guild)
-		return 0;
-	Profile* pf = GetProfileCache()->LookupProfile(user, "", "", "", false);
-	if (!pf)
-		return 0;
-	auto gm = pf->m_guildMembers.find(guild);
-	if (gm == pf->m_guildMembers.end())
-		return 0;
-	int bestPos = -1;
-	Rgb best = 0;
-	for (Snowflake role : gm->second.m_roles) {
-		auto it = pGuild->m_roles.find(role);
-		if (it == pGuild->m_roles.end())
-			continue;
-		if (it->second.m_colorOriginal && it->second.m_position > bestPos) {
-			bestPos = it->second.m_position;
-			best = (Rgb) it->second.m_colorOriginal;
-		}
-	}
-	return best;
-}
-
 void MainWindow::UpdateMemberList()
 {
 	if (!IsPaneShown(PANE_MEMBERS))
 		return; // made when it is shown
 	Perf::Scope perf(Perf::MEMBERS);
-	DiscordInstance* pInst = GetDiscordInstance();
-	Guild* pGuild = pInst->GetCurrentGuild();
-	std::vector<IconRow> rows;
-	if (pGuild && pGuild->m_snowflake != 0)
-	{
-		for (Snowflake sf : pGuild->m_members)
-		{
-			GuildMember* gm = pGuild->GetGuildMember(sf);
-			if (!gm)
-				continue;
-			if (gm->m_bIsGroup) {
-				if (gm->m_groupCount) {
-					IconRow h;
-					h.type = IconRow::HEADER;
-					h.text = pGuild->GetGroupName(gm->m_groupId) + " \xe2\x80\x94 " + std::to_string(gm->m_groupCount);
-					rows.push_back(h);
-				}
-				continue;
-			}
-			Profile* p = GetProfileCache()->LookupProfile(gm->m_user, "", "", "", false);
-			IconRow r;
-			r.id = gm->m_user;
-			r.text = p ? p->GetName(pGuild->m_snowflake) : std::string("?");
-			r.hasImage = true;
-			r.colorSeed = gm->m_user;
-			std::string av = !gm->m_avatar.empty() ? gm->m_avatar : (p ? p->m_avatarlnk : "");
-			r.imageKind = av.empty() ? ImageCache::DEFAULT_AVATAR : ImageCache::AVATAR;
-			r.imagePlace = av;
-			r.imageSf = gm->m_user;
-			r.status = p ? (int) p->m_activeStatus : -1;
-			r.dim = p && p->m_activeStatus == STATUS_OFFLINE;
-			r.textColor = RoleColor(gm->m_user, pGuild->m_snowflake);
-			rows.push_back(r);
-		}
-	}
-	m_members->SetRows(rows, 0);
+	m_members->SetRows(Lists::MemberRows(), 0);
 }
 
 void MainWindow::ShowDemoLists()
 {
-	auto item = [](Snowflake id, const char* text) { IconRow r; r.id = id; r.text = text; return r; };
-	auto header = [](const char* text) { IconRow r; r.type = IconRow::HEADER; r.text = text; return r; };
-	std::vector<IconRow> g;
-	IconRow dm = item(1, "Direct Messages"); dm.glyph = "@"; g.push_back(dm);
-	IconRow sp; sp.type = IconRow::SPACE; g.push_back(sp);
-	const char* names[] = { "Silicon Graphics User Group", "Vintage Computer CH", "Demoscene", "IRIX Network \xe2\x9c\xa8", "Octane Owners" };
-	for (int i = 0; i < 5; i++) {
-		IconRow r = item(100 + i, names[i]);
-		r.initials = true;
-		r.colorSeed = (Snowflake) (i * 3 + 1) << 22;
-		r.unread = i == 1;
-		r.mentions = i == 2 ? 3 : 0;
-		if (i == 0) {
-			r.hasImage = true;
-			r.imageKind = ImageCache::DEFAULT_AVATAR;
-			r.imageSf = (Snowflake) 2 << 22;
-		}
-		g.push_back(r);
-	}
-	g.push_back(header("Folder"));
-	IconRow f = item(200, "Tezro Fans"); f.initials = true; f.indent = 8; g.push_back(f);
-	m_guilds->SetRows(g, 100);
-
-	std::vector<IconRow> c;
-	c.push_back(header("INFORMATION"));
-	IconRow c1 = item(300, "rules"); c1.glyph = "#"; c.push_back(c1);
-	IconRow c2 = item(301, "announcements \xf0\x9f\x93\xa2"); c2.glyph = "#"; c2.unread = true; c.push_back(c2);
-	c.push_back(header("TEXT CHANNELS"));
-	IconRow c3 = item(302, "general"); c3.glyph = "#"; c.push_back(c3);
-	IconRow c4 = item(303, "marketplace"); c4.glyph = "#"; c4.mentions = 2; c4.unread = true; c.push_back(c4);
-	IconRow c5 = item(304, "Lounge"); c5.glyph = "\xe2\x99\xaa"; c5.selectable = false; c5.dim = true; c.push_back(c5);
-	m_channels->SetRows(c, 302);
-
-	std::vector<IconRow> m;
-	m.push_back(header("Online \xe2\x80\x94 3"));
-	const char* who[] = { "Ada", "Grace", "Dennis" };
-	Rgb colors[] = { 0xe91e63, 0x3498db, 0 };
-	for (int i = 0; i < 3; i++) {
-		IconRow r = item(400 + i, who[i]);
-		r.hasImage = true;
-		r.imageKind = ImageCache::DEFAULT_AVATAR;
-		r.imageSf = (Snowflake) (i + 3) << 22;
-		r.status = i + 1;
-		r.textColor = colors[i];
-		m.push_back(r);
-	}
-	m.push_back(header("Offline \xe2\x80\x94 1"));
-	IconRow off = item(410, "Linus");
-	off.hasImage = true; off.imageKind = ImageCache::DEFAULT_AVATAR; off.imageSf = (Snowflake) 7 << 22;
-	off.status = 0; off.dim = true;
-	m.push_back(off);
-	m_members->SetRows(m, 0);
+	m_guilds->SetRows(Demo::GuildRows(), Demo::SELECTED_GUILD);
+	m_channels->SetRows(Demo::ChannelRows(), Demo::SELECTED_CHANNEL);
+	m_members->SetRows(Demo::MemberRows(), 0);
 }
 
 void MainWindow::OnImagesChanged()
@@ -965,24 +691,10 @@ void MainWindow::ListUpdateCB(XtPointer client, XtIntervalId*)
 
 void MainWindow::UpdateIconName()
 {
-	DiscordInstance* pInst = GetDiscordInstance();
-	if (!pInst)
+	if (!GetDiscordInstance())
 		return;
-	std::vector<Snowflake> ids;
-	pInst->GetGuildIDsOrdered(ids, true);
-	int total = 0, dms = 0;
-	for (Snowflake sf : ids) {
-		if (sf == 1 || (sf & BIT_FOLDER))
-			continue;
-		Guild* pGuild = pInst->GetGuild(sf); // 0: the direct messages
-		if (!pGuild)
-			continue;
-		for (auto& ch : pGuild->m_channels) {
-			total += ch.m_mentionCount;
-			if (sf == 0)
-				dms += ch.m_mentionCount;
-		}
-	}
+	Lists::Unread unread = Lists::UnreadCounts();
+	int total = unread.total, dms = unread.directMessages;
 	if (dms != m_dmUnread && m_dmCascade) {
 		m_dmUnread = dms;
 		XmString xs = MakeXmString(dms ? "Messages (" + std::to_string(dms) + ")" : std::string("Messages"));
