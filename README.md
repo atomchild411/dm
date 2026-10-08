@@ -1,10 +1,10 @@
-# Discord Messenger for Windows
+# Discord Messenger for IRIX
 
-Discord Messenger is a messenger application designed to be compatible with Discord, while being
-backwards compatible with down to Windows 2000 (although support for even older versions has been
-attempted).
+Discord Messenger is a messenger application designed to be compatible with Discord. This is its
+port to SGI's IRIX 6.5, with a Motif user interface that follows your desktop's colour scheme.
 
-Its motto: *It's time to ditch MSN and Yahoo.*
+It started as a fork of [Discord Messenger](https://github.com/DiscordMessenger/dm) by iProgramInCpp
+and its contributors.
 
 **NOTE**: This is beta software, so there may be issues which need to be fixed!
 
@@ -18,245 +18,105 @@ account.
 
 See https://twitter.com/discord/status/1229357198918197248.
 
-## Discord Server
-
-A Discord server about this client can be joined here: https://discord.gg/cEDjgDbxJj
-
-###### Note, you will need to use an official client to accept invitations currently. This may change in the future.
-
 ## Screenshots
 
 ![IRIX screenshot: the Motif client in demo mode on the 4Dwm desktop](doc/ss_irix.png)
 
 ## Minimum System Requirements
 
-- Windows NT 3.1, Windows 95, or newer (MinGW version)
+- IRIX 6.5.22 or later, with X11 and IRIX's Motif (`x_eoe`, `motif_eoe`)
 
-- Windows XP SP2 or newer (MSVC version)
+- Any MIPS CPU from the R4000 on (the program is built for MIPS III): R4400, R4600, R5000, R8000,
+  R10000 and later
 
-- Pentium Pro or Pentium 2 CPU (MinGW version) Pentium 4 CPU (MSVC version)
+- 128 MB of RAM: the client keeps about 50 MB resident on a busy server
 
-- 64 MB of RAM, can do lower but might start to hit the page file
+- About 25 MB of disk for the program, its fonts and certificates, plus up to the size you allow for
+  the image and message cache in `~/.discordmessenger/cache`
+
+- Any graphics board: true-colour visuals are used as they are, 8-bit ones through a colour cube
+
+- A network connection with working DNS; everything goes over HTTPS and secure websockets
+
+Nothing else is needed: OpenSSL, FreeType, libpng, zlib, bzip2, libwebp and libc++ are linked into
+the program, and the package brings its own fonts (DejaVu, Noto Color Emoji) and root certificates.
+
+## Installing
+
+Download the newest `.tardist` from the [releases](https://github.com/atomchild411/dm/releases) and
+open it with Software Manager (swmgr), or:
+
+```
+mkdir /usr/tmp/dm && cd /usr/tmp/dm && tar xf dmessenger-<version>.tardist
+inst -f /usr/tmp/dm -a
+```
+
+It upgrades any earlier release in place. Then run `/usr/local/bin/discord-messenger`.
+Its README, installed as `/usr/local/lib/discord-messenger/README` (`irix/dist/README` here),
+describes logging in, every feature and the environment variables it reads.
 
 ## Building
 
-Before you can start the build process, after cloning the project (You should NOT download it as
-ZIP, unless you know that you should also download the submodules individually and unzip them in
-the correct locations), check out the submodules with the command:
-`git submodule update --init`.
+The client is cross-compiled on Linux and packaged on IRIX.
 
-Then you can start the build process.
+You need:
 
-You can build this project in three ways.
+- a clang that targets IRIX 6.5 n32 (`mipseb-sgi-irix6.5`). The LLVM 21 port behind the
+  `lang/clang-irix` package of [our pkgsrc fork](https://github.com/atomchild411/pkgsrc/tree/irix)
+  does.
+- IRIX's own X11 and Motif headers and libraries (`/usr/include`, `/usr/lib32`), copied from an
+  IRIX system.
+- OpenSSL 3, FreeType, libpng, zlib, bzip2 and libwebp built for IRIX, as static libraries, under
+  one prefix.
 
-### 1. Visual Studio
+After cloning, check out the submodules with `git submodule update --init`. Then:
 
-This method can only support down to Windows XP SP2, but it's easier to get started with.
-
-1. Compile OpenSSL for Win32, or find a distribution of OpenSSL 3.X.
-
-You can acquire OpenSSL for Win32 from the following website if you don't want to bother with
-compiling it:
-https://slproweb.com/products/Win32OpenSSL.html
-
-(Note: Do not download the "Light" versions, as they only contain the DLLs.)
-
-(Note: Download Win64 if you want to compile for x64, Win32 if you want to compile for Win32).
-
-2. Add an entry to your user/system environment variables called `OPENSSL_INSTALL`. (replace with
-`OPENSSL_INSTALL64` everywhere if you are compiling for 64-bit)
-
-Set its value to the place where your OpenSSL distribution is located.
-
-3. If you want to use a later version of libwebp, acquire libwebp from the following web site:
-https://developers.google.com/speed/webp/download.  Extract the archive and place "libwebp.lib" in
-`vs/libs`.
-
-4. Open the Visual Studio solution `vs/DiscordMessenger.sln`.
-
-5. Click the big play button.  (Both x86 and x64 targets are supported.)
-
-6. Enjoy!
-
-### 2. MinGW (on Linux, targeting Windows)
-
-(Note: x64 compilation with MinGW is currently not supported)
-
-**(NOTE: The versions of MinGW your package manager(s) provide(s) may not target your desired platform!
-If you want Pentium 1 support and/or native Windows 95/NT 3.x support, see: [Pentium Toolchain Build Guide](doc/pentium-toolchain/README.md))**
-
-1. Acquire mingw-w64:
 ```
-sudo apt install mingw-w64 gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix
+make -f Makefile.unix FRONTEND=motif STATIC_DEPS=1 \
+    CXX=mipseb-sgi-irix6.5-clang++ CC=mipseb-sgi-irix6.5-clang \
+    PREFIX_DEPS=<prefix> X_CFLAGS=-I<irix>/usr/include \
+    X_LIBS='-L<irix>/usr/lib32 -lSgm -lXm -lXt -lX11 -lXext' \
+    FT_LIBS='<prefix>/lib/libfreetype.a <prefix>/lib/libpng16.a <prefix>/lib/libz.a <prefix>/lib/libbz2.a' \
+    EXTRA_CXXFLAGS='-march=mips3 -DDM_DATADIR=\"/usr/local/lib/discord-messenger\"' \
+    EXTRA_LDFLAGS='-march=mips3 -static-libstdc++'
 ```
 
-2. Check out Discord Messenger's fork of [OpenSSL](https://github.com/DiscordMessenger/openssl).
+The program is `bin/dm-motif`. `FRONTEND=cli` builds `dm-cli`, a text client that drives the same
+core without a GUI, for testing a port (`dm-cli --probe` checks HTTPS, TLS and the gateway without
+logging in). The top of `Makefile.unix` lists every setting.
 
-3. Build it: `./buildit` or `TOOLCHAIN_PATH=[custom toolchain path] ./buildit`
-(if you're using the Pentium toolchain you should specify the TOOLCHAIN_PATH)
-
-4. Set `OPENSSL_DIR` in your environment variables to your OpenSSL checkout directory.  If you want
-to remember the path, edit the Makefile to use it as your default(but make sure to not check in your
-change when sending a PR!), or `export` it.
-
-5. Check out Discord Messenger's fork of [LibWebP](https://github.com/DiscordMessenger/libwebp).
-
-You can skip this step and steps #6 and #7.
-
-6. Run the following commands:
-```
-mkdir build && cd build
-
-cmake .. -DCMAKE_TOOLCHAIN_FILE=../win32.cmake
--or-
-TOOLCHAIN_PATH=[custom toolchain path] cmake .. -DCMAKE_TOOLCHAIN_FILE=../win32.cmake
-
-make -j12
-```
-
-7. Set `LIBWEBP_DIR` to `[libwebp checkout dir]/build`.
-
-8. Finally, you are ready to compile Discord Messenger.
-
-Use the following command line:
-```
-make DEBUG=no UNICODE=[no|yes] [-j (your core count)]
-```
-
-If you didn't compile LibWebP you must additionally set `DISABLE_WEBP=yes`.
-
-The finished binary will be placed in `./bin/DiscordMessenger.exe`. Enjoy!
-
-### 3. MinGW (old Windows method)
-
-(Note: x64 compilation with MinGW is currently not supported)
-
-1. Acquire MinGW-6.3.0.  This is the last version of the original Minimalist GNU for Windows.
-
-NOTE: You might be able to use Mingw-w64 with 32-bit mode, but you might run into trouble running the
-final product on anything newer than XP.
-
-2. Using the MinGW Installation Manager, install or ensure that the following packages are installed:
-	- mingw32-base
-	- mingw32-binutils
-	- mingw32-gcc
-	- mingw32-gcc-core-deps
-	- mingw32-gcc-g++
-	- mingw32-libatomic
-	- mingw32-libgcc
-	- mingw32-w32api
-	- msys-base
-	- msys-bash
-	- msys-core
-	- msys-make
-
-3. Ensure that both the MinGW `bin/` AND msys `bin/` directories are in your `PATH`.
-
-4. Set `OPENSSL_DIR` in your environment variables to your OpenSSL library directory.
-
-If you wish to use Shining Light Productions' distribution of OpenSSL-Win32, copy the
-`%OPENSSL_INSTALL%/include` and `%OPENSSL_INSTALL%/lib/MinGW` directories to a new folder
-that you assign as `OPENSSL_DIR`, then make sure that your MinGW libraries are actually
-in the root of that new folder!
-
-If you want compatibility on Windows versions which don't support the Microsoft Visual Studio 2015
-runtimes (VCRUNTIME140.DLL), then you will need to compile OpenSSL yourself.  See the section on
-[Compiling OpenSSL for older Windows versions](#compiling-openssl-for-older-windows-versions)
-section.
-
-5. Run the `make IS_MINGW_ON_WINDOWS=yes DISABLE_WEBP=yes` command.
-
-6. Enjoy!
+To make the package, copy the program and the `irix/dist` directory to an IRIX machine and run
+`irix/dist/make-tardist.sh` there; it uses IRIX's `gendist`. The script's comments give its
+arguments.
 
 ## Features
+
 ### Implemented
 
-- Viewing and interacting with servers and direct messages
-- Viewing and downloading images and attachments
+- Logging in with a QR code scanned by the Discord app, or with a token
+- Servers (with their icons and folders), channels, the member list and direct messages
+- Messages with Discord's formatting, replies, reactions, embeds and colour emoji
+- Pictures in messages, and a viewer that scales them with its window
+- Sending, replying, editing and deleting messages; emoji by shortcode or from a picker, the
+  server's own emoji included
+- Adding and taking back reactions
+- Who is typing
+- A sound for mentions and direct messages, and unread counts in the window's icon name
+- The Messages menu, listing direct messages with the unread ones first; each conversation opens
+  in a window of its own
+- Read marks kept in step with Discord's other clients
+- Showing or hiding the server, channel and member lists, larger or smaller text
+- Coming back to the server and channel you were last in
+- A cache of images and message history on disk, with size limits
+
+### Unimplemented
+
 - Uploading attachments
-- Editing messages
-- Deleting messages
-- Replying to messages
-- Typing indicator
-- URL hotlinks with untrusted link warning dialog (1)
-- Viewing member list in servers (2)
-- Viewing pinned messages in server
-- Embeds (6)
-- Showing profile pictures in DM list
-- User notes
-
-### Unimplemented but planned
-
+- Voice channels
 - Friends list
-- Viewing member list in group messages and DMs
-- Dark mode on modern systems (3)
-- Using an asynchronous HTTP library (4)
-- Entering voice channels (5)
-- Blocking, closing DMs, removing as friend
-- Muting channels
-- Changing nickname
-- More options in the "Preferences" menu
-- Assigning a custom status
-
-### Unplanned Features
-
-- Sending friend requests
-- Creating DM channels
-- Logging in using QR code (7) (8)
-- Logging in using e-mail address and password (7)
-- Joining servers (7)
-
-### Note
-1. You may need a modern browser to actually access most links.
-
-2. Only the first 100 users. I plan on changing it.
-
-3. Would take a lot of effort, but theoretically it is possible. No, it's not as simple as hooking
-   certain APIs.
-
-4. Currently, we are using a synchronous HTTP library, with threads to simulate async behavior.
-
-5. Planned for far in the future.
-
-6. Embeds are incomplete, for example, fields don't function properly.
-
-7. Action is weighted by Discord's anti-spam measures. It could cause the target to get autobanned.
-
-8. Some code already exists, but this feature is unfinished and will probably never be finished.
-
-## Compiling OpenSSL for older Windows versions
-
-You will need to use the `mingw-w64` (not the original one as this project wanted once upon a time).
-Start by cloning the OpenSSL repo found at the following link: https://github.com/DiscordMessenger/openssl.git.
-
-Then, run the `./buildit` command.
-
-To use the final libraries and DLLs when compiling Discord Messenger, use `[OpenSSL repo root]` as your `OPENSSL_DIR`.
-
-## Running on Windows NT 3.x and Windows 9x
-
-**NOTE: You do not need to follow these steps if you don't intend on running
-Discord Messenger on these versions of Windows.**
-
-You will need to use the mingw-w64 Pentium toolchain described in the [Pentium Toolchain Build Guide](doc/pentium-toolchain/README.md)),
-which additionally provides patches for compatibility with Windows NT 3.x / 9x.
-
-One more thing, you must byte patch DiscordMessenger.exe to report a minimum subsystem version of
-3.10 (as opposed to 4.0).  The subsystem version is typically located at offset 0xC8 or 200
-(**make sure to check if the bytes match `04 00 00 00`**).  Overwrite it with the following byte
-string: `03 00 0A 00`. Then, save.
-
-## Short File Names
-
-If you are planning to run Discord Messenger from a FAT partition on a Windows OS that does not support
-LFNs (Windows NT 3.1, 3.5, and Windows 95 betas), then you will need to edit the final executable and its
-DLLs to use SFN versions thereof.
-
-- `libcrypto-3.dll` -> `libcrypt.dll`
-- `libssl-3.dll` -> `libssl.dll`
-
-You can use a hex editor for this purpose or you can use CFF Explorer.  These changes must be applied to
-`DiscordMessenger.exe` *and* `libssl-3.dll`. Also, make sure to rename the libcrypto and libssl DLLs.
+- Typing non-Latin-1 text in the message box (emoji are written as shortcodes)
+- Discord's captcha, which it sometimes asks for at the end of a QR login (log in with a token
+  then)
 
 ## Attributions
 
@@ -268,7 +128,13 @@ Discord Messenger is powered by the following external libraries:
 - [Httplib](https://github.com/yhirose/cpp-httplib)
 - [Asio](https://think-async.com/Asio)
 - [Websocketpp](https://github.com/zaphoyd/websocketpp)
+- [OpenSSL](https://www.openssl.org)
+- [FreeType](https://freetype.org), [libpng](http://www.libpng.org), [zlib](https://zlib.net) and
+  [bzip2](https://sourceware.org/bzip2/)
+- [stb_image](https://github.com/nothings/stb)
+- [QR Code generator](https://github.com/nayuki/QR-Code-generator)
+- [LLVM libc++](https://libcxx.llvm.org)
+- The [DejaVu](https://dejavu-fonts.github.io) and [Noto Color Emoji](https://github.com/googlefonts/noto-emoji)
+  fonts, and Mozilla's root certificates
 
-Although these libraries are vendored, you can replace them with the latest version, and the MSVC
-build will keep working.  Adjustments were made to certain libraries to make them compile on MinGW.
-See `doc/` for details.
+Their licences come with the package, in `/usr/local/lib/discord-messenger/licenses`.

@@ -1,9 +1,8 @@
 Discord Messenger for IRIX
 ==========================
 
-Discord Messenger (https://github.com/DiscordMessenger/dm), the Discord-
-compatible messenger for old versions of Windows, ported to IRIX 6.5 with a
-Motif user interface.
+A Discord-compatible messenger for IRIX 6.5 with a Motif user interface,
+from Discord Messenger (https://github.com/DiscordMessenger/dm).
 
 Run:     /usr/local/bin/discord-messenger
 Needs:   IRIX 6.5.22 or later, X11 and IRIX's Motif (x_eoe, motif_eoe);
