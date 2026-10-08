@@ -55,6 +55,7 @@
 #include "shared/Timers.hpp"
 #include "shared/Typing.hpp"
 #include "App.hpp"
+#include "WebLogin.hpp"
 #include "Gfx.hpp"
 
 static DiscordInstance* g_pDiscordInstance;
@@ -414,6 +415,10 @@ int main(int argc, char** argv)
 	if (const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor()))
 		App::SetScreenSize(mode->width, mode->height);
 	App::Init(demo);
+	// DM_TEST_WEBLOGIN: discord.com's login page in a hidden browser view,
+	// then quit (a check that the page and the token watcher load)
+	if (getenv("DM_TEST_WEBLOGIN"))
+		WebLogin::SelfTest([] { g_bQuit = true; });
 	if (!demo) {
 		Timers::After(30000, SaveHistory);
 		if (token.empty())

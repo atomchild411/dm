@@ -85,7 +85,9 @@ IMGUI_FILES := deps/imgui/imgui.cpp deps/imgui/imgui_draw.cpp deps/imgui/imgui_t
 	deps/imgui/backends/imgui_impl_opengl3.cpp
 LIBS += $(GLFW_LIBS)
 ifeq ($(UNAME),Darwin)
-LIBS += -framework OpenGL
+# the browser view for logging in (Objective-C++)
+MMFILES := $(shell find src/$(FRONTEND) -type f -name '*.mm')
+LIBS += -framework OpenGL -framework Cocoa -framework WebKit
 else
 LIBS += -lGL -ldl
 endif
@@ -100,7 +102,9 @@ CXXFILES := \
 
 CFILES := deps/qrcodegen/qrcodegen.c
 
-OBJ := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(CXXFILES)) $(patsubst %.c,$(BUILD_DIR)/%.o,$(CFILES))
+MMFILES ?=
+OBJ := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(CXXFILES)) $(patsubst %.c,$(BUILD_DIR)/%.o,$(CFILES)) \
+	$(patsubst %.mm,$(BUILD_DIR)/%.o,$(MMFILES))
 DEP := $(OBJ:.o=.d)
 
 .PHONY: all clean
@@ -115,6 +119,11 @@ $(BUILD_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	@echo ">> $<"
 	@$(CXX) $(CXXFLAGS) -MMD -MF $(BUILD_DIR)/$*.d -c $< -o $@
+
+$(BUILD_DIR)/%.o: %.mm
+	@mkdir -p $(dir $@)
+	@echo ">> $<"
+	@$(CXX) $(CXXFLAGS) -fobjc-arc -MMD -MF $(BUILD_DIR)/$*.d -c $< -o $@
 
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)

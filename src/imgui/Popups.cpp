@@ -14,6 +14,7 @@
 #include "shared/ImageCache.hpp"
 #include "shared/QrLogin.hpp"
 #include "shared/Shortcodes.hpp"
+#include "WebLogin.hpp"
 
 using namespace Ui;
 
@@ -36,6 +37,18 @@ namespace
 	bool tokenMode = false;
 	std::string loginWhy;
 	char token[256];
+
+	// The token from discord.com's login page: the session starts with it.
+	void OpenWebLogin()
+	{
+		WebLogin::Open([](const std::string& tok) {
+			QrLogin::Stop();
+			loginShown = false;
+			GetLocalSettings()->SetToken(tok);
+			GetLocalSettings()->Save();
+			StartWithToken();
+		}, [] {});
+	}
 
 	void Login()
 	{
@@ -72,6 +85,14 @@ namespace
 			}
 			ImGui::TextWrapped("%s", QrLogin::StatusText().c_str());
 			ImGui::Separator();
+			if (WebLogin::Available()) {
+				// discord.com's own login page: email and password, and the
+				// captcha Discord may ask for (which the QR login cannot show)
+				if (ImGui::Button("Log In on discord.com", ImVec2(300, 0)))
+					OpenWebLogin();
+				ImGui::TextDisabled("With your email and password; any captcha shows there.");
+				ImGui::Separator();
+			}
 			if (ImGui::Button("Use a Token Instead")) {
 				QrLogin::Stop();
 				tokenMode = true;
