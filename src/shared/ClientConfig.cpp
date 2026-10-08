@@ -73,9 +73,16 @@ void SaveClientConfig()
 		remove(tmp.c_str());
 }
 
+static int g_defaultTextSize = 14;
+
+void SetDefaultTextSize(int px)
+{
+	g_defaultTextSize = px;
+}
+
 int GetTextSize()
 {
-	return g_textSize ? g_textSize : 14;
+	return g_textSize ? g_textSize : g_defaultTextSize;
 }
 
 void SetTextSize(int px)

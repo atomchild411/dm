@@ -80,7 +80,26 @@ public:
 		std::shared_ptr<ItemExtra> extra;
 	};
 
+	// The spacing a front end lays messages out with (the constants above
+	// are the defaults: the Motif client's).
+	struct Geometry
+	{
+		int margin = MARGIN;           // left and right
+		int avatar = AVATAR;
+		int textX = TEXT_X;            // where the text starts
+		int groupGap = GROUP_GAP;
+		int lineGap = LINE_GAP;
+		int dateSep = DATE_SEP;
+		int pillPad = PILL_PAD;
+		int embedWidth = EMBED_WIDTH;
+		int thumb = THUMB;
+		int pictureMax = 300;          // pictures fit in pictureMax square
+	};
+
 	explicit MessageList(TextMetrics& metrics) : m_metrics(metrics) {}
+	MessageList(TextMetrics& metrics, const Geometry& geometry) :
+		m_metrics(metrics), m_geo(geometry) {}
+	const Geometry& Geo() const { return m_geo; }
 
 	// Shows another channel: forgets the items and the history asked for.
 	void SetChannel(Snowflake guild, Snowflake channel);
@@ -157,6 +176,7 @@ private:
 	void LayoutItem(Item& item, DrawingContext* ctx, int px, int width);
 
 	TextMetrics& m_metrics;
+	Geometry m_geo;
 	Snowflake m_guild = 0, m_channel = 0;
 	std::list<Item> m_items;
 	std::set<Snowflake> m_requestedGaps;
