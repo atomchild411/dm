@@ -2,7 +2,8 @@
 # inside.sh ARCH...: the Windows build, inside the container windows/build.sh
 # starts (/src = the source tree, /work = the work directory, /fonts = the
 # fonts).  For each ARCH (x86_64, aarch64): the libraries, the program, and
-# /work/dist/DiscordMessenger-VERSION-windows-{x64,arm64}.zip.
+# in /work/dist DiscordMessenger-VERSION-windows-{x64,arm64}.zip and .msi
+# (the installer; DM_BUILD, the build number, is its version's third part).
 set -eu
 VERSION=1.11
 W=/work
@@ -149,4 +150,17 @@ for arch in "$@"; do
 	cp /src/windows/README.txt $d/README.txt
 	( cd $W/pkg && rm -f $W/dist/$pkg.zip && zip -qr $W/dist/$pkg.zip $pkg )
 	echo "$W/dist/$pkg.zip"
+
+	# the installer: the same files, installed for the user
+	python3 /src/windows/msi.py $d $VERSION.${DM_BUILD:-0} $name /src/irix/icon_discord.ico $W/pkg/$pkg.wxs
+	# (wixl makes x64 packages, not ARM64 ones: an ARM64 package differs
+	# only in its summary's platform, set afterwards with a new package code)
+	wixl -a x64 -o $W/dist/$pkg.msi $W/pkg/$pkg.wxs > $W/wixl-$arch.log 2>&1 ||
+		{ cat $W/wixl-$arch.log; echo "msi ($arch) FAILED"; exit 1; }
+	if [ $name = arm64 ]; then
+		code=$(python3 -c 'import uuid; print(str(uuid.uuid4()).upper())')
+		msibuild $W/dist/$pkg.msi -s "Discord Messenger $VERSION.${DM_BUILD:-0}" atomchild411 "Arm64;1033" "{$code}" ||
+			{ echo "msi ($arch) FAILED"; exit 1; }
+	fi
+	echo "$W/dist/$pkg.msi"
 done

@@ -4,7 +4,7 @@
 FROM docker.io/library/debian:trixie
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         clang-19 lld-19 llvm-19 cmake ninja-build make perl python3 pkg-config \
-        curl ca-certificates xz-utils zip file \
+        curl ca-certificates xz-utils zip file wixl msitools \
     && rm -rf /var/lib/apt/lists/*
 COPY wincc /opt/wincross/bin/wincc
 RUN cd /opt/wincross/bin && for a in x86_64 aarch64; do \

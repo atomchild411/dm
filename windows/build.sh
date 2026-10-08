@@ -13,7 +13,8 @@
 #                   (and Mono) and Noto Color Emoji, with Inter-LICENSE.txt
 #
 # Needs podman or docker.  Work files go to build-win/ (about 3 GB: the SDK
-# and the libraries are built once); the zips to bin/windows/.
+# and the libraries are built once); the zips and the installers (.msi) to
+# bin/windows/.
 set -eu
 cd "$(dirname "$0")/.."
 accept=0 fonts=${DM_FONTS:-} arches=
@@ -36,8 +37,10 @@ else echo "podman or docker is needed"; exit 1; fi
 
 mkdir -p build-win bin/windows
 $engine build -q -t dm-win-cross windows > /dev/null
-$engine run --rm $user -e DM_ACCEPT_LICENSE=$accept \
+# the build number (the installer's version): the commits so far
+build=${DM_BUILD:-$(git rev-list --count HEAD 2>/dev/null || echo 0)}
+$engine run --rm $user -e DM_ACCEPT_LICENSE=$accept -e DM_BUILD=$build \
 	-v "$PWD":/src$vol -v "$PWD/build-win":/work$vol -v "$fonts":/fonts$ro \
 	dm-win-cross sh /src/windows/inside.sh $arches
-cp build-win/dist/*.zip bin/windows/
+cp build-win/dist/*.zip build-win/dist/*.msi bin/windows/
 ls -l bin/windows/

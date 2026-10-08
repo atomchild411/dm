@@ -100,8 +100,11 @@ describes logging in, every feature and the environment variables it reads.
 ### macOS, Linux and Windows
 
 There are no releases yet: build the client as below. On macOS that gives you
-`bin/Discord Messenger.app`, which you can copy to `/Applications`; on Windows a zip to unpack
-anywhere, with `DiscordMessenger.exe` and its `fonts` folder.
+`bin/Discord Messenger.app`, which you can copy to `/Applications`. On Windows it gives an installer
+(`.msi`): it installs for you alone, needs no administrator, and adds a Start menu entry and an
+uninstall entry. There is also a zip to unpack anywhere, with `DiscordMessenger.exe` and its `fonts`
+folder. Neither is signed yet, so Windows' SmartScreen asks first ("More info", then "Run
+anyway").
 
 ## Building
 
@@ -189,7 +192,8 @@ windows/build.sh --accept-license --fonts <fonts directory>
 `--accept-license` accepts [Microsoft's licence](https://go.microsoft.com/fwlink/?LinkId=2086102)
 for the SDK and C runtime, which the first build downloads. The script fetches OpenSSL, FreeType,
 libpng, zlib, libwebp, GLFW and the WebView2 SDK too, checks each against its SHA-256, and builds them once. It
-leaves `bin/windows/DiscordMessenger-<version>-windows-x64.zip` and `-arm64.zip`. The top of
+leaves `bin/windows/DiscordMessenger-<version>-windows-x64.msi` and `.zip`, and the same for
+`arm64`; the installers are made with `wixl` (msitools), from `windows/msi.py`. The top of
 `windows/build.sh` has the details; `windows/inside.sh` is what runs in the container.
 
 ### Any platform
