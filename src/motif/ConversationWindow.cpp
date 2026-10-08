@@ -17,6 +17,7 @@
 #include "MessageView.hpp"
 #include "ReactionPicker.hpp"
 #include "shared/Shortcodes.hpp"
+#include "shared/Composer.hpp"
 #include "Theme.hpp"
 
 int AddVisualArgs(Arg* args, int n); // Main.cpp
@@ -29,9 +30,8 @@ namespace
 		Widget shell = nullptr, editor = nullptr, emoji = nullptr, send = nullptr;
 		Widget replyBar = nullptr, replyLabel = nullptr, status = nullptr;
 		MessageView* view = nullptr;
-		Snowflake replyTo = 0, editing = 0;
+		Composer composer;     // reply, edit, send (made for the channel)
 		bool focused = false;
-		time_t lastTyping = 0;
 	};
 
 	Widget g_toplevel;
@@ -75,10 +75,8 @@ namespace
 
 	void CancelCompose(Conversation* w)
 	{
-		if (w->editing)
-			XmTextSetString(w->editor, (char*) "");
-		w->editing = 0;
-		w->replyTo = 0;
+		if (w->composer.Cancel())
+			XmTextSetString(w->editor, (char*) ""); // the edit is dropped
 		if (XtIsManaged(w->replyBar)) {
 			XtVaSetValues(w->view->GetWidget(), XmNbottomWidget, XtParent(w->editor), NULL);
 			XtUnmanageChild(w->replyBar);
@@ -92,31 +90,16 @@ namespace
 
 	void Send(Conversation* w)
 	{
-		DiscordInstance* pInst = GetDiscordInstance();
 		char* raw = XmTextGetString(w->editor);
 		std::string text = raw ? raw : "";
 		XtFree(raw);
-		size_t a = text.find_first_not_of(" \t\n"), b = text.find_last_not_of(" \t\n");
-		if (a == std::string::npos || !pInst)
+		Composer::Result r = w->composer.Send(Latin1ToUtf8(text));
+		if (r != Composer::SENT && r != Composer::EDITED)
 			return;
-		text = text.substr(a, b - a + 1);
-
-		// shortcodes become the emoji (see Shortcodes)
-		std::string utf8 = Shortcodes::FromEditor(Latin1ToUtf8(text), 0);
-		if (w->editing) {
-			pInst->RequestEditMessage(w->channel, w->editing, utf8);
-			w->editing = 0;
-			CancelCompose(w);
-			XmTextSetString(w->editor, (char*) "");
-			return;
-		}
-		Snowflake tempSf = 0;
-		if (pInst->SendMessageToChannel(0, w->channel, utf8, tempSf, w->replyTo)) {
-			CancelCompose(w);
-			XmTextSetString(w->editor, (char*) "");
-			w->lastTyping = 0;
+		CancelCompose(w);
+		XmTextSetString(w->editor, (char*) "");
+		if (r == Composer::SENT)
 			w->view->ScrollToBottom();
-		}
 	}
 
 	void SendCB(Widget, XtPointer client, XtPointer)
@@ -130,11 +113,7 @@ namespace
 		char* text = XmTextGetString(w->editor);
 		bool empty = !text || !*text;
 		XtFree(text);
-		time_t now = time(NULL);
-		if (!empty && now - w->lastTyping >= 8 && GetDiscordInstance()) {
-			w->lastTyping = now;
-			GetDiscordInstance()->Typing(w->channel);
-		}
+		w->composer.TextChanged(empty);
 	}
 
 	void EmojiCB(Widget b, XtPointer client, XtPointer)
@@ -175,6 +154,7 @@ namespace
 	{
 		Conversation* w = new Conversation;
 		w->channel = channel;
+		w->composer = Composer(channel);
 		std::string title = Utf8ToLatin1(Title(channel));
 
 		Arg args[12];
@@ -279,13 +259,11 @@ namespace
 			NULL);
 		w->view->SetOwner(
 			[w](Snowflake id, const std::string& author) {
-				w->editing = 0;
-				w->replyTo = id;
+				w->composer.BeginReply(id);
 				ShowBar(w, "Replying to " + author);
 			},
 			[w](Snowflake id, const std::string& text) {
-				w->replyTo = 0;
-				w->editing = id;
+				w->composer.BeginEdit(id);
 				ShowBar(w, "Editing your message");
 				std::string shown = Utf8ToLatin1(Shortcodes::ToEditor(text));
 				XmTextSetString(w->editor, (char*) shown.c_str());

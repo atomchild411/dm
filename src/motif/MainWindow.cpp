@@ -36,6 +36,7 @@
 #include "shared/Lists.hpp"
 #include "shared/Demo.hpp"
 #include "shared/Typing.hpp"
+#include "shared/Composer.hpp"
 #include "models/ActiveStatus.hpp"
 
 static MainWindow* g_pMainWindow;
@@ -475,7 +476,7 @@ void MainWindow::ApplyPanes()
 
 void MainWindow::BeginReply(Snowflake message, const std::string& author)
 {
-	m_replyTo = message;
+	m_composer.BeginReply(message);
 	XmString xs = MakeXmString("Replying to " + author);
 	XtVaSetValues(m_replyLabel, XmNlabelString, xs, NULL);
 	XmStringFree(xs);
@@ -503,8 +504,7 @@ void MainWindow::RestoreLastChannel()
 
 void MainWindow::BeginEdit(Snowflake message, const std::string& text)
 {
-	m_replyTo = 0;
-	m_editing = message;
+	m_composer.BeginEdit(message);
 	XmString xs = MakeXmString("Editing your message");
 	XtVaSetValues(m_replyLabel, XmNlabelString, xs, NULL);
 	XmStringFree(xs);
@@ -564,10 +564,8 @@ void MainWindow::EmojiCB(Widget w, XtPointer client, XtPointer)
 
 void MainWindow::CancelReply()
 {
-	if (m_editing)
+	if (m_composer.Cancel())
 		XmTextSetString(m_editor, (char*) ""); // the edit is dropped
-	m_editing = 0;
-	m_replyTo = 0;
 	if (XtIsManaged(m_replyBar)) {
 		XtVaSetValues(m_messages->GetWidget(), XmNbottomWidget, XtParent(m_editor), NULL);
 		XtUnmanageChild(m_replyBar);
@@ -813,47 +811,22 @@ void MainWindow::SendCB(Widget, XtPointer client, XtPointer)
 void MainWindow::EditorChangedCB(Widget, XtPointer client, XtPointer)
 {
 	MainWindow* self = (MainWindow*) client;
-	DiscordInstance* pInst = GetDiscordInstance();
-	if (!pInst || !pInst->GetCurrentChannelID())
-		return;
 	char* text = XmTextGetString(self->m_editor);
 	bool empty = !text || !*text;
 	XtFree(text);
-	time_t now = time(NULL);
-	if (!empty && now - self->m_lastTypingSent >= 8) {
-		self->m_lastTypingSent = now;
-		pInst->Typing();
-	}
+	self->m_composer.TextChanged(empty);
 }
 
 void MainWindow::SendFromEditor()
 {
-	DiscordInstance* pInst = GetDiscordInstance();
 	char* raw = XmTextGetString(m_editor);
 	std::string text = raw ? raw : "";
 	XtFree(raw);
-
-	// trim
-	size_t a = text.find_first_not_of(" \t\n"), b = text.find_last_not_of(" \t\n");
-	if (a == std::string::npos || !pInst || !pInst->GetCurrentChannelID())
+	Composer::Result r = m_composer.Send(Latin1ToUtf8(text));
+	if (r != Composer::SENT && r != Composer::EDITED)
 		return;
-	text = text.substr(a, b - a + 1);
-
-	// shortcodes (:joy:, a server's :name:, :U+...:) become the emoji
-	std::string utf8 = Shortcodes::FromEditor(Latin1ToUtf8(text), pInst->GetCurrentGuildID());
-	if (m_editing) {
-		pInst->RequestEditMessage(pInst->GetCurrentChannelID(), m_editing, utf8);
-		m_editing = 0;
-		CancelReply();
-		XmTextSetString(m_editor, (char*) "");
-		m_lastTypingSent = 0;
-		return;
-	}
-	Snowflake tempSf = 0;
-	if (pInst->SendMessageToCurrentChannel(utf8, tempSf, m_replyTo)) {
-		CancelReply();
-		XmTextSetString(m_editor, (char*) "");
-		m_lastTypingSent = 0;
+	CancelReply();
+	XmTextSetString(m_editor, (char*) "");
+	if (r == Composer::SENT)
 		m_messages->ScrollToBottom();
-	}
 }

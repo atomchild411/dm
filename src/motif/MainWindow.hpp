@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Xm.hpp"
+#include "shared/Composer.hpp"
 
 #include "models/Snowflake.hpp"
 #include "Canvas.hpp"
@@ -71,6 +72,7 @@ public:
 	void ShowDemoLists();
 
 private:
+	Composer m_composer;   // the message box: reply, edit, send
 	void OnGuildPicked(Snowflake sf);
 	void OnChannelPicked(Snowflake sf);
 	static void ListRepaintCB(XtPointer, XtIntervalId*);
@@ -94,8 +96,6 @@ private:
 	XtIntervalId m_listRepaintTimer = 0;
 	XtIntervalId m_listUpdateTimer = 0;
 	Widget m_replyBar = nullptr, m_replyLabel = nullptr;
-	Snowflake m_replyTo = 0;
-	Snowflake m_editing = 0;
 	std::string m_iconName = "Discord";
 	// the Messages menu: the direct messages, unread first
 	Widget m_dmCascade = nullptr, m_dmMenu = nullptr;
@@ -115,7 +115,6 @@ private:
 
 
 	// typing: channel -> user -> when it expires
-	time_t m_lastTypingSent = 0;
 	std::string m_statusText;
 };
 
