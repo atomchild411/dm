@@ -64,8 +64,6 @@ public:
 	// Shows a modal error box.
 	void ShowError(const std::string& text);
 
-	bool IsIconic() const;
-
 	// Images arrived: repaint what may show them.
 	void OnImagesChanged();
 

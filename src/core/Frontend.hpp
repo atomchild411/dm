@@ -87,7 +87,6 @@ public:
 	virtual void RequestQuit() = 0;
 	
 	// Queries
-	virtual bool IsWindowMinimized() = 0;
 	virtual bool IsWindowFocused() = 0;
 	
 	// Strings
@@ -107,21 +106,10 @@ public:
 	virtual std::string GetFormatTimestampDateLongTimeShort() = 0;
 	virtual std::string GetFormatTimestampDateLongTimeLong() = 0;
 
-	virtual void HideWindow() = 0;
-	virtual void RestoreWindow() = 0;
-	virtual void MaximizeWindow() = 0;
-	virtual int GetMinimumWidth() = 0;
-	virtual int GetMinimumHeight() = 0;
-	virtual int GetDefaultWidth() = 0;
-	virtual int GetDefaultHeight() = 0;
-
 	// Debugging
 #ifdef USE_DEBUG_PRINTS
 	virtual void DebugPrint(const char* fmt, va_list vl) = 0;
 #endif
-
-	// Theming
-	virtual bool UseGradientByDefault() = 0;
 };
 
 // Defined in the specific platform that this application is compiled for.

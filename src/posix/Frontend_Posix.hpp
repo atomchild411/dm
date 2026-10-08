@@ -67,7 +67,6 @@ public:
 	void RegisterChannelIcon(Snowflake sf, const std::string& avatarlnk) override {}
 	std::string LoadConfig() override;
 	bool SaveConfig(const std::string& configJson) override;
-	bool IsWindowMinimized() override { return false; }
 	bool IsWindowFocused() override { return true; }
 	std::string GetDirectMessagesText() override;
 	std::string GetPleaseWaitText() override;
@@ -84,17 +83,9 @@ public:
 	std::string GetFormatTimestampDateLong() override;
 	std::string GetFormatTimestampDateLongTimeShort() override;
 	std::string GetFormatTimestampDateLongTimeLong() override;
-	void HideWindow() override {}
-	void RestoreWindow() override {}
-	void MaximizeWindow() override {}
-	int GetMinimumWidth() override { return 600; }
-	int GetMinimumHeight() override { return 400; }
-	int GetDefaultWidth() override { return 1000; }
-	int GetDefaultHeight() override { return 700; }
 #ifdef USE_DEBUG_PRINTS
 	void DebugPrint(const char* fmt, va_list vl) override;
 #endif
-	bool UseGradientByDefault() override { return false; }
 
 protected:
 	// Shows an error or a notice to the user.  UI thread.

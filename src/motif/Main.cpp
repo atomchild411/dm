@@ -200,9 +200,6 @@ public:
 	bool IsWindowFocused() override {
 		return Notifier::IsFocused();
 	}
-	bool IsWindowMinimized() override {
-		return GetMainWindow()->IsIconic();
-	}
 
 protected:
 	void ShowError(const std::string& message) override {

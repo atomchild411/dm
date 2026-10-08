@@ -603,15 +603,6 @@ void MainWindow::ShowError(const std::string& text)
 	XtManageChild(dlg);
 }
 
-bool MainWindow::IsIconic() const
-{
-	if (!XtIsRealized(m_shell))
-		return false;
-	XWindowAttributes wa;
-	XGetWindowAttributes(XtDisplay(m_shell), XtWindow(m_shell), &wa);
-	return wa.map_state != IsViewable;
-}
-
 void MainWindow::UpdateGuildList()
 {
 	Perf::Scope perf(Perf::GUILDS);
