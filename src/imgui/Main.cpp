@@ -36,8 +36,16 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
+// stb's PNG writer (DM_SNAPSHOT); its one sprintf is the SDK's to call deprecated
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #include <stb/stb_image_write.h>
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #include "DiscordInstance.hpp"
 #include "config/LocalSettings.hpp"
