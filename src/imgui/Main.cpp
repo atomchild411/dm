@@ -1,4 +1,4 @@
-// Discord Messenger with Dear ImGui, on GLFW and OpenGL 3 (Linux, macOS).
+// Discord Messenger with Dear ImGui, on GLFW and OpenGL 3 (Linux, macOS, Windows).
 //
 //   dm-imgui [--demo]
 //
@@ -26,11 +26,31 @@
 #if defined(__APPLE__)
 #define GL_SILENCE_DEPRECATION
 #define GLFW_INCLUDE_GLCOREARB
-#else
+#elif !defined(_WIN32)
 #define GL_GLEXT_PROTOTYPES
 #define GLFW_INCLUDE_GLEXT
 #endif
 #include <GLFW/glfw3.h>
+
+#if defined(_WIN32)
+// Windows' opengl32 exports OpenGL 1.1: the framebuffer calls (DM_SNAPSHOT)
+// are looked up once there is a context
+#define GL_FRAMEBUFFER 0x8D40
+#define GL_COLOR_ATTACHMENT0 0x8CE0
+static void (__stdcall* glGenFramebuffers)(GLsizei, GLuint*);
+static void (__stdcall* glBindFramebuffer)(GLenum, GLuint);
+static void (__stdcall* glFramebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint);
+
+static void LoadFramebufferCalls()
+{
+	glGenFramebuffers = (decltype(glGenFramebuffers)) glfwGetProcAddress("glGenFramebuffers");
+	glBindFramebuffer = (decltype(glBindFramebuffer)) glfwGetProcAddress("glBindFramebuffer");
+	glFramebufferTexture2D = (decltype(glFramebufferTexture2D)) glfwGetProcAddress("glFramebufferTexture2D");
+}
+
+// Resources_win.cpp
+void UseProgramResources();
+#endif
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -269,6 +289,9 @@ static GLuint g_snapFbo, g_snapTex;
 
 static void MakeSnapshotTarget(int w, int h)
 {
+#if defined(_WIN32)
+	LoadFramebufferCalls();
+#endif
 	glGenTextures(1, &g_snapTex);
 	glBindTexture(GL_TEXTURE_2D, g_snapTex);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
@@ -332,6 +355,8 @@ int main(int argc, char** argv)
 	bool demo = argc > 1 && !strcmp(argv[1], "--demo");
 #if defined(__APPLE__)
 	UseBundleResources();
+#elif defined(_WIN32)
+	UseProgramResources();
 #endif
 
 	srand((unsigned) time(NULL));

@@ -1,0 +1,17 @@
+#!/bin/sh
+# wincc: clang for Windows, called as <arch>-windows-clang or -clang++
+# (arch x86_64 or aarch64).  The MSVC ABI with the static CRT (/MT); the
+# Windows SDK and CRT come from xwin's splat in $XWIN.  clang's own headers
+# go first: the CRT's intrinsic headers (emmintrin.h, ...) are MSVC's, which
+# declare the intrinsics as functions only MSVC knows.
+me=$(basename "$0")
+arch=${me%%-windows-*}
+case $me in *clang++) drv=clang++ ;; *) drv=clang ;; esac
+X=${XWIN:-/work/xwin}
+exec /usr/lib/llvm-19/bin/$drv --target=$arch-pc-windows-msvc -fuse-ld=lld \
+	-fms-runtime-lib=static -fms-compatibility-version=19.40 \
+	-isystem /usr/lib/llvm-19/lib/clang/19/include -isystem "$X/crt/include" \
+	-isystem "$X/sdk/include/ucrt" -isystem "$X/sdk/include/um" \
+	-isystem "$X/sdk/include/shared" -isystem "$X/sdk/include/winrt" \
+	-L"$X/crt/lib/$arch" -L"$X/sdk/lib/um/$arch" -L"$X/sdk/lib/ucrt/$arch" \
+	-Wno-unused-command-line-argument "$@"

@@ -5,9 +5,8 @@ several platforms, with a user interface that suits each:
 
 - **IRIX** (SGI's IRIX 6.5): a Motif client that follows your desktop's colour scheme. Motif is
   also the way to other classic Unix systems.
-- **macOS** and **Linux**: a client in the style of Discord's own, drawn with
-  [Dear ImGui](https://github.com/ocornut/imgui) on GLFW and OpenGL.
-- **Windows**: planned, with the same Dear ImGui client.
+- **macOS**, **Linux** and **Windows** (x64 and ARM64): a client in the style of Discord's own,
+  drawn with [Dear ImGui](https://github.com/ocornut/imgui) on GLFW and OpenGL.
 
 All of them share one core: the connection to Discord, the message formatting, the image and
 history cache, and the text and emoji rendering.
@@ -71,6 +70,15 @@ the program, and the package brings its own fonts (DejaVu, Noto Color Emoji) and
 - X11 or Wayland, with OpenGL 3.0 or later
 - OpenSSL 3, libwebp, FreeType and GLFW 3 (the distribution's packages)
 
+### Windows
+
+- Windows 10 (version 1903 or later) or Windows 11, x64 or ARM64
+- OpenGL 3.0 or later. ARM64 PCs whose graphics driver has no OpenGL need Microsoft's "OpenCL,
+  OpenGL and Vulkan Compatibility Pack" from the Microsoft Store
+- Nothing else: OpenSSL, FreeType, libpng, zlib, libwebp, GLFW and the C runtime are linked in, and
+  the fonts come in the zip. Server certificates are checked by Windows, against its own
+  certificate stores
+
 ## Installing
 
 ### IRIX
@@ -87,10 +95,11 @@ It upgrades any earlier release in place. Then run `/usr/local/bin/discord-messe
 Its README, installed as `/usr/local/lib/discord-messenger/README` (`irix/dist/README` here),
 describes logging in, every feature and the environment variables it reads.
 
-### macOS and Linux
+### macOS, Linux and Windows
 
 There are no releases yet: build the client as below. On macOS that gives you
-`bin/Discord Messenger.app`, which you can copy to `/Applications`.
+`bin/Discord Messenger.app`, which you can copy to `/Applications`; on Windows a zip to unpack
+anywhere, with `Discord Messenger.exe` and its `fonts` folder.
 
 ## Building
 
@@ -164,6 +173,23 @@ make FRONTEND=imgui PREFIX_DEPS=/usr FT_CFLAGS=-I/usr/include/freetype2
 The program is `bin/dm-imgui`. `DM_FONT_DIR` names a directory with the fonts (as for macOS); without
 Inter it uses DejaVu Sans.
 
+### Windows
+
+Windows builds are cross-compiled, on Linux (WSL2 included) or macOS, in a container (podman or
+docker): clang for Microsoft's ABI, and Microsoft's Windows SDK and C runtime, which
+[xwin](https://github.com/Jake-Shadle/xwin) downloads. No Visual Studio, MinGW or MSYS2 is involved.
+With the fonts in a directory as for macOS:
+
+```
+windows/build.sh --accept-license --fonts <fonts directory>
+```
+
+`--accept-license` accepts [Microsoft's licence](https://go.microsoft.com/fwlink/?LinkId=2086102)
+for the SDK and C runtime, which the first build downloads. The script fetches OpenSSL, FreeType,
+libpng, zlib, libwebp and GLFW too, checks each against its SHA-256, and builds them once. It
+leaves `bin/windows/DiscordMessenger-<version>-windows-x64.zip` and `-arm64.zip`. The top of
+`windows/build.sh` has the details; `windows/inside.sh` is what runs in the container.
+
 ### Any platform
 
 `FRONTEND=cli` builds `dm-cli`, a text client that drives the same core without a GUI, for testing
@@ -178,6 +204,9 @@ client with sample servers and messages, without connecting.
   discord.com's own page (email and password), in a window of the app
 - Discord's captcha, which it sometimes asks for at the end of a QR login: on macOS it shows in a
   window of its own
+- Server certificates checked by the system on macOS and Windows (its own roots, revocation and
+  any certificates your organisation added), and against the distribution's or our bundled roots
+  on Linux and IRIX
 - Servers (with their icons and folders), channels, the member list and direct messages
 - Messages with Discord's formatting, replies, reactions, embeds and colour emoji
 - Pictures in messages, and a viewer that scales them with its window
@@ -191,8 +220,8 @@ client with sample servers and messages, without connecting.
 - IRIX: a sound for mentions and direct messages, unread counts in the window's icon name, and the
   Messages menu, listing direct messages with the unread ones first, each conversation in a window
   of its own; showing or hiding the server, channel and member lists, larger or smaller text
-- macOS and Linux: the layout of Discord's own client, and a bar to jump back to the newest messages
-  when you have scrolled up
+- macOS, Linux and Windows: the layout of Discord's own client, and a bar to jump back to the
+  newest messages when you have scrolled up
 
 ### Unimplemented
 
@@ -200,7 +229,7 @@ client with sample servers and messages, without connecting.
 - Voice channels
 - Friends list
 - IRIX: typing non-Latin-1 text in the message box (emoji are written as shortcodes)
-- IRIX and Linux: Discord's captcha (log in with a token when it asks for one)
+- IRIX, Linux and Windows: Discord's captcha (log in with a token when it asks for one)
 
 ## Attributions
 
@@ -223,5 +252,5 @@ Discord Messenger is powered by the following external libraries:
   [Noto Color Emoji](https://github.com/googlefonts/noto-emoji) fonts, and Mozilla's root
   certificates
 
-Their licences come with the IRIX package, in `/usr/local/lib/discord-messenger/licenses`, and
-with the macOS app, in `Contents/Resources/licenses`.
+Their licences come with the IRIX package, in `/usr/local/lib/discord-messenger/licenses`, with
+the macOS app, in `Contents/Resources/licenses`, and in the Windows zip's `licenses` folder.

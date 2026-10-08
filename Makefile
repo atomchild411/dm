@@ -1,4 +1,4 @@
-# Discord Messenger: IRIX (Motif), macOS and Linux (Dear ImGui).
+# Discord Messenger: IRIX (Motif); macOS, Linux and Windows (Dear ImGui).
 #
 #   make [FRONTEND=motif|imgui|cli] [CXX=...] [PREFIX_DEPS=...]
 #
@@ -119,6 +119,7 @@ endif
 
 # Windows: the POSIX calls the code makes come from src/compat/win
 COMPAT_FILES :=
+RES_FILES :=
 ifeq ($(TARGET_OS),windows)
 DEFINES += -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX \
 	-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS -D_CRT_DECLARE_NONSTDC_NAMES=1
@@ -126,6 +127,13 @@ INC_DIRS += -Isrc/compat/win
 # (Microsoft's C++ library needs C++14 at least)
 CXXFLAGS += -std=c++17 -include src/compat/win/dm_win.h
 COMPAT_FILES := $(wildcard src/compat/win/*.cpp)
+# the manifest, icon and version (windows/dm.rc)
+RC        ?= llvm-rc
+RES_FILES := $(BUILD_DIR)/dm.res
+ifeq ($(FRONTEND),imgui)
+# a windowed program (no console), main() as everywhere
+LDFLAGS += -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup
+endif
 LIBS += -lws2_32 -lmswsock -lcrypt32 -luser32 -lgdi32 -lshell32 -ladvapi32 -lwinmm -lole32
 endif
 
@@ -146,8 +154,8 @@ CFILES := deps/qrcodegen/qrcodegen.c
 
 MMFILES ?=
 OBJ := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(CXXFILES)) $(patsubst %.c,$(BUILD_DIR)/%.o,$(CFILES)) \
-	$(patsubst %.mm,$(BUILD_DIR)/%.o,$(MMFILES))
-DEP := $(OBJ:.o=.d)
+	$(patsubst %.mm,$(BUILD_DIR)/%.o,$(MMFILES)) $(RES_FILES)
+DEP := $(filter %.d,$(OBJ:.o=.d))
 
 .PHONY: all clean
 all: $(TARGET)
@@ -171,6 +179,11 @@ $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	@echo ">> $<"
 	@$(CC) -std=c99 $(OPT) $(EXTRA_CXXFLAGS:-std=%=) -MMD -MF $(BUILD_DIR)/$*.d -c $< -o $@
+
+$(BUILD_DIR)/dm.res: windows/dm.rc windows/dm.manifest
+	@mkdir -p $(dir $@)
+	@echo ">> $<"
+	@$(RC) -FO $@ $<
 
 $(TARGET): $(OBJ) Makefile
 	@mkdir -p $(dir $@)
