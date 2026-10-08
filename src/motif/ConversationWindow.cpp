@@ -189,8 +189,9 @@ namespace
 		XtSetArg(args[n], XmNwidth, 620); n++;
 		XtSetArg(args[n], XmNheight, 540); n++;
 		n = AddVisualArgs(args, n);
-		w->shell = XtAppCreateShell("conversation", "DiscordMessenger", topLevelShellWidgetClass,
-			XtDisplay(g_toplevel), args, n);
+		// a window of its own, but under the application's shell, so its
+		// resources (the desktop's colour scheme among them) are the app's
+		w->shell = XtCreatePopupShell("conversation", topLevelShellWidgetClass, g_toplevel, args, n);
 		Atom wmDelete = XmInternAtom(XtDisplay(w->shell), (char*) "WM_DELETE_WINDOW", False);
 		XmAddWMProtocolCallback(w->shell, wmDelete, CloseCB, w);
 		XtAddEventHandler(w->shell, FocusChangeMask | StructureNotifyMask, False, FocusEH, w);
@@ -314,7 +315,7 @@ void Conversations::Open(Snowflake channel)
 	}
 	Conversation* w = Create(channel);
 	g_windows[channel] = w;
-	XtRealizeWidget(w->shell);
+	XtPopup(w->shell, XtGrabNone);
 	GetMessageCache()->LoadCachedChannel(channel, 0);
 	w->view->SetChannel(0, channel);
 	XmProcessTraversal(w->editor, XmTRAVERSE_CURRENT);
