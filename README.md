@@ -22,6 +22,8 @@ See https://twitter.com/discord/status/1229357198918197248.
 
 ![IRIX screenshot: the Motif client in demo mode on the 4Dwm desktop](doc/ss_irix.png)
 
+![IRIX screenshot: code blocks, a reply with formatting and an embed](doc/ss_irix2.png)
+
 ## Minimum System Requirements
 
 - IRIX 6.5.22 or later, with X11 and IRIX's Motif (`x_eoe`, `motif_eoe`)
