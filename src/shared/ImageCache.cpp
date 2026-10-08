@@ -100,6 +100,7 @@ namespace
 		}
 	}
 	bool g_changedPending = false;
+	uint64_t g_serial = 0;
 
 	int NearestPowerOfTwo(int x)
 	{
@@ -266,6 +267,7 @@ namespace
 			}
 			bool fit = sz.first != sz.second || full.w != full.h;
 			Scale(full, sz.first, sz.second, fit, e.image);
+			e.image.serial = ++g_serial;
 			e.state = READY;
 			Touch(key, e);
 		}

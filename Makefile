@@ -1,10 +1,12 @@
 # Discord Messenger for IRIX (and other Unix-like systems).
 #
-#   make [FRONTEND=motif|cli] [CXX=...] [PREFIX_DEPS=...]
+#   make [FRONTEND=motif|imgui|cli] [CXX=...] [PREFIX_DEPS=...]
 #
-# FRONTEND picks the user interface: motif (the X11/Motif client) or cli
-# (a text test client that exercises the core).  PREFIX_DEPS is where
-# OpenSSL and libwebp are installed (include/ and lib/ below it).
+# FRONTEND picks the user interface: motif (the X11/Motif client, for IRIX
+# and other historic Unix), imgui (Dear ImGui on GLFW and OpenGL 3, for
+# Linux and macOS) or cli (a text test client that exercises the core).
+# PREFIX_DEPS is where OpenSSL and libwebp are installed (include/ and lib/
+# below it); GLFW_PREFIX where GLFW is, when not there.
 
 FRONTEND    ?= motif
 DEBUG       ?= no
@@ -19,6 +21,8 @@ X_CFLAGS    ?=
 X_LIBS      ?= -lXm -lXt -lXext -lX11
 FT_CFLAGS   ?= -I$(PREFIX_DEPS)/include/freetype2
 FT_LIBS     ?= -lfreetype
+GLFW_PREFIX ?= $(PREFIX_DEPS)
+UNAME       := $(shell uname -s)
 
 BUILD_DIR ?= build-unix/$(FRONTEND)
 TARGET    ?= bin/dm-$(FRONTEND)
@@ -65,8 +69,25 @@ CXXFLAGS += $(X_CFLAGS) $(FT_CFLAGS)
 LIBS += $(FT_LIBS) $(X_LIBS)
 endif
 
+# Dear ImGui (deps/imgui, with its GLFW and OpenGL 3 back ends and FreeType
+# for colour emoji)
+IMGUI_FILES :=
+ifeq ($(FRONTEND),imgui)
+CXXFLAGS += -Ideps/imgui -Ideps/imgui/backends -I$(GLFW_PREFIX)/include $(FT_CFLAGS) -DIMGUI_ENABLE_FREETYPE -DIMGUI_USE_WCHAR32
+IMGUI_FILES := deps/imgui/imgui.cpp deps/imgui/imgui_draw.cpp deps/imgui/imgui_tables.cpp \
+	deps/imgui/imgui_widgets.cpp deps/imgui/backends/imgui_impl_glfw.cpp \
+	deps/imgui/backends/imgui_impl_opengl3.cpp deps/imgui/misc/freetype/imgui_freetype.cpp
+LIBS += $(FT_LIBS) -L$(GLFW_PREFIX)/lib -lglfw
+ifeq ($(UNAME),Darwin)
+LIBS += -framework OpenGL
+else
+LIBS += -lGL -ldl
+endif
+endif
+
 CXXFILES := \
 	$(shell find src/core src/posix src/shared src/$(FRONTEND) -type f -name '*.cpp') \
+	$(IMGUI_FILES) \
 	deps/asio/src/asio.cpp \
 	deps/asio/src/asio_ssl.cpp \
 	deps/md5/MD5.cpp

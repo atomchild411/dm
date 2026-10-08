@@ -13,6 +13,9 @@ struct Image
 {
 	int w = 0, h = 0;
 	std::vector<uint32_t> px;
+	// Different for every image the cache makes, so a front end that
+	// uploads pictures (as GPU textures) knows when one was replaced.
+	uint64_t serial = 0;
 };
 
 // Avatars, server icons, emoji and attachment previews: from memory, from
