@@ -341,6 +341,7 @@ int main(int argc, char** argv)
 	// network threads wake the loop
 	MainQueue::SetWakeHook([] { glfwPostEmptyEvent(); });
 
+	SetDefaultTextSize(15); // Discord's body text
 	LoadClientConfig("imgui.conf");
 
 	IMGUI_CHECKVERSION();
