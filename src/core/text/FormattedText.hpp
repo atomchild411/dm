@@ -39,6 +39,8 @@ struct Token
 		FORWARDE,
 		HEADER,
 		HEADER2,
+		STRIKE_BEGIN,
+		STRIKE_END,
 	};
 
 	int m_type = TEXT;
@@ -81,6 +83,7 @@ struct Token
 #define WORD_FORWARDE  (1 << 22) // end of forwarded message
 #define WORD_HEADER2   (1 << 23) // Header 2 style.
 #define WORD_SMALLER   (1 << 24) // Smaller text. (-#)
+#define WORD_STRIKE    (1 << 25) // ~~struck through~~
 
 struct Word
 {

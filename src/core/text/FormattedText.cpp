@@ -41,6 +41,8 @@
 #define CHAR_BEG_HEADER (char(0x15))
 #define CHAR_BEG_HDR2   (char(0x16))
 #define CHAR_ESCAPE     (char(0x17)) // passes through the original string
+#define CHAR_BEG_STRIKE (char(0x18))
+#define CHAR_END_STRIKE (char(0x19))
 #define CHAR_END_FORWARD (char(0x1E))
 #define CHAR_BEG_FORWARD (char(0x1F))
 
@@ -68,11 +70,15 @@ int g_tokenTypeTable[] = {
 	0, // @here checked separately
 	Token::HEADER,
 	Token::HEADER2,
+	0, // escape
+	Token::STRIKE_BEGIN,
+	Token::STRIKE_END,
 };
 
 static REN::regex g_StrongMatch("(\\*){2}[^\\*\\r\\n].*?(\\*){2}");
 static REN::regex g_ItalicMatch("\\*[^\\*\\r\\n].*?\\*");
 static REN::regex g_UnderlMatch("(_){2}[^_\\r\\n].*?(_){2}");
+static REN::regex g_StrikeMatch("(~){2}[^~\\r\\n].*?(~){2}");
 static REN::regex g_ItalieMatch("(?=[ \\_\\r\\n])_.*?_(?<=[ \\_\\r\\n])");
 static REN::regex g_DbtickMatch("(`){2}[^\\*\\r\\n].*?(`){2}");
 static REN::regex g_SbtickMatch("`[^\\*\\r\\n].*?`");
@@ -210,6 +216,8 @@ void FormattedText::Tokenize(const std::string& newmsg, const std::string& oldms
 			case CHAR_BEG_LITEM:
 			case CHAR_BEG_HEADER:
 			case CHAR_BEG_HDR2:
+			case CHAR_BEG_STRIKE:
+			case CHAR_END_STRIKE:
 			{
 				// The line feed is a separator. It has nothing to do with formatting, however.
 				AddAndClearToken(tokens, current, Token::TEXT);
@@ -470,6 +478,8 @@ void FormattedText::ParseText()
 			case Token::ITALIC_END:   style &=~WORD_ITALIC;   break;
 			case Token::UNDERL_END:   style &=~WORD_UNDERL;   break;
 			case Token::ITALIE_END:   style &=~WORD_ITALIE;   break;
+			case Token::STRIKE_BEGIN: style |= WORD_STRIKE;   break;
+			case Token::STRIKE_END:   style &=~WORD_STRIKE;   break;
 			case Token::LIST_ITEM:    style |= WORD_LISTITEM; break;
 			case Token::QUOTE:        style |= WORD_QUOTE;    break;
 			case Token::FORWARD:      style |= WORD_FORWARD;  break;
@@ -798,6 +808,7 @@ void FormattedText::UseRegex(std::string& str)
 	const int HAS_HEADER = (1 << 5);
 	const int HAS_SLASH  = (1 << 6);
 	const int HAS_BTICK  = (1 << 7);
+	const int HAS_STRIKE = (1 << 8);
 	int flags = 0;
 
 	for (size_t i = 0; i < str.size(); i++) {
@@ -809,8 +820,9 @@ void FormattedText::UseRegex(std::string& str)
 		if (str[i] == '/') flags |= HAS_SLASH;
 		if (str[i] == '`') flags |= HAS_BTICK;
 		if (str[i] == '\\') flags |= HAS_BSLASH;
+		if (str[i] == '~') flags |= HAS_STRIKE;
 
-		if (flags == (HAS_STRONG | HAS_EMPHAS | HAS_QUOTE | HAS_AT | HAS_BSLASH | HAS_HEADER | HAS_SLASH | HAS_BTICK))
+		if (flags == (HAS_STRONG | HAS_EMPHAS | HAS_QUOTE | HAS_AT | HAS_BSLASH | HAS_HEADER | HAS_SLASH | HAS_BTICK | HAS_STRIKE))
 			break;
 	}
 
@@ -871,6 +883,7 @@ void FormattedText::UseRegex(std::string& str)
 			switch (nextChar) {
 				case '_':
 				case '*':
+				case '~':
 				case'\\':
 				case '#':
 				case '-':
@@ -927,6 +940,8 @@ void FormattedText::UseRegex(std::string& str)
 		RegexReplace(str, g_UnderlMatch, 2, 2, CHAR_BEG_UNDERL, CHAR_END_UNDERL);
 		RegexReplace(str, g_ItalieMatch, 1, 1, CHAR_BEG_ITALIE, CHAR_END_ITALIE);
 	}
+	if (flags & HAS_STRIKE)
+		RegexReplace(str, g_StrikeMatch, 2, 2, CHAR_BEG_STRIKE, CHAR_END_STRIKE);
 }
 
 void FormattedText::RegexNecessary()

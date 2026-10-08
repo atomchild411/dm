@@ -178,6 +178,13 @@ void MdDrawString(DrawingContext* ctx, const Rect& rect, const String& str, int 
 		int w = Fonts::Draw(c, rc.left, y + asc, l, st, px, color);
 		if (styleFlags & (WORD_UNDERL | WORD_LINK))
 			c.HLine(rc.left, y + asc + 2, w, color);
+		if (styleFlags & WORD_STRIKE) {
+			// through the middle of the lower-case letters, thicker for
+			// larger text
+			int mid = y + asc - asc * 3 / 10;
+			for (int t = 0; t < std::max(1, px / 14); t++)
+				c.HLine(rc.left, mid + t, w, color);
+		}
 		y += lh;
 	}
 }
