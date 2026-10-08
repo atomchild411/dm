@@ -22,9 +22,14 @@ Note: third-party clients are against Discord's terms of service.  The
 risk of a ban is low, but it is there, and it is yours.
 
 What it shows: servers (with their icons), channels, the member list and
-messages, with Discord's formatting, replies, embeds, image attachments,
-avatars and colour emoji (Noto Color Emoji).  Colours follow your desktop's
-Motif scheme.  View > Larger/Smaller Text sets the text size.
+messages, with Discord's formatting, replies, reactions, embeds, image
+attachments, avatars and colour emoji (Noto Color Emoji).  Colours follow
+your desktop's Motif scheme.  View > Larger/Smaller Text sets the text
+size; View > Server List, Channel List and Member List show or hide those.
+A click on a picture opens it in a window of its own (it scales with the
+window); a click on a reaction adds or takes back yours; right-clicking a
+message offers Add Reaction (common emoji and the server's own) and Reply.
+The client opens the server and channel you were last in.
 
 Files:   ~/.discordmessenger: settings.json, motif.conf (text size and
          the lists View shows) and cache/: pictures (64 MB at most,
