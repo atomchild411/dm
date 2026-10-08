@@ -467,6 +467,8 @@ public:
 
 	// Request a message to be unpinned.
 	void RequestUnpinMessage(Snowflake chan, Snowflake msg);
+	// Replaces the text of one of the user's messages.
+	void RequestEditMessage(Snowflake chan, Snowflake msg, const std::string& text);
 	// Adds the user's reaction to a message, or takes it away.
 	void RequestReaction(Snowflake chan, Snowflake msg, const Reaction& emoji, bool add);
 

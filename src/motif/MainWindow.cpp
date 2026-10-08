@@ -28,6 +28,8 @@
 #include "IconList.hpp"
 #include "ImageViewer.hpp"
 #include "ReactionPicker.hpp"
+#include "Shortcodes.hpp"
+#include "Fonts.hpp"
 #include "Perf.hpp"
 #include "models/ActiveStatus.hpp"
 
@@ -62,6 +64,7 @@ MainWindow::MainWindow(Widget toplevel, const PixelFormat& fmt)
 {
 	g_pMainWindow = this;
 	m_shell = toplevel;
+	m_fmt = &fmt;
 
 	m_main = XtVaCreateManagedWidget("main", xmMainWindowWidgetClass, toplevel, NULL);
 
@@ -149,13 +152,26 @@ MainWindow::MainWindow(Widget toplevel, const PixelFormat& fmt)
 		NULL);
 	XtAddCallback(m_sendButton, XmNactivateCallback, SendCB, this);
 
+	// emoji for the message, as shortcodes (the editor shows ISO 8859-1 only)
+	m_emojiButton = XtVaCreateManagedWidget("emoji", xmPushButtonWidgetClass, m_form,
+		XmNbottomAttachment, XmATTACH_WIDGET,
+		XmNbottomWidget, m_status,
+		XmNrightAttachment, XmATTACH_WIDGET,
+		XmNrightWidget, m_sendButton,
+		XmNbottomOffset, 4,
+		XmNrightOffset, 4,
+		NULL);
+	XtAddCallback(m_emojiButton, XmNactivateCallback, EmojiCB, this);
+	if (Pixmap pm = MakeEmojiPixmap(m_emojiButton))
+		XtVaSetValues(m_emojiButton, XmNlabelType, XmPIXMAP, XmNlabelPixmap, pm, NULL);
+
 	n = 0;
 	XtSetArg(args[n], XmNbottomAttachment, XmATTACH_WIDGET); n++;
 	XtSetArg(args[n], XmNbottomWidget, m_status); n++;
 	XtSetArg(args[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
 	XtSetArg(args[n], XmNleftWidget, m_channelList); n++;
 	XtSetArg(args[n], XmNrightAttachment, XmATTACH_WIDGET); n++;
-	XtSetArg(args[n], XmNrightWidget, m_sendButton); n++;
+	XtSetArg(args[n], XmNrightWidget, m_emojiButton); n++;
 	XtSetArg(args[n], XmNbottomOffset, 4); n++;
 	XtSetArg(args[n], XmNleftOffset, 6); n++;
 	XtSetArg(args[n], XmNrightOffset, 6); n++;
@@ -395,8 +411,72 @@ void MainWindow::RestoreLastChannel()
 	pInst->OnSelectGuild(guild, channel);
 }
 
+void MainWindow::BeginEdit(Snowflake message, const std::string& text)
+{
+	m_replyTo = 0;
+	m_editing = message;
+	XmString xs = MakeXmString("Editing your message");
+	XtVaSetValues(m_replyLabel, XmNlabelString, xs, NULL);
+	XmStringFree(xs);
+	if (!XtIsManaged(m_replyBar)) {
+		XtManageChild(m_replyBar);
+		XtVaSetValues(m_messages->GetWidget(), XmNbottomWidget, m_replyBar, NULL);
+	}
+	std::string shown = Utf8ToLatin1(Shortcodes::ToEditor(text));
+	XmTextSetString(m_editor, (char*) shown.c_str());
+	XmTextSetInsertionPosition(m_editor, XmTextGetLastPosition(m_editor));
+	XmProcessTraversal(m_editor, XmTRAVERSE_CURRENT);
+}
+
+// The emoji button's picture: a smiling face from the colour emoji font, on
+// the button's own background.
+Pixmap MainWindow::MakeEmojiPixmap(Widget button)
+{
+	Display* dpy = XtDisplay(button);
+	Pixel bgPixel = 0;
+	Colormap cmap = 0;
+	XtVaGetValues(button, XmNbackground, &bgPixel, XmNcolormap, &cmap, NULL);
+	XColor xc;
+	xc.pixel = bgPixel;
+	XQueryColor(dpy, cmap, &xc);
+	Rgb bg = MakeRgb(xc.red >> 8, xc.green >> 8, xc.blue >> 8);
+
+	int px = 17, w = 26, h = 24;
+	Canvas c;
+	c.Resize(w, h);
+	c.Fill(0, 0, w, h, bg);
+	const char* face = "\xf0\x9f\x99\x82"; // U+1F642
+	int tw = Fonts::Measure(face, FS_REGULAR, px);
+	Fonts::Draw(c, (w - tw) / 2, h - 5, face, FS_REGULAR, px, 0);
+	Pixmap pm = XCreatePixmap(dpy, RootWindow(dpy, DefaultScreen(dpy)), w, h, m_fmt->GetDepth());
+	GC gc = XCreateGC(dpy, pm, 0, NULL);
+	c.Present(*m_fmt, pm, gc, 0, 0, w, h, 0, 0);
+	XFreeGC(dpy, gc);
+	return pm;
+}
+
+void MainWindow::EmojiCB(Widget w, XtPointer client, XtPointer)
+{
+	MainWindow* self = (MainWindow*) client;
+	Position x = 0, y = 0;
+	XtTranslateCoords(w, 0, 0, &x, &y);
+	// above the button, where the editor is
+	ReactionPicker::Show(self->m_shell, *self->m_fmt, "Insert Emoji", x, y - 380,
+		GetDiscordInstance() ? GetDiscordInstance()->GetCurrentGuildID() : 0,
+		[self](const Reaction& r) {
+			std::string code = Utf8ToLatin1(Shortcodes::For(r));
+			XmTextPosition at = XmTextGetInsertionPosition(self->m_editor);
+			XmTextInsert(self->m_editor, at, (char*) code.c_str());
+			XmTextSetInsertionPosition(self->m_editor, at + (XmTextPosition) code.size());
+			XmProcessTraversal(self->m_editor, XmTRAVERSE_CURRENT);
+		});
+}
+
 void MainWindow::CancelReply()
 {
+	if (m_editing)
+		XmTextSetString(m_editor, (char*) ""); // the edit is dropped
+	m_editing = 0;
 	m_replyTo = 0;
 	if (XtIsManaged(m_replyBar)) {
 		XtVaSetValues(m_messages->GetWidget(), XmNbottomWidget, XtParent(m_editor), NULL);
@@ -957,7 +1037,16 @@ void MainWindow::SendFromEditor()
 		return;
 	text = text.substr(a, b - a + 1);
 
-	std::string utf8 = Latin1ToUtf8(text);
+	// shortcodes (:joy:, a server's :name:, :U+...:) become the emoji
+	std::string utf8 = Shortcodes::FromEditor(Latin1ToUtf8(text), pInst->GetCurrentGuildID());
+	if (m_editing) {
+		pInst->RequestEditMessage(pInst->GetCurrentChannelID(), m_editing, utf8);
+		m_editing = 0;
+		CancelReply();
+		XmTextSetString(m_editor, (char*) "");
+		m_lastTypingSent = 0;
+		return;
+	}
 	Snowflake tempSf = 0;
 	if (pInst->SendMessageToCurrentChannel(utf8, tempSf, m_replyTo)) {
 		CancelReply();

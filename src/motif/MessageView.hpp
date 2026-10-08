@@ -111,7 +111,7 @@ private:
 	XtIntervalId m_repaintTimer = 0;
 
 	// the right-click menu: Add Reaction, Reply
-	Widget m_menu = nullptr;
+	Widget m_menu = nullptr, m_menuEdit = nullptr;
 	MessagePtr m_menuMessage;
 	int m_menuX = 0, m_menuY = 0; // where it was asked for, on the screen
 

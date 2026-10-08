@@ -44,6 +44,8 @@ public:
 	// says so, with Cancel); CancelReply takes that back.
 	void BeginReply(Snowflake message, const std::string& author);
 	void CancelReply();
+	// The editor holds one of the user's messages to change; Send saves it.
+	void BeginEdit(Snowflake message, const std::string& text);
 	// At the first connection: the server and channel open when the
 	// client last ran, if they are still there.
 	void RestoreLastChannel();
@@ -90,6 +92,11 @@ private:
 	XtIntervalId m_listUpdateTimer = 0;
 	Widget m_replyBar = nullptr, m_replyLabel = nullptr;
 	Snowflake m_replyTo = 0;
+	Snowflake m_editing = 0;
+	Widget m_emojiButton = nullptr;
+	const PixelFormat* m_fmt = nullptr;
+	static void EmojiCB(Widget, XtPointer, XtPointer);
+	Pixmap MakeEmojiPixmap(Widget button);
 	bool m_restoredLast = false; // the last channel is saved from then on
 	static void CancelReplyCB(Widget, XtPointer, XtPointer);
 	int m_pendingLists = 0;

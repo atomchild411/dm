@@ -17,22 +17,13 @@
 #include "DiscordInstance.hpp"
 #include "Fonts.hpp"
 #include "ImageCache.hpp"
+#include "Shortcodes.hpp"
 #include "Theme.hpp"
 
 int AddVisualArgs(Arg* args, int n); // Main.cpp
 
 namespace
 {
-	const char* const g_common[] = {
-		"\xf0\x9f\x91\x8d", "\xf0\x9f\x91\x8e", "\xe2\x9d\xa4\xef\xb8\x8f", "\xf0\x9f\x98\x82", "\xf0\x9f\xa4\xa3", "\xf0\x9f\x98\x8a",
-		"\xf0\x9f\x98\x8d", "\xf0\x9f\x98\xae", "\xf0\x9f\x98\xa2", "\xf0\x9f\x98\xad", "\xf0\x9f\x98\xa1", "\xf0\x9f\x99\x8f",
-		"\xf0\x9f\x8e\x89", "\xf0\x9f\x94\xa5", "\xf0\x9f\x92\xaf", "\xf0\x9f\x91\x80", "\xe2\x9c\x85", "\xe2\x9d\x8c",
-		"\xf0\x9f\xa4\x94", "\xf0\x9f\x98\x8e", "\xf0\x9f\xa5\xb3", "\xf0\x9f\x98\x85", "\xf0\x9f\x99\x8c", "\xf0\x9f\x91\x8f",
-		"\xf0\x9f\x92\xaa", "\xf0\x9f\xa4\x9d", "\xf0\x9f\x91\x8c", "\xe2\x9c\xa8", "\xf0\x9f\x9a\x80", "\xf0\x9f\x92\x80",
-		"\xf0\x9f\x98\xb4", "\xf0\x9f\xa4\xaf", "\xf0\x9f\xa5\xba", "\xf0\x9f\x98\xac", "\xf0\x9f\x99\x83", "\xf0\x9f\x98\x87",
-		"\xf0\x9f\xa4\x96", "\xf0\x9f\x91\x8b", "\xe2\xad\x90", "\xf0\x9f\x92\x9c", "\xf0\x9f\x92\x99", "\xf0\x9f\x92\x9a",
-		"\xf0\x9f\x92\x9b", "\xf0\x9f\xa7\xa1", "\xf0\x9f\x96\xa4", "\xf0\x9f\x8d\x95", "\xe2\x98\x95", "\xf0\x9f\x90\xa7",
-	};
 	const int COLUMNS = 8;
 	const int CELL = 38;
 	const int HEADER = 24;
@@ -145,7 +136,7 @@ namespace
 
 	void ShowName(Picker* p)
 	{
-		std::string text = p->hover >= 0 && p->emoji[p->hover].m_emojiId ? ":" + p->emoji[p->hover].m_emojiName + ":" : " ";
+		std::string text = p->hover >= 0 ? Shortcodes::For(p->emoji[p->hover]) : " ";
 		XmString xs = MakeXmString(text);
 		XtVaSetValues(p->name, XmNlabelString, xs, NULL);
 		XmStringFree(xs);
@@ -234,7 +225,7 @@ namespace
 	}
 }
 
-void ReactionPicker::Show(Widget parent, const PixelFormat& fmt, int x, int y, Snowflake guild,
+void ReactionPicker::Show(Widget parent, const PixelFormat& fmt, const char* title, int x, int y, Snowflake guild,
 	std::function<void(const Reaction&)> picked)
 {
 	Close();
@@ -244,9 +235,9 @@ void ReactionPicker::Show(Widget parent, const PixelFormat& fmt, int x, int y, S
 	p->picked = picked;
 
 	// the common ones, then the server's own (usable ones, by name)
-	for (const char* e : g_common) {
+	for (int i = 0; i < Shortcodes::PICKER_COUNT; i++) {
 		Reaction r;
-		r.m_emojiName = e;
+		r.m_emojiName = Shortcodes::PickerEmoji(i);
 		p->emoji.push_back(r);
 	}
 	int common = (int) p->emoji.size();
@@ -280,7 +271,7 @@ void ReactionPicker::Show(Widget parent, const PixelFormat& fmt, int x, int y, S
 
 	Arg args[10];
 	int n = 0;
-	XtSetArg(args[n], XmNtitle, "Add Reaction"); n++;
+	XtSetArg(args[n], XmNtitle, title); n++;
 	XtSetArg(args[n], XmNdeleteResponse, XmDO_NOTHING); n++;
 	XtSetArg(args[n], XmNx, x); n++;
 	XtSetArg(args[n], XmNy, y); n++;

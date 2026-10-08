@@ -21,6 +21,8 @@
 #include "MainWindow.hpp"
 #include "MessageView.hpp"
 #include "Perf.hpp"
+#include "Shortcodes.hpp"
+#include "Theme.hpp"
 
 namespace
 {
@@ -168,6 +170,31 @@ namespace
 		return "";
 	}
 
+	// Emoji written as shortcodes in the message box: text with emoji the
+	// box cannot show goes in and comes out unchanged, and typed shortcodes
+	// become emoji.  "" when all is well.
+	std::string ShortcodeCheck()
+	{
+		const char* samples[] = {
+			"plain text, caf\xc3\xa9 na\xc3\xafve, at 10:30:45 and a:b:c",
+			"\xf0\x9f\x98\x82 and \xe2\x9d\xa4\xef\xb8\x8f and \xf0\x9f\x91\x8d\xf0\x9f\x8f\xbd",
+			"flag \xf0\x9f\x87\xa8\xf0\x9f\x87\xad family \xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x91\xa7 \xe2\x80\x94 \xe2\x9c\x93",
+			"a server emoji <:blobwave:123456789012345678> stays as it is",
+		};
+		for (const char* s : samples) {
+			std::string box = Shortcodes::ToEditor(s);
+			if (Utf8ToLatin1(box) != box && Latin1ToUtf8(Utf8ToLatin1(box)) != box)
+				return std::string("the box would lose characters of: ") + s;
+			std::string back = Shortcodes::FromEditor(Latin1ToUtf8(Utf8ToLatin1(box)), 0);
+			if (back != s)
+				return std::string("did not come back unchanged: ") + s + " -> " + box + " -> " + back;
+		}
+		std::string typed = Shortcodes::FromEditor(":joy: :+1: :heart: :nosuchname: :U+1F600:", 0);
+		if (typed != "\xf0\x9f\x98\x82 \xf0\x9f\x91\x8d \xe2\x9d\xa4\xef\xb8\x8f :nosuchname: \xf0\x9f\x98\x80")
+			return "typed shortcodes came out as: " + typed;
+		return "";
+	}
+
 	void Sync()
 	{
 		XSync(XtDisplay(GetMainWindow()->GetShell()), False);
@@ -280,6 +307,11 @@ namespace
 				updated == mv->LayoutSignature() ? "yes" : "NO");
 		}
 
+		{
+			std::string err = ShortcodeCheck();
+			printf("dm bench: emoji as shortcodes in the message box, and back: %s\n",
+				err.empty() ? "yes" : ("NO: " + err).c_str());
+		}
 		{
 			std::string err = HistoryCheck();
 			printf("dm bench: message history saved, read back and brought up to date: %s\n",

@@ -629,7 +629,7 @@ static bool Inside(const Rect& r, int x, int y)
 
 int AddVisualArgs(Arg* args, int n); // Main.cpp
 
-enum { MENU_REACT = 1, MENU_REPLY };
+enum { MENU_REACT = 1, MENU_REPLY, MENU_EDIT };
 
 // Right-click on a message: react to it, or reply.
 void MessageView::ShowMenu(XButtonEvent& ev)
@@ -659,13 +659,22 @@ void MessageView::ShowMenu(XButtonEvent& ev)
 		struct { const char* label; int id; char mnemonic; } items[] = {
 			{ "Add Reaction...", MENU_REACT, 'A' },
 			{ "Reply", MENU_REPLY, 'R' },
+			{ "Edit Message", MENU_EDIT, 'E' },
 		};
 		for (auto& item : items) {
 			Widget b = XtVaCreateManagedWidget(item.label, xmPushButtonWidgetClass, m_menu,
 				XmNmnemonic, (KeySym) item.mnemonic, XmNuserData, (XtPointer) (long) item.id, NULL);
 			XtAddCallback(b, XmNactivateCallback, MenuCB, this);
+			if (item.id == MENU_EDIT)
+				m_menuEdit = b;
 		}
 	}
+	// only the user's own messages can be edited
+	DiscordInstance* pInst = GetDiscordInstance();
+	if (pInst && m_menuMessage->m_author_snowflake == pInst->GetUserID() && !m_menuMessage->IsWebHook())
+		XtManageChild(m_menuEdit);
+	else
+		XtUnmanageChild(m_menuEdit);
 	XmMenuPosition(m_menu, &ev);
 	XtManageChild(m_menu);
 }
@@ -681,12 +690,15 @@ void MessageView::MenuCB(Widget w, XtPointer client, XtPointer)
 	Snowflake channel = self->m_channel, id = msg->m_snowflake;
 	switch ((int) (long) data) {
 		case MENU_REACT:
-			ReactionPicker::Show(self->m_area, self->m_fmt, self->m_menuX, self->m_menuY, self->m_guild, [channel, id](const Reaction& r) {
+			ReactionPicker::Show(self->m_area, self->m_fmt, "Add Reaction", self->m_menuX, self->m_menuY, self->m_guild, [channel, id](const Reaction& r) {
 				GetDiscordInstance()->RequestReaction(channel, id, r, true);
 			});
 			break;
 		case MENU_REPLY:
 			GetMainWindow()->BeginReply(id, msg->m_author);
+			break;
+		case MENU_EDIT:
+			GetMainWindow()->BeginEdit(id, msg->m_message);
 			break;
 	}
 }

@@ -1580,6 +1580,21 @@ void DiscordInstance::RequestPinMessage(Snowflake chan, Snowflake msg)
 	);
 }
 
+void DiscordInstance::RequestEditMessage(Snowflake chan, Snowflake msg, const std::string& text)
+{
+	Json j;
+	j["content"] = text;
+	GetHTTPClient()->PerformRequest(
+		true,
+		NetRequest::PATCH,
+		GetDiscordAPI() + "channels/" + std::to_string(chan) + "/messages/" + std::to_string(msg),
+		DiscordRequest::NOTHING,
+		0,
+		j.dump(),
+		m_token
+	);
+}
+
 void DiscordInstance::RequestReaction(Snowflake chan, Snowflake msg, const Reaction& emoji, bool add)
 {
 	// a Unicode emoji as itself, a custom one as name:id; percent-encoded
