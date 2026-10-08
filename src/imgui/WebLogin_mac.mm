@@ -177,3 +177,107 @@ void WebLogin::SelfTest(std::function<void()> finished)
 	g_cancelled = finished;
 	g_login = [[DMWebLogin alloc] initForTest:YES];
 }
+
+// ---- the captcha ----------------------------------------------------------
+
+@interface DMCaptcha : NSObject <WKScriptMessageHandler, NSWindowDelegate>
+@property (strong) NSWindow* window;
+@property (strong) WKWebView* web;
+@property (assign) BOOL finished;
+@property (copy) void (^onDone)(NSString*);
+@end
+
+static DMCaptcha* g_captcha;
+
+// A JavaScript string literal.
+static NSString* JsString(const std::string& s)
+{
+	NSData* json = [NSJSONSerialization dataWithJSONObject:@[ [NSString stringWithUTF8String:s.c_str()] ] options:0 error:nil];
+	NSString* arr = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
+	return [arr substringWithRange:NSMakeRange(1, arr.length - 2)];
+}
+
+@implementation DMCaptcha
+
+- (instancetype)initWithSitekey:(const std::string&)sitekey rqdata:(const std::string&)rqdata
+{
+	self = [super init];
+	WKWebViewConfiguration* cfg = [[WKWebViewConfiguration alloc] init];
+	cfg.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+	[cfg.userContentController addScriptMessageHandler:self name:@"dmCaptcha"];
+
+	// hCaptcha's widget, as Discord's page shows it (the page is Discord's
+	// for the widget: the site key is Discord's)
+	NSString* html = [NSString stringWithFormat:
+		@"<!doctype html><html><head><meta charset='utf-8'>"
+		 "<script src='https://js.hcaptcha.com/1/api.js?onload=dmReady&render=explicit' async defer></script>"
+		 "<style>body{background:#313338;color:#dbdee1;font:15px -apple-system,sans-serif;margin:0;"
+		 "height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}"
+		 "p{margin:0 24px 18px;text-align:center}</style></head><body>"
+		 "<p>Discord wants this check before it finishes the QR login.</p><div id='c'></div>"
+		 "<script>function dmReady(){var id=hcaptcha.render('c',{sitekey:%@,theme:'dark',"
+		 "callback:function(t){window.webkit.messageHandlers.dmCaptcha.postMessage(t);}});"
+		 "var rq=%@;if(rq)hcaptcha.setData(id,{rqdata:rq});}</script></body></html>",
+		JsString(sitekey), JsString(rqdata)];
+
+	NSRect frame = NSMakeRect(0, 0, 420, 640);
+	_window = [[NSWindow alloc] initWithContentRect:frame
+		styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
+		backing:NSBackingStoreBuffered defer:NO];
+	_window.title = @"Discord: are you human?";
+	_window.releasedWhenClosed = NO;
+	_window.delegate = self;
+	_web = [[WKWebView alloc] initWithFrame:frame configuration:cfg];
+	_web.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+	_window.contentView = _web;
+	[_window center];
+	[_web loadHTMLString:html baseURL:[NSURL URLWithString:@"https://discord.com/"]];
+	[_window makeKeyAndOrderFront:nil];
+	return self;
+}
+
+- (void)finishWith:(NSString*)answer
+{
+	if (self.finished)
+		return;
+	self.finished = YES;
+	[self.web.configuration.userContentController removeScriptMessageHandlerForName:@"dmCaptcha"];
+	[self.window orderOut:nil];
+	[self.window close];
+	auto done = self.onDone;
+	g_captcha = nil;
+	if (done)
+		done(answer);
+}
+
+- (void)userContentController:(WKUserContentController*)ucc didReceiveScriptMessage:(WKScriptMessage*)message
+{
+	if ([message.body isKindOfClass:[NSString class]] && [(NSString*) message.body length] > 0)
+		[self finishWith:(NSString*) message.body];
+}
+
+- (void)windowWillClose:(NSNotification*)note
+{
+	if (!self.finished)
+		[self finishWith:nil];
+}
+
+@end
+
+void WebLogin::ShowCaptcha(const std::string& sitekey, const std::string& rqdata,
+	std::function<void(const std::string&)> done, std::function<void()> cancelled)
+{
+	if (g_captcha) {
+		[g_captcha.window makeKeyAndOrderFront:nil];
+		return;
+	}
+	g_captcha = [[DMCaptcha alloc] initWithSitekey:sitekey rqdata:rqdata];
+	g_captcha.onDone = ^(NSString* answer) {
+		if (answer.length > 0) {
+			if (done)
+				done(std::string(answer.UTF8String));
+		}
+		else if (cancelled)
+			cancelled();
+	};
+}

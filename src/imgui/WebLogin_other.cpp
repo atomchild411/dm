@@ -14,6 +14,13 @@ void WebLogin::Open(std::function<void(const std::string&)>, std::function<void(
 		cancelled();
 }
 
+void WebLogin::ShowCaptcha(const std::string&, const std::string&,
+	std::function<void(const std::string&)>, std::function<void()> cancelled)
+{
+	if (cancelled)
+		cancelled();
+}
+
 void WebLogin::SelfTest(std::function<void()> finished)
 {
 	if (finished)

@@ -50,6 +50,27 @@ namespace
 		}, [] {});
 	}
 
+	// The captcha Discord wants before a QR login completes, in its own
+	// window; the login goes on with the answer.
+	std::string captchaShownFor; // its rqtoken, so it opens by itself once
+
+	bool CaptchaPending()
+	{
+		const QrLogin::Captcha& c = QrLogin::PendingCaptcha();
+		return WebLogin::Available() && QrLogin::Failed() && !c.sitekey.empty()
+			&& (c.service.empty() || c.service == "hcaptcha");
+	}
+
+	void ShowCaptcha()
+	{
+		const QrLogin::Captcha& c = QrLogin::PendingCaptcha();
+		captchaShownFor = c.rqtoken.empty() ? c.sitekey : c.rqtoken;
+		WebLogin::ShowCaptcha(c.sitekey, c.rqdata, [](const std::string& answer) {
+			if (CaptchaPending())
+				QrLogin::SolveCaptcha(answer);
+		}, [] {});
+	}
+
 	void Login()
 	{
 		if (!loginShown)
@@ -83,7 +104,18 @@ namespace
 				int tw = Gfx::Measure(text, FS_ITALIC, 14);
 				TextAt(dl, pos.x + (area - tw) / 2, pos.y + area / 2, text, FS_ITALIC, 14, 0x606060);
 			}
-			ImGui::TextWrapped("%s", QrLogin::StatusText().c_str());
+			bool captcha = CaptchaPending();
+			if (captcha) {
+				const QrLogin::Captcha& c = QrLogin::PendingCaptcha();
+				if (captchaShownFor != (c.rqtoken.empty() ? c.sitekey : c.rqtoken))
+					ShowCaptcha();
+				ImGui::TextWrapped("Discord wants a captcha before it finishes this login:\n"
+					"solve it in its window and the login goes on.");
+				if (ImGui::Button("Show the Captcha", ImVec2(300, 0)))
+					ShowCaptcha();
+			}
+			else
+				ImGui::TextWrapped("%s", QrLogin::StatusText().c_str());
 			ImGui::Separator();
 			if (WebLogin::Available()) {
 				// discord.com's own login page: email and password, and the
