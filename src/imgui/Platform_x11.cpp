@@ -10,6 +10,8 @@
 #include <cerrno>
 #include <cfloat>
 #include <cstdio>
+#include <cstdlib>
+#include <cstddef>
 #include <cstring>
 #include <fcntl.h>
 #include <sys/select.h>
@@ -43,6 +45,36 @@ namespace
 	int g_cursor = -2;
 	std::string g_clipOwn, g_clipGot;
 	int g_maxTex = 1024;
+	bool g_alphaTest;
+
+	// Whether blending happens: a transparent white square over black, read
+	// back.  (Not under IRIS's emulated Newport so far, though a real Indy
+	// blends in hardware: there, pixels are kept or dropped by their alpha
+	// instead, which keeps text readable but unsmoothed.)
+	bool BlendingWorks()
+	{
+		glViewport(0, 0, g_w, g_h);
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glOrtho(0, g_w, g_h, 0, -1, 1);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+		glDisable(GL_TEXTURE_2D);
+		glClearColor(0, 0, 0, 1);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glColor4ub(255, 255, 255, 0);
+		glBegin(GL_QUADS);
+		glVertex2f(0, 0); glVertex2f(8, 0); glVertex2f(8, 8); glVertex2f(0, 8);
+		glEnd();
+		glFinish();
+		unsigned char px[4] = { 0, 0, 0, 0 };
+		glReadBuffer(GL_BACK);
+		glReadPixels(4, g_h - 5, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+		glDisable(GL_BLEND);
+		return px[0] < 64;
+	}
 
 	double Now()
 	{
@@ -402,6 +434,12 @@ bool Platform::Open(int w, int h, const char* title, bool hidden, std::string& e
 	}
 	GLint maxTex = 0;
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTex);
+	const char* at = getenv("DM_GL_ALPHA_TEST");
+	g_alphaTest = at ? atoi(at) != 0 : !BlendingWorks();
+	if (getenv("DM_GL_INFO"))
+		fprintf(stderr, "dm: OpenGL %s, %s, %s; textures up to %d; %s\n", (const char*) glGetString(GL_VERSION),
+			(const char*) glGetString(GL_VENDOR), (const char*) glGetString(GL_RENDERER), (int) maxTex,
+			g_alphaTest ? "no blending: alpha test" : "blending");
 	// (texture memory is small on these boards: 1 MB on High IMPACT)
 	g_maxTex = maxTex > 0 ? std::min((int) maxTex, 1024) : 1024;
 
@@ -545,9 +583,120 @@ void Platform::BindSnapshotTarget()
 {
 }
 
-void Platform::Render(ImDrawData* data)
+// Dear ImGui's frame, drawn as its OpenGL 2 back end would, but for one
+// thing: its flat shapes (backgrounds, panels, outlines) are textured with
+// a white texel of its font atlas, and those triangles are drawn here
+// untextured.  Where texturing is done in software (Newport, Solid IMPACT),
+// that leaves the hardware to fill most of the window.  (The back end
+// itself still makes and updates the textures.)
+void Platform::Render(ImDrawData* dd)
 {
-	ImGui_ImplOpenGL2_RenderDrawData(data);
+	if (dd->Textures)
+		for (ImTextureData* tex : *dd->Textures)
+			if (tex->Status != ImTextureStatus_OK)
+				ImGui_ImplOpenGL2_UpdateTexture(tex);
+	int fbW = (int) (dd->DisplaySize.x * dd->FramebufferScale.x);
+	int fbH = (int) (dd->DisplaySize.y * dd->FramebufferScale.y);
+	if (fbW <= 0 || fbH <= 0)
+		return;
+
+	glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_TRANSFORM_BIT);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	if (g_alphaTest) {
+		glEnable(GL_ALPHA_TEST);
+		glAlphaFunc(GL_GREATER, 0.3f);
+	}
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_LIGHTING);
+	glDisable(GL_COLOR_MATERIAL);
+	glEnable(GL_SCISSOR_TEST);
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	glEnableClientState(GL_COLOR_ARRAY);
+	glDisableClientState(GL_NORMAL_ARRAY);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	glShadeModel(GL_SMOOTH);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glViewport(0, 0, fbW, fbH);
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glLoadIdentity();
+	glOrtho(dd->DisplayPos.x, dd->DisplayPos.x + dd->DisplaySize.x, dd->DisplayPos.y + dd->DisplaySize.y, dd->DisplayPos.y, -1, 1);
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glLoadIdentity();
+
+	ImFontAtlas* atlas = ImGui::GetIO().Fonts;
+	const ImVec2 white = atlas->TexUvWhitePixel;
+	const ImTextureID atlasTex = atlas->TexData ? atlas->TexData->GetTexID() : ImTextureID_Invalid;
+	const GLenum idxType = sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
+	const ImVec2 clipOff = dd->DisplayPos, clipScale = dd->FramebufferScale;
+	bool texturing = false;
+	glDisable(GL_TEXTURE_2D);
+
+	for (const ImDrawList* list : dd->CmdLists)
+	{
+		const ImDrawVert* vtx = list->VtxBuffer.Data;
+		const ImDrawIdx* idx = list->IdxBuffer.Data;
+		glVertexPointer(2, GL_FLOAT, sizeof(ImDrawVert), (const GLvoid*) ((const char*) vtx + offsetof(ImDrawVert, pos)));
+		glTexCoordPointer(2, GL_FLOAT, sizeof(ImDrawVert), (const GLvoid*) ((const char*) vtx + offsetof(ImDrawVert, uv)));
+		glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(ImDrawVert), (const GLvoid*) ((const char*) vtx + offsetof(ImDrawVert, col)));
+
+		for (const ImDrawCmd& cmd : list->CmdBuffer)
+		{
+			if (cmd.UserCallback) {
+				if (cmd.UserCallback != ImDrawCallback_ResetRenderState)
+					cmd.UserCallback(list, &cmd);
+				continue;
+			}
+			ImVec2 cmin((cmd.ClipRect.x - clipOff.x) * clipScale.x, (cmd.ClipRect.y - clipOff.y) * clipScale.y);
+			ImVec2 cmax((cmd.ClipRect.z - clipOff.x) * clipScale.x, (cmd.ClipRect.w - clipOff.y) * clipScale.y);
+			if (cmax.x <= cmin.x || cmax.y <= cmin.y)
+				continue;
+			glScissor((int) cmin.x, (int) ((float) fbH - cmax.y), (int) (cmax.x - cmin.x), (int) (cmax.y - cmin.y));
+			GLuint tex = (GLuint) (intptr_t) cmd.GetTexID();
+			glBindTexture(GL_TEXTURE_2D, tex);
+			const bool onAtlas = cmd.GetTexID() == atlasTex;
+
+			// runs of triangles, textured or (on the atlas's white texel) not
+			const ImDrawIdx* first = idx + cmd.IdxOffset;
+			unsigned n = cmd.ElemCount, start = 0;
+			while (start < n) {
+				auto solid = [&](unsigned t) {
+					if (!onAtlas)
+						return false;
+					for (int k = 0; k < 3; k++) {
+						const ImVec2& uv = vtx[first[t + k] + cmd.VtxOffset].uv;
+						if (uv.x != white.x || uv.y != white.y)
+							return false;
+					}
+					return true;
+				};
+				bool flat = solid(start);
+				unsigned end = start + 3;
+				while (end < n && solid(end) == flat)
+					end += 3;
+				if (flat == texturing) {
+					texturing = !flat;
+					if (texturing)
+						glEnable(GL_TEXTURE_2D);
+					else
+						glDisable(GL_TEXTURE_2D);
+				}
+				glDrawElements(GL_TRIANGLES, (GLsizei) (end - start), idxType, first + start);
+				start = end;
+			}
+		}
+	}
+
+	glMatrixMode(GL_MODELVIEW);
+	glPopMatrix();
+	glMatrixMode(GL_PROJECTION);
+	glPopMatrix();
+	glPopAttrib();
 }
 
 void Platform::Swap()
