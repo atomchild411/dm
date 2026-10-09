@@ -4,6 +4,11 @@ Discord Messenger for IRIX
 A Discord-compatible messenger for IRIX 6.5 with a Motif user interface,
 from Discord Messenger (https://github.com/DiscordMessenger/dm).
 
+There is also a version drawn with Dear ImGui on OpenGL, like the macOS,
+Linux and Windows ones (product dmimgui, discord-messenger-imgui): it
+wants fast OpenGL (High or Maximum IMPACT, MXI, VPro); this one suits
+every SGI.
+
 Run:     /usr/local/bin/discord-messenger
 Needs:   IRIX 6.5.22 or later, X11 and IRIX's Motif (x_eoe, motif_eoe);
          any MIPS CPU.  Nothing else: every library it uses besides IRIX's

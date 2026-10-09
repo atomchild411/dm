@@ -1,0 +1,69 @@
+Discord Messenger for IRIX (Dear ImGui)
+=======================================
+
+A Discord-compatible messenger for IRIX 6.5 that looks like Discord's own
+client: the same program as the macOS, Linux and Windows versions, drawn
+with Dear ImGui on IRIX's OpenGL.  From Discord Messenger
+(https://github.com/DiscordMessenger/dm).  The Motif version (product
+dmessenger) is lighter and suits every SGI; this one wants fast OpenGL.
+
+Run:     /usr/local/bin/discord-messenger-imgui
+Needs:   IRIX 6.5.22 or later, X11 and OpenGL (GLX 1.2, OpenGL 1.1);
+         any MIPS CPU.  Every library it uses besides IRIX's is linked into
+         the program.
+Speed:   it draws the whole window with textured triangles, so it is
+         smooth where OpenGL textures in hardware (High and Maximum
+         IMPACT, Octane MXI, VPro) and slow where IRIX textures in software
+         (Indy XL and XZ, Indigo2 Solid IMPACT, Octane SI): a few frames a
+         second while scrolling there; idle it uses no CPU.  On those
+         machines the Motif version is the better choice.
+
+Logging in: the first start shows a QR code to scan with the Discord app
+on your phone (tap your avatar, then Scan QR Code).  Discord sometimes
+asks for a captcha at the end of that, which this program cannot show on
+IRIX (it has no web browser view here); then use "Use a Token Instead":
+the token is the "authorization" header of any request a logged-in
+discord.com page makes (the browser's developer tools, Network).  It is
+kept in ~/.discordmessenger/settings.json, readable only by you, and shared
+with the Motif version.
+
+Note: third-party clients are against Discord's terms of service.  The
+risk of a ban is low, but it is there, and it is yours.
+
+What it shows: servers, channels, the member list and messages, with
+Discord's formatting, replies, reactions, embeds, pictures, avatars and
+colour emoji.  A click on a reaction adds or takes back yours; the right
+button on a message offers Add Reaction, Reply and, on your own, Edit and
+Delete; the face in the message box opens the emoji picker; a click on a
+picture shows it large.  The gear by your name has the member list, the
+text size, the theme (dark, light or several others) and the notification
+sound (sfplay and the desktop's sound scheme; DM_SOUND names another file).
+
+Try it without logging in: discord-messenger-imgui --demo shows sample
+servers, channels and conversations to click through (#stress-test has two
+thousand messages, for scrolling speed).  --bench [frames] scrolls the demo
+and prints how long each frame took; DM_DEMO_CHANNEL=stress-test with it
+measures the big channel.
+
+Files:   ~/.discordmessenger: settings.json, imgui.conf (text size, theme,
+         panes) and cache/: pictures (DM_CACHE_MB) and messages/
+         (DM_HISTORY_MB; DM_NO_HISTORY=1 keeps none).  Log Out empties both.
+         /usr/local/lib/discord-messenger-imgui: fonts/ (DejaVu, Noto Color
+         Emoji; DM_FONT_DIR names another directory), cacert.pem (the roots
+         of trust; DM_CA_FILE names another file), licenses/.
+Links:   open in the browser that DM_BROWSER or BROWSER names (web links
+         only: http and https).
+OpenGL:  DM_GL_INFO=1 prints the OpenGL in use; DM_GL_ALPHA_TEST=1 draws
+         without blending (rougher text edges; for boards that blend slowly).
+
+Source, and how it was built: https://github.com/atomchild411/dm
+(irix/dist has this package's recipe).
+
+Licenses: licenses/ -- Discord Messenger is MIT licensed.  Linked in:
+Dear ImGui (MIT), OpenSSL (Apache License 2.0), LLVM's libc++ (Apache
+License 2.0 with LLVM exception), FreeType (FreeType License), libpng (PNG
+Reference Library licence), zlib, bzip2 (BSD-style), libwebp (BSD, with
+Google's patent grant), JSON for Modern C++ and Nayuki's QR Code generator
+(MIT).  The fonts: DejaVu (Bitstream Vera licence, and public domain
+changes) and Noto Color Emoji (SIL Open Font License 1.1).  cacert.pem is
+from Mozilla (MPL 2.0).
