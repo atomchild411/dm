@@ -28,6 +28,10 @@ namespace QrLogin
 
 	// What to tell the user (may hold line breaks).  (Not "Status": Xlib defines that name.)
 	const std::string& StatusText();
+	// Whether the login dialogs offer it: not for now (DM_QR_LOGIN=1 does),
+	// as Discord rejects the captcha it asks for when solved in our window
+	// (invalid-response), and a QR login rarely gets by without one.
+	bool Enabled();
 	// Why the code shown is a new one (the last login could not finish), or "".
 	const std::string& Notice();
 

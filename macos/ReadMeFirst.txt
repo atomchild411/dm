@@ -14,8 +14,8 @@ anyway, once:
 
 After that it opens like any other app.
 
-Logging in: scan the QR code with the Discord app, log in on discord.com's
-own page in a window of the app, or use a token.  The login is kept in
+Logging in: log in on discord.com's own page (email and password) in a
+window of the app, or use a token.  The login is kept in
 your Keychain (under "Discord Messenger"); after an update, macOS may ask
 once whether the new version may use it.  It follows your Mac's
 light or dark appearance (or choose one under the gear's Theme menu).

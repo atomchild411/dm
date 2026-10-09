@@ -78,7 +78,7 @@ the program, and the package brings its own fonts (DejaVu, Noto Color Emoji) and
   the fonts come in the zip. Server certificates are checked by Windows, against its own
   certificate stores
 - For logging in on discord.com's page and Discord's captcha: Microsoft's Edge WebView2 runtime,
-  which Windows 11 and current Windows 10 have (without it, the QR code and the token remain)
+  which Windows 11 and current Windows 10 have (without it, logging in is by token)
 
 ## Installing
 
@@ -241,13 +241,14 @@ nothing makes it reconnect or ask again and again.
 
 ### Implemented
 
-- Logging in with a QR code scanned by the Discord app, or with a token; on macOS and Windows also
-  on discord.com's own page (email and password), in a window of the app
+- Logging in on discord.com's own page (email and password, and any captcha Discord asks for), in
+  a window of the app on macOS, Windows and Linux (WebKitGTK, where installed); or with a token.
+  The QR code login is switched off for now (DM_QR_LOGIN=1 brings it back): Discord rejects the
+  captcha it asks for at its end when solved in the app's window
 - The login token kept in the system's store of secrets: the macOS Keychain, Windows' Credential
   Manager, a Linux desktop's keyring (Secret Service); in settings.json (readable only by you) on
   IRIX and where there is none.  DM_TOKEN_STORE=file keeps it in the file everywhere
-- Discord's captcha, which it sometimes asks for at the end of a QR login: on macOS and Windows it
-  shows in a window of its own
+- Discord's captcha on its login page, in that window
 - Server certificates checked by the system on macOS and Windows (its own roots, revocation and
   any certificates your organisation added), and against the distribution's or our bundled roots
   on Linux and IRIX

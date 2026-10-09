@@ -13,9 +13,10 @@ To have it in your desktop's menu, copy discord-messenger.desktop to
 discord-messenger) and discord-messenger.png to
 ~/.local/share/icons/hicolor/64x64/apps/.
 
-Logging in: scan the QR code with the Discord app on your phone, or use a
-token.  (Discord sometimes asks for a captcha at the end of a QR login,
-which the Linux version cannot show yet: log in with a token then.)  It
+Logging in: log in on discord.com's own page (email and password, and any
+captcha Discord asks for) in a window of the program, where WebKitGTK is
+installed (libwebkit2gtk-4.1 or 4.0; most desktops have it); or use a
+token.  It
 follows your desktop's light or dark setting where the desktop says it
 (GNOME, KDE), or choose one under the gear's Theme menu.
 

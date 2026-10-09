@@ -272,6 +272,12 @@ static void ShowLogon(const std::string& why)
 		GetLocalSettings()->Save();
 		StartWithToken();
 	};
+	// a pasted token (the QR code only with DM_QR_LOGIN=1: see
+	// QrLogin::Enabled)
+	if (!QrLogin::Enabled()) {
+		ShowLogonDialog(g_toplevel, why, done);
+		return;
+	}
 	// a QR code for the phone app first; a pasted token on request
 	QrLoginDialog::Show(g_toplevel, g_pixelFormat, why, done, [why, done] {
 		ShowLogonDialog(g_toplevel, why, done);

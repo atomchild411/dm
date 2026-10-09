@@ -407,6 +407,12 @@ const std::string& QrLogin::StatusText()
 	return g_state ? g_state->status : g_empty;
 }
 
+bool QrLogin::Enabled()
+{
+	const char* e = getenv("DM_QR_LOGIN");
+	return e && *e && strcmp(e, "0") != 0;
+}
+
 const std::string& QrLogin::Notice()
 {
 	return g_state ? g_state->notice : g_empty;

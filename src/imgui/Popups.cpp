@@ -40,15 +40,20 @@ namespace
 	char token[256];
 
 	// The token from discord.com's login page: the session starts with it.
+	// The QR login waits meanwhile (else its captcha would come up over
+	// this window), and starts again when the window is closed unused.
 	void OpenWebLogin()
 	{
+		QrLogin::Stop();
 		WebLogin::Open([](const std::string& tok) {
-			QrLogin::Stop();
 			loginShown = false;
 			GetLocalSettings()->SetToken(tok);
 			GetLocalSettings()->Save();
 			StartWithToken();
-		}, [] {});
+		}, [] {
+			if (loginShown && !tokenMode)
+				Ui::ShowLogin(loginWhy);
+		});
 	}
 
 	// The captcha Discord wants before a QR login completes, in its own
@@ -82,7 +87,21 @@ namespace
 			return;
 		if (!loginWhy.empty())
 			ImGui::TextWrapped("%s", loginWhy.c_str());
-		if (!tokenMode) {
+		if (!tokenMode && !QrLogin::Enabled()) {
+			// discord.com's own login page: email and password, with any
+			// captcha Discord asks for; or a token
+			ImGui::Text("Log in to Discord");
+			if (ImGui::Button("Log In on discord.com", ImVec2(300, 0)))
+				OpenWebLogin();
+			ImGui::TextDisabled("With your email and password, in a window of its own.");
+			ImGui::Separator();
+			if (ImGui::Button("Use a Token Instead"))
+				tokenMode = true;
+			ImGui::SameLine();
+			if (ImGui::Button("Quit"))
+				quit = true;
+		}
+		else if (!tokenMode) {
 			ImGui::Text("Log in with a QR code");
 			if (!QrLogin::Notice().empty()) {
 				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(Col(RED)));
@@ -158,6 +177,14 @@ namespace
 				StartWithToken();
 			}
 			ImGui::SameLine();
+			// back to discord.com's page (or the QR code)
+			if (WebLogin::Available() || QrLogin::Enabled()) {
+				if (ImGui::Button("Back")) {
+					memset(token, 0, sizeof token);
+					Ui::ShowLogin(loginWhy);
+				}
+				ImGui::SameLine();
+			}
 			if (ImGui::Button("Quit"))
 				quit = true;
 		}
@@ -387,7 +414,11 @@ void Ui::ShowLogin(const std::string& why)
 {
 	loginWhy = why;
 	loginShown = true;
-	tokenMode = false;
+	// discord.com's page where there is a browser view, else a token (the
+	// QR code only with DM_QR_LOGIN=1, see QrLogin::Enabled)
+	tokenMode = !QrLogin::Enabled() && !WebLogin::Available();
+	if (!QrLogin::Enabled())
+		return;
 	QrLogin::Start([] {}, [](const std::string& tok) {
 		loginShown = false;
 		GetLocalSettings()->SetToken(tok);

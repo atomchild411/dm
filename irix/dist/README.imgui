@@ -18,14 +18,13 @@ Speed:   it draws the whole window with textured triangles, so it is
          second while scrolling there; idle it uses no CPU.  On those
          machines the Motif version is the better choice.
 
-Logging in: the first start shows a QR code to scan with the Discord app
-on your phone (tap your avatar, then Scan QR Code).  Discord sometimes
-asks for a captcha at the end of that, which this program cannot show on
-IRIX (it has no web browser view here); then use "Use a Token Instead":
-the token is the "authorization" header of any request a logged-in
-discord.com page makes (the browser's developer tools, Network).  It is
-kept in ~/.discordmessenger/settings.json, readable only by you, and shared
-with the Motif version.
+Logging in: with a token, the "authorization" header of any request a
+logged-in discord.com page makes (a browser's developer tools, Network).
+It is kept in ~/.discordmessenger/settings.json, readable only by you, and
+shared with the Motif version; you can put it there yourself:
+{"Token":"..."}.  (The QR code login is switched off for now: Discord
+demands a captcha at its end that IRIX cannot show.  DM_QR_LOGIN=1 brings
+it back.)
 
 Note: third-party clients are against Discord's terms of service.  The
 risk of a ban is low, but it is there, and it is yours.

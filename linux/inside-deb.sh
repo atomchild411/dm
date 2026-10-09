@@ -66,7 +66,7 @@ Homepage: https://github.com/atomchild411/dm
 Description: Discord-compatible messenger
  A messenger compatible with Discord, in the style of Discord's own client:
  servers, channels, direct messages, formatting, reactions, embeds, colour
- emoji and pictures.  Logs in with a QR code or a token.
+ emoji and pictures.  Logs in on discord.com's page or with a token.
  .
  Third-party clients are against Discord's terms of service.
 CONTROL

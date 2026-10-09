@@ -14,13 +14,12 @@ Needs:   IRIX 6.5.22 or later, X11 and IRIX's Motif (x_eoe, motif_eoe);
          any MIPS CPU.  Nothing else: every library it uses besides IRIX's
          is linked into the program.
 
-Logging in: the first start asks you to scan a QR code with the Discord
-app on your phone (tap your avatar, then Scan QR Code).  Discord sometimes
-asks for a captcha at the end of that, which this program cannot show;
-then use "Use a Token Instead": the token is the "authorization" header of
-any request a logged-in discord.com page makes (the browser's developer
-tools, Network).  It is kept in ~/.discordmessenger/settings.json, readable
-only by you.
+Logging in: with a token, the "authorization" header of any request a
+logged-in discord.com page makes (a browser's developer tools, Network).
+It is kept in ~/.discordmessenger/settings.json, readable only by you, and
+you can put it there yourself: {"Token":"..."}.  (The QR code login is
+switched off for now: Discord demands a captcha at its end that this
+program cannot show.  DM_QR_LOGIN=1 brings it back.)
 
 Note: third-party clients are against Discord's terms of service.  The
 risk of a ban is low, but it is there, and it is yours.

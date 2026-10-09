@@ -6,11 +6,10 @@ with Discord.  https://github.com/atomchild411/dm
 
 Run DiscordMessenger.exe.  Keep the "fonts" folder beside it.
 
-Logging in: scan the QR code with the Discord app on your phone, log in on
-discord.com's own page (email and password) in a window of the program, or
-use a token.  When Discord asks for a captcha at the end of a QR login, it
-shows in a window of its own.  Both windows use Microsoft's Edge WebView2,
-which Windows 11 and current Windows 10 have; they keep no cookies.
+Logging in: log in on discord.com's own page (email and password, and any
+captcha Discord asks for) in a window of the program, or use a token.  The
+window uses Microsoft's Edge WebView2, which Windows 11 and current Windows
+10 have; it keeps no cookies.
 
 Your settings, and the cache of images and messages, are kept in
 %APPDATA%\DiscordMessenger; the login itself in Windows' Credential
