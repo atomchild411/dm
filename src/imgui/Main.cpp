@@ -268,8 +268,11 @@ void StartWithToken()
 
 void RequestLogout()
 {
-	if (g_pDiscordInstance)
+	// (and nothing more is asked with the token)
+	if (g_pDiscordInstance) {
 		g_pDiscordInstance->CloseGatewaySession();
+		g_pDiscordInstance->SetToken("");
+	}
 	g_pFrontend->CancelReconnect();
 	// the account's messages and pictures do not stay behind it
 	GetMessageCache()->ClearDiskCache();

@@ -29,7 +29,10 @@ void Guild::RequestFetchChannels()
 {
 	// The lists ask each time they are drawn until the channels are in:
 	// asked once, and only after 30 s again (then 1, 2, 4, 8 min) if the
-	// answer never came.
+	// answer never came.  Not at all without a token (not logged in yet):
+	// Discord would only refuse it, and the refusal reads as a logout.
+	if (GetDiscordInstance()->GetToken().empty())
+		return;
 	time_t now = time(NULL);
 	if (m_channelsRequestedAt) {
 		int wait = 30 << std::min(m_channelsRequestsInVain, 4);
