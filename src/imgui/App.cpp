@@ -28,8 +28,8 @@ namespace
 				guildRows = Demo::GuildRows();
 				channelRows = Demo::ChannelRows();
 				memberRows = Demo::MemberRows();
-				selGuild = Demo::SELECTED_GUILD;
-				selChannel = Demo::SELECTED_CHANNEL;
+				selGuild = Demo::Guild();
+				selChannel = Demo::Channel();
 			}
 			return;
 		}
@@ -60,10 +60,12 @@ void App::Init(bool isDemo)
 	list = new MessageList(Gfx::Metrics(), geo);
 	SetDark(true); // the theme the system wants follows (App::UpdateTheme)
 	if (demo) {
-		Demo::LoadMessages();
-		list->SetChannel(0, Demo::CHANNEL);
 		status = "Demo: sample messages, not connected.";
-		unreadAfter = 0;
+		// DM_DEMO_CHANNEL=name: that channel at the start (stress-test, for
+		// --bench on two thousand messages)
+		const char* start = getenv("DM_DEMO_CHANNEL");
+		Snowflake ch = start ? Demo::FindChannel(start) : 0;
+		OpenDemoChannel(ch ? ch : Demo::CHANNEL);
 		// DM_TEST_OPEN=viewer, picker or error: opened at once (for screenshots)
 		if (const char* t = getenv("DM_TEST_OPEN")) {
 			if (!strcmp(t, "viewer")) {
@@ -82,6 +84,31 @@ void App::Init(bool isDemo)
 		}
 	}
 	Typing::SetChangedCallback([] {});
+}
+
+void App::SelectDemoGuild(Snowflake guild)
+{
+	if (Snowflake ch = Demo::SelectGuild(guild))
+		OpenDemoChannel(ch);
+}
+
+void App::OpenDemoChannel(Snowflake channel)
+{
+	if (channel == Demo::Channel() && list->GetChannel() == channel)
+		return;
+	if (composer.Cancel())
+		input[0] = 0;
+	bar.clear();
+	unreadAfter = Demo::OpenChannel(channel);
+	list->SetChannel(0, channel);
+	stick = true;
+	justOpened = true;
+	MarkDirty(LISTS | MESSAGES);
+}
+
+bool App::Pending()
+{
+	return g_dirty != 0;
 }
 
 void App::MarkDirty(int what)
@@ -162,6 +189,14 @@ void App::Frame(bool windowFocused)
 	frameDirty = g_dirty;
 	g_dirty = 0;
 	UpdateLists();
+
+	// DM_TEST_SWITCH=name (demo): that channel opened 30 frames in, as a
+	// click would, during the frame (for screenshots of a switch)
+	static int frames = 0;
+	if (demo && ++frames == 30)
+		if (const char* sw = getenv("DM_TEST_SWITCH"))
+			if (Snowflake ch = Demo::FindChannel(sw))
+				OpenDemoChannel(ch);
 
 	ImGuiViewport* vp = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(vp->WorkPos);

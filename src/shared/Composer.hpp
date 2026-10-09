@@ -23,6 +23,7 @@ public:
 	// still in the box).
 	bool Cancel();
 	Snowflake Editing() const { return m_editing; }
+	Snowflake Replying() const { return m_replyTo; }
 
 	enum Result
 	{

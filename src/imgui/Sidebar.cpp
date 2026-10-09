@@ -20,7 +20,7 @@ namespace
 		ImGui::Dummy(ImVec2(width, HEADER_H));
 		std::string name = "Direct Messages";
 		if (demo)
-			name = "Silicon Graphics User Group";
+			name = Demo::GuildName();
 		else if (selGuild) {
 			Guild* g = GetDiscordInstance()->GetGuild(selGuild);
 			name = g ? g->m_name : "";
@@ -64,7 +64,9 @@ namespace
 			if (!ImGui::IsItemVisible())
 				continue;
 			bool sel = r.id == selChannel && r.selectable;
-			if (clicked && r.selectable && !demo)
+			if (clicked && r.selectable && demo)
+				App::OpenDemoChannel(r.id);
+			else if (clicked && r.selectable)
 				GetDiscordInstance()->OnSelectChannel(r.id);
 
 			float x = pos.x + 8, w = width - 16;

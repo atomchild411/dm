@@ -3,6 +3,7 @@
 // and the red mention badges.
 
 #include "Ui.hpp"
+#include "App.hpp"
 
 #include "DiscordInstance.hpp"
 #include "shared/ImageCache.hpp"
@@ -36,7 +37,9 @@ void Ui::Rail(float height)
 		ImGui::Dummy(ImVec2(0, 8));
 		if (hovered)
 			ImGui::SetTooltip("%s", r.text.c_str());
-		if (clicked && !demo)
+		if (clicked && demo)
+			App::SelectDemoGuild(r.id);
+		else if (clicked)
 			GetDiscordInstance()->OnSelectGuild(r.id);
 
 		bool sel = r.id == selGuild;

@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "App.hpp"
+#include "shared/Demo.hpp"
 #include "DiscordInstance.hpp"
 #include "config/LocalSettings.hpp"
 #include "shared/ClientConfig.hpp"
@@ -279,7 +280,13 @@ namespace
 					}
 				}
 				if (clicked) {
-					if (pickerReact && pickerMessage)
+					if (pickerReact && pickerMessage && demo) {
+						if (const Message* m = FindListed(pickerMessage)) {
+							Demo::React(list->GetChannel(), *m, e, true);
+							App::MarkDirty(App::MESSAGES);
+						}
+					}
+					else if (pickerReact && pickerMessage)
 						GetDiscordInstance()->RequestReaction(list->GetChannel(), pickerMessage, e, true);
 					else {
 						std::string code = Shortcodes::For(e);

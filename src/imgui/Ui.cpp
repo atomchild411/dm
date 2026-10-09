@@ -47,6 +47,16 @@ uint32_t Ui::AvatarColor(Snowflake sf)
 	return colors[(sf >> 22) % (sizeof colors / sizeof colors[0])];
 }
 
+const Message* Ui::FindListed(Snowflake id)
+{
+	if (!id || !list)
+		return nullptr;
+	for (auto& it : list->Items())
+		if (it.msg && it.msg->m_snowflake == id)
+			return it.msg.get();
+	return nullptr;
+}
+
 std::string Ui::Initials(const std::string& text)
 {
 	const char* p = text.c_str();

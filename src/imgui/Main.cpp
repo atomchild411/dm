@@ -592,6 +592,10 @@ int main(int argc, char** argv)
 			busyFrames = std::max(busyFrames, 2);
 		if (ImGui::GetCurrentContext()->InputEventsQueue.Size > 0)
 			busyFrames = std::max(busyFrames, 1);
+		// what this frame changed (a channel opened from a click) is drawn
+		// over the next frames: the lists, then the messages, then the scroll
+		if (App::Pending())
+			busyFrames = std::max(busyFrames, 2);
 	}
 
 	if (!demo)

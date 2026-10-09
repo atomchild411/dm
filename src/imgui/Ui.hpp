@@ -70,6 +70,8 @@ namespace Ui
 	uint32_t Mix(uint32_t a, uint32_t b, int num, int den);
 	uint32_t AvatarColor(Snowflake sf);
 	std::string Initials(const std::string& text);
+	// The open channel's message with that id, as listed, or null.
+	const Message* FindListed(Snowflake id);
 	// Text with its baseline at y.
 	int TextAt(ImDrawList* dl, float x, float y, const std::string& s, FontStyle st, int px, uint32_t color);
 	// Text vertically centred on cy.

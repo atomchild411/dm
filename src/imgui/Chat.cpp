@@ -11,6 +11,7 @@
 #include <memory>
 
 #include "App.hpp"
+#include "shared/Demo.hpp"
 #include "DiscordInstance.hpp"
 #include "Frontend.hpp"
 #include "shared/ClientConfig.hpp"
@@ -47,8 +48,9 @@ namespace
 	{
 		dm = false;
 		if (demo) {
-			name = "general";
-			topic = "Talk about Indigo2s, Octanes and the rest of the SGI family";
+			name = Demo::ChannelName(list->GetChannel());
+			topic = Demo::ChannelTopic(list->GetChannel());
+			dm = Demo::IsDirect(list->GetChannel());
 			return;
 		}
 		DiscordInstance* pInst = GetDiscordInstance();
@@ -462,7 +464,7 @@ namespace
 		ImVec4 clip(o.x, ImGui::GetWindowPos().y, o.x + viewW, ImGui::GetWindowPos().y + viewH);
 		ImVec2 mp = ImGui::GetMousePos();
 		bool overView = ImGui::IsWindowHovered();
-		Snowflake me = demo || !GetDiscordInstance() ? 0 : GetDiscordInstance()->GetUserID();
+		Snowflake me = demo ? Demo::ME : !GetDiscordInstance() ? 0 : GetDiscordInstance()->GetUserID();
 		bool newShown = false;
 		for (auto& it : list->Items()) {
 			float top = o.y + it.y;
@@ -494,7 +496,12 @@ namespace
 				MessageList::Hit hit = list->HitTest(cx, cy);
 				if (hit.kind == MessageList::Hit::LINK)
 					GetFrontend()->LaunchURL(hit.url);
-				else if (hit.kind == MessageList::Hit::REACTION && !demo) {
+				else if (hit.kind == MessageList::Hit::REACTION && demo) {
+					const Reaction r = hit.message->m_reactions[hit.reaction];
+					Demo::React(list->GetChannel(), *hit.message, r, !r.m_bMe);
+					App::MarkDirty(App::MESSAGES);
+				}
+				else if (hit.kind == MessageList::Hit::REACTION) {
 					const Reaction& r = hit.message->m_reactions[hit.reaction];
 					GetDiscordInstance()->RequestReaction(list->GetChannel(), hit.message->m_snowflake, r, !r.m_bMe);
 				}
@@ -511,7 +518,7 @@ namespace
 		}
 		if (ImGui::BeginPopup("message menu")) {
 			if (menuMessage) {
-				if (!demo && ImGui::MenuItem("Add Reaction"))
+				if (ImGui::MenuItem("Add Reaction"))
 					OpenPicker(true, menuMessage->m_snowflake, ImGui::GetMousePos());
 				if (ImGui::MenuItem("Reply")) {
 					composer.BeginReply(menuMessage->m_snowflake);
@@ -632,7 +639,17 @@ namespace
 					input[n + 1] = 0;
 				}
 			}
-			else if (!demo) {
+			else if (demo) {
+				// the user's message, at once (replies and all; no edits)
+				if (Demo::Send(list->GetChannel(), input, FindListed(composer.Replying()))) {
+					input[0] = 0;
+					composer.Cancel();
+					bar.clear();
+					stick = true;
+					App::MarkDirty(App::MESSAGES);
+				}
+			}
+			else {
 				Composer::Result r = composer.Send(input);
 				if (r == Composer::SENT || r == Composer::EDITED) {
 					input[0] = 0;

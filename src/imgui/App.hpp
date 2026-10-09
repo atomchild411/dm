@@ -18,9 +18,14 @@ namespace App
 	// What changed since the last frame (from the frontend's hooks).
 	enum { LIST_GUILDS = 1, LIST_CHANNELS = 2, LIST_MEMBERS = 4, LISTS = 7, MESSAGES = 8 };
 	void MarkDirty(int what);
+	// Something was marked since this frame began: more frames to draw it.
+	bool Pending();
 
 	// The open channel changed (the core selected another).
 	void OnChannelChanged();
+	// --demo: a server or channel was picked (in place of the core's).
+	void SelectDemoGuild(Snowflake guild);
+	void OpenDemoChannel(Snowflake channel);
 	// The session is up: where the user was last time.
 	void RestoreLastChannel();
 
