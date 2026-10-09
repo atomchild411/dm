@@ -514,8 +514,11 @@ int main(int argc, char** argv)
 
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
-		if (snapshot)
-			io.DisplayFramebufferScale = ImVec2(1, 1); // the off-screen frame
+		if (snapshot) {
+			// the off-screen frame, whatever size the screen let the window be
+			io.DisplaySize = ImVec2((float) winW, (float) winH);
+			io.DisplayFramebufferScale = ImVec2(1, 1);
+		}
 		ImGui::NewFrame();
 		ImGui::GetStyle().FontSizeBase = (float) GetTextSize();
 		// back in front: the system's theme may have changed meanwhile
