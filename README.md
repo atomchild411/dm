@@ -115,7 +115,13 @@ First" says the same.
 
 ### Linux
 
-There are no releases yet: build the client as below.
+Download the newest Linux release from the [releases](https://github.com/atomchild411/dm/releases),
+for x86_64 or arm64 (aarch64):
+
+- the `.deb`, for Ubuntu 24.04 and later and Debian 13: `sudo apt install ./discord-messenger_<version>_amd64.deb`.
+  It uses the distribution's own OpenSSL, libwebp, FreeType and GLFW.
+- the AppImage, one file for most distributions from about 2022 on (glibc 2.34): `chmod +x` it and run it.
+- the `.tar.gz`, the same to unpack anywhere: run `./discord-messenger` in its folder.
 
 ## Building
 
@@ -190,7 +196,10 @@ DM_FONT_DIR=<fonts directory> bin/dm-imgui
 
 ### Linux
 
-On Debian or Ubuntu:
+The release packages come from `linux/build.sh --fonts <fonts directory>`, in containers (podman or
+docker), for x86_64 and aarch64 (the other one under QEMU's user-mode emulation); `linux/test.sh`
+installs the `.deb`s in fresh Ubuntu and Debian containers and runs them. To build just for this
+machine, on Debian or Ubuntu:
 
 ```
 apt install g++ make pkg-config libssl-dev libwebp-dev libfreetype-dev libglfw3-dev libgl-dev \
