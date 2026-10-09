@@ -18,6 +18,7 @@
 #include "posix/Frontend_Posix.hpp"
 #include "posix/MainQueue.hpp"
 #include "posix/NetworkerThread.hpp"
+#include "posix/SecretStore.hpp"
 #include "utils/Util.hpp"
 
 #include "Canvas.hpp"
@@ -502,6 +503,9 @@ int main(int argc, char** argv)
 
 	g_pFrontend = new Frontend_Motif;
 	g_pHTTPClient = new NetworkerThreadManager;
+	// the demo and the benchmark have no token, and leave the user's alone
+	if (argc > 1 && (!strcmp(argv[1], "--demo") || !strcmp(argv[1], "--bench")))
+		SecretStore::Disable();
 	GetLocalSettings()->Load();
 
 	// Caches in ~/.discordmessenger/cache: pictures (DM_CACHE_MB, 64 MB) and

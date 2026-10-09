@@ -41,6 +41,7 @@ void UseProgramResources();
 #include "posix/Frontend_Posix.hpp"
 #include "posix/MainQueue.hpp"
 #include "posix/NetworkerThread.hpp"
+#include "posix/SecretStore.hpp"
 #include "utils/Util.hpp"
 #include "shared/ClientConfig.hpp"
 #include "shared/Fonts.hpp"
@@ -469,6 +470,10 @@ int main(int argc, char** argv)
 
 	g_pFrontend = new Frontend_ImGui;
 	g_pHTTPClient = new NetworkerThreadManager;
+	// the demo, benchmarks and snapshots have no token, and leave the
+	// user's (in the Keychain or the like) alone
+	if (demo || snapshot || getenv("DM_TEST_WEBLOGIN"))
+		SecretStore::Disable();
 	GetLocalSettings()->Load();
 
 	// Caches in ~/.discordmessenger/cache, as in the Motif client

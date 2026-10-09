@@ -9,6 +9,10 @@
 //   dm-cli --connect wss://host/
 //                     open a websocket to that address and print whether
 //                     TLS let it through (a wrong host name must not).
+//   dm-cli --token-length
+//                     print how long the saved token is (not the token),
+//                     from settings.json or the system's store of secrets
+//   dm-cli --log-out  forget the saved token (as Log Out does)
 //   dm-cli --get https://host/path [--times N]
 //                     fetch that address over HTTPS (N times, one after
 //                     the other) and print the status (a certificate that
@@ -237,9 +241,14 @@ int MdGetQuoteIndentSize() { return 2; }
 
 int main(int argc, char** argv)
 {
+	bool tokenLength = false, logOut = false;
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--probe"))
 			g_bProbe = true;
+		else if (!strcmp(argv[i], "--token-length"))
+			tokenLength = true;
+		else if (!strcmp(argv[i], "--log-out"))
+			logOut = true;
 		else if (!strcmp(argv[i], "--connect") && i + 1 < argc)
 			g_connectUrl = argv[++i];
 		else if (!strcmp(argv[i], "--get") && i + 1 < argc)
@@ -247,7 +256,7 @@ int main(int argc, char** argv)
 		else if (!strcmp(argv[i], "--times") && i + 1 < argc)
 			g_getTimes = atoi(argv[++i]);
 		else {
-			fprintf(stderr, "usage: %s [--probe | --connect wss://host/ | --get https://host/path [--times N]]\n", argv[0]);
+			fprintf(stderr, "usage: %s [--probe | --token-length | --log-out | --connect wss://host/ | --get https://host/path [--times N]]\n", argv[0]);
 			return 2;
 		}
 	}
@@ -264,6 +273,16 @@ int main(int argc, char** argv)
 	g_pFrontend = new Frontend_CLI;
 	g_pHTTPClient = new NetworkerThreadManager;
 	GetLocalSettings()->Load();
+
+	// the saved token, without connecting (tests of where it is kept)
+	if (tokenLength) {
+		printf("token: %d characters\n", (int) GetLocalSettings()->GetToken().size());
+		return 0;
+	}
+	if (logOut) {
+		GetLocalSettings()->SetToken("");
+		return GetLocalSettings()->Save() ? 0 : 1;
+	}
 
 	if (g_connectUrl || g_getUrl)
 		g_bProbe = true; // no token is read or sent

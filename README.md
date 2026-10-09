@@ -243,6 +243,9 @@ nothing makes it reconnect or ask again and again.
 
 - Logging in with a QR code scanned by the Discord app, or with a token; on macOS and Windows also
   on discord.com's own page (email and password), in a window of the app
+- The login token kept in the system's store of secrets: the macOS Keychain, Windows' Credential
+  Manager, a Linux desktop's keyring (Secret Service); in settings.json (readable only by you) on
+  IRIX and where there is none.  DM_TOKEN_STORE=file keeps it in the file everywhere
 - Discord's captcha, which it sometimes asks for at the end of a QR login: on macOS and Windows it
   shows in a window of its own
 - Server certificates checked by the system on macOS and Windows (its own roots, revocation and

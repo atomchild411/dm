@@ -13,7 +13,8 @@ shows in a window of its own.  Both windows use Microsoft's Edge WebView2,
 which Windows 11 and current Windows 10 have; they keep no cookies.
 
 Your settings, and the cache of images and messages, are kept in
-%APPDATA%\DiscordMessenger.  Messages for troubleshooting go to the
+%APPDATA%\DiscordMessenger; the login itself in Windows' Credential
+Manager (Windows Credentials, "DiscordMessenger:...").  Messages for troubleshooting go to the
 console when the program is started from one (cmd or PowerShell).
 
 Using third party clients is against Discord's terms of service.  The

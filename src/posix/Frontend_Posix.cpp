@@ -1,5 +1,6 @@
 #include "Frontend_Posix.hpp"
 #include "MainQueue.hpp"
+#include "SecretStore.hpp"
 
 #include "DiscordInstance.hpp"
 #include "config/LocalSettings.hpp"
@@ -221,28 +222,114 @@ static std::string ReadFile(const std::string& path)
 	return ss.str();
 }
 
+// The login token lives in the system's store of secrets where there is
+// one (SecretStore): settings.json then holds everything but the token, and
+// the token is added back on loading.  A token found in the file (from an
+// older release, or one the store refused) moves into the store; where the
+// store fails or is missing, the file keeps it, as before.
+namespace
+{
+	bool g_storeKnown = false; // g_stored is what the store holds
+	std::string g_stored;
+	bool g_warned = false;
+
+	void Warn(const char* what)
+	{
+		if (g_warned)
+			return;
+		g_warned = true;
+		fprintf(stderr, "dm: could not %s the login token in %s; it stays in settings.json.\n", what, SecretStore::Name());
+	}
+
+	// The profile the token is filed under: the settings directory (without
+	// a trailing slash, so DM_HOME=/x/ and /x are one)
+	std::string TokenProfile()
+	{
+		std::string p = GetBasePath();
+		while (p.size() > 1 && (p.back() == '/' || p.back() == '\\'))
+			p.pop_back();
+		return p;
+	}
+
+	// Writes a new file and renames it over the old one, so a crash never
+	// leaves half a settings file.
+	bool WriteSettings(const std::string& body)
+	{
+		std::string path = GetBasePath() + "/settings.json";
+		std::string tmp = path + ".new";
+		FILE* f = fopen(tmp.c_str(), "wb");
+		if (!f)
+			return false;
+		chmod(tmp.c_str(), 0600); // it may hold the login token
+		bool ok = fwrite(body.data(), 1, body.size(), f) == body.size();
+		ok = (fclose(f) == 0) && ok;
+		if (!ok || !RenameOver(tmp, path)) {
+			unlink(tmp.c_str());
+			return false;
+		}
+		return true;
+	}
+}
+
 std::string Frontend_Posix::LoadConfig()
 {
-	return ReadFile(GetBasePath() + "/settings.json");
+	std::string text = ReadFile(GetBasePath() + "/settings.json");
+	if (!SecretStore::Usable())
+		return text;
+	nlohmann::json j = nlohmann::json::parse(text.empty() ? std::string("{}") : text, nullptr, false);
+	if (j.is_discarded() || !j.is_object())
+		return text;
+	std::string inFile = j.contains("Token") && j["Token"].is_string() ? j["Token"].get<std::string>() : "";
+	std::string stored;
+	SecretStore::Result r = SecretStore::Load(TokenProfile(), stored);
+	if (r != SecretStore::FAILED) {
+		g_storeKnown = true;
+		g_stored = r == SecretStore::FOUND ? stored : "";
+	}
+	if (!inFile.empty()) {
+		// the file's is the newer (written by an older release, or by hand):
+		// into the store with it, and out of the file
+		if (inFile == g_stored || SecretStore::Save(TokenProfile(), inFile)) {
+			g_storeKnown = true;
+			g_stored = inFile;
+			nlohmann::json rest = j;
+			rest.erase("Token");
+			WriteSettings(rest.dump());
+		}
+		else
+			Warn("keep");
+		return text;
+	}
+	if (r == SecretStore::FOUND)
+		j["Token"] = stored;
+	return j.dump();
 }
 
 bool Frontend_Posix::SaveConfig(const std::string& configJson)
 {
-	// Write a new file and rename it over the old one, so a crash never
-	// leaves half a settings file.
-	std::string path = GetBasePath() + "/settings.json";
-	std::string tmp = path + ".new";
-	FILE* f = fopen(tmp.c_str(), "wb");
-	if (!f)
-		return false;
-	chmod(tmp.c_str(), 0600); // it holds the login token
-	bool ok = fwrite(configJson.data(), 1, configJson.size(), f) == configJson.size();
-	ok = (fclose(f) == 0) && ok;
-	if (!ok || !RenameOver(tmp, path)) {
-		unlink(tmp.c_str());
-		return false;
+	std::string body = configJson;
+	if (SecretStore::Usable()) {
+		nlohmann::json j = nlohmann::json::parse(configJson, nullptr, false);
+		if (!j.is_discarded() && j.is_object()) {
+			std::string token = j.contains("Token") && j["Token"].is_string() ? j["Token"].get<std::string>() : "";
+			// no token, and the store could not be read: leave it alone
+			// (a refused Keychain prompt must not cost the stored token)
+			bool kept = (g_storeKnown && token == g_stored) || (!g_storeKnown && token.empty());
+			if (!kept && SecretStore::Save(TokenProfile(), token)) {
+				g_storeKnown = true;
+				g_stored = token;
+				kept = true;
+			}
+			if (kept) {
+				j.erase("Token");
+				body = j.dump();
+			}
+			else
+				Warn("keep");
+		}
 	}
-	return true;
+
+	return WriteSettings(body);
 }
 
 std::string Frontend_Posix::GetDirectMessagesText() { return "Direct Messages"; }

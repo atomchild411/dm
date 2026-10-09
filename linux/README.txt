@@ -20,7 +20,9 @@ follows your desktop's light or dark setting where the desktop says it
 (GNOME, KDE), or choose one under the gear's Theme menu.
 
 Your settings and the cache of images and messages are kept in
-~/.discordmessenger.
+~/.discordmessenger.  The login is kept in your desktop's keyring (GNOME
+Keyring, KWallet: the Secret Service) where there is one, else in
+~/.discordmessenger/settings.json, readable only by you.
 
 Using third party clients is against Discord's terms of service.  The
 risk of a ban is low, but it is there; the authors are not responsible for
