@@ -36,8 +36,11 @@ else echo "podman or docker is needed"; exit 1; fi
 build=${DM_BUILD:-$(git rev-list --count HEAD 2>/dev/null || echo 0)}
 mkdir -p build-linux/dl bin/linux
 for arch in $arches; do
-	case $arch in x86_64) plat=linux/amd64 ;; aarch64) plat=linux/arm64 ;; esac
+	case $arch in x86_64) plat=linux/amd64 deb=amd64 ;; aarch64) plat=linux/arm64 deb=arm64 ;; esac
 	mkdir -p build-linux/$arch
+	# (the .deb's name carries the build number: an older one would stay
+	# beside the new one, and linux/test.sh would install both)
+	rm -f build-linux/$arch/dist/*.deb bin/linux/discord-messenger_*_$deb.deb
 	$engine build -q --platform $plat -t dm-linux-portable-$arch -f linux/Containerfile linux > /dev/null
 	$engine build -q --platform $plat -t dm-linux-deb-$arch -f linux/Containerfile.deb linux > /dev/null
 	for kind in portable deb; do
