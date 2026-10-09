@@ -1,7 +1,8 @@
 #pragma once
 
+#include <map>
+#include <string>
 #include <vector>
-#include <protobuf/Protobuf.hpp>
 #include "../models/Snowflake.hpp"
 #include "../models/ActiveStatus.hpp"
 
@@ -16,114 +17,33 @@ enum eActivityType
 	ACTIVITY_COMPETING,
 };
 
-enum eExplicitFilter
-{
-	FILTER_NONE = 0,
-	FILTER_EXCEPTFRIENDS,
-	FILTER_TOTAL,
-};
-
-// Thanks a lot to https://github.com/dolfies/discord-protos/blob/master/discord_protos/PreloadedUserSettings.proto
-namespace Settings {
-	enum {
-		FIELD_TEXT_AND_IMAGES = 6,
-		FIELD_PRIVACY = 8,
-		FIELD_ACTIVITY = 11,
-		FIELD_GUILD_FOLDERS = 14,
-	};
-
-	namespace TextAndImages
-	{
-		enum {
-			FIELD_DISPLAY_COMPACT = 17,
-			FIELD_EXPLICIT_FILTER = 19,
-		};
-
-		namespace DisplayCompact
-		{
-			enum {
-				FIELD_VALUE = 1,
-			};
-		}
-
-		namespace ExplicitFilter
-		{
-			enum {
-				FIELD_VALUE = 1,
-			};
-		}
-	}
-
-	namespace Privacy
-	{
-		enum {
-			FIELD_DM_BLOCK_GUILDS = 3,
-			FIELD_DM_BLOCK_DEFAULT = 4, // default when joining new guilds
-		};
-	}
-
-	namespace Activity {
-		enum {
-			FIELD_INDICATOR = 1,
-			FIELD_CUSTOM_STATUS = 2,
-		};
-		namespace Indicator {
-			enum {
-				FIELD_STATE = 1,
-			};
-		}
-		namespace CustomStatus {
-			enum {
-				FIELD_TEXT = 1,
-				FIELD_EMOJI = 3,
-				FIELD_EXPIRY = 4,
-			};
-		}
-	}
-
-	namespace GuildFolders {
-		enum {
-			FIELD_ITEMS = 1,
-		};
-		namespace Item {
-			enum {
-				FIELD_GUILD_IDS = 1,
-				FIELD_ID = 2,
-				FIELD_NAME = 3,
-				FIELD_COLOR = 4,
-			};
-		}
-	}
-}
-
+// The account's settings that Discord keeps for its clients (the
+// PreloadedUserSettings protobuf message, as in
+// https://github.com/dolfies/discord-protos): the few this client uses.
 class SettingsManager
 {
 public:
-	SettingsManager();
-	~SettingsManager();
+	// Discord's settings, base64 protobuf: all of them (partial false: in
+	// READY, or an update with everything), or only what changed.
+	void LoadDataBase64(const std::string& base64, bool partial = false);
+	void LoadData(const uint8_t* data, size_t size, bool partial = false);
 
-	// This is a versatile method. It can not only load complete data,
-	// but it can also load diffs, which will be applied on top of the data.
-	void LoadData(const uint8_t* data, size_t sz);
+	eActiveStatus GetOnlineIndicator() const;
+	std::string GetCustomStatusText() const { return m_customStatus; }
 
-	void LoadData(std::vector<uint8_t>& data) {
-		LoadData(data.data(), data.size());
+	// The folders (id -> name) and the guilds in the order the user set
+	// them, each with its folder's id (0: none).
+	void GetGuildFoldersEx(std::map<Snowflake, std::string>& folders, std::vector<std::pair<Snowflake, Snowflake>>& guilds) const
+	{
+		folders = m_folders;
+		guilds = m_folderGuilds;
 	}
 
-	void LoadDataBase64(const std::string& str);
-
-public: // SETTINGS
-	eActiveStatus GetOnlineIndicator();
-
-	std::string GetCustomStatusText();
-
-	void GetGuildFoldersEx(std::map<Snowflake, std::string>& folders, std::vector<std::pair<Snowflake, Snowflake>>& guilds);
-
 private:
-	Protobuf::DecodeHint* CreateHint();
-
-	Protobuf::ObjectBaseMessage* m_pSettingsMessage = nullptr;
+	std::string m_status;        // "online", "idle", "dnd", "invisible"
+	std::string m_customStatus;
+	std::map<Snowflake, std::string> m_folders;
+	std::vector<std::pair<Snowflake, Snowflake>> m_folderGuilds;
 };
 
 SettingsManager* GetSettingsManager();
-

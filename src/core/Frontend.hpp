@@ -3,7 +3,6 @@
 #include <set>
 #include <cstdarg>
 #include <nlohmann/json.h>
-#include <protobuf/Protobuf.hpp>
 #include "models/Snowflake.hpp"
 #include "models/ScrollDir.hpp"
 #include "models/Message.hpp"
@@ -39,7 +38,6 @@ public:
 	virtual void OnJsonException(const std::string& message) = 0;
 	virtual void OnCantViewChannel(const std::string& channelName) = 0;
 	virtual void OnGatewayConnectFailure() = 0;
-	virtual void OnProtobufError(Protobuf::ErrorCode code) = 0;
 
 	// Update requests
 	virtual void UpdateSelectedGuild() = 0;

@@ -32,7 +32,13 @@ Snowflake CreateTemporarySnowflake()
 	const Snowflake discordEpoch = 1420070400000; // January 1, 2015 in UNIX epoch
 	sf -= discordEpoch; // turn it into Discord epoch
 	sf <<= 22;
-	// internal worker ID, internal process ID and increment are left as zero.
+	// internal worker and process IDs are left as zero; the increment makes
+	// two in the same millisecond differ (the nonces of messages sent, which
+	// Discord holds unique), in steps of two (a failed send's note is
+	// nonce + 1)
+	static unsigned s_increment;
+	sf |= (s_increment & 0xffe);
+	s_increment += 2;
 	return sf;
 }
 
@@ -634,7 +640,7 @@ void DiscordInstance::GatewayClosed(int errorCode)
 
 		// sent too much: a minute's pause at least
 		case CloseCode::RATE_LIMITED:
-			ReconnectLater(60000);
+			ReconnectLater(60000 + rand() % 5000);
 			break;
 
 		// anything else (a dropped connection, Discord restarting, its
@@ -710,8 +716,9 @@ void DiscordInstance::ReconnectLater(int minimumMs)
 	if (base > 60000)
 		base = 60000;
 	int delay = base / 2 + rand() % (base / 2 + 1);
+	// (a caller's minimum carries its own randomness)
 	if (delay < minimumMs)
-		delay = minimumMs + rand() % 5000;
+		delay = minimumMs;
 	m_reconnectAttempts++;
 	DbgPrintF("Gateway: reconnecting in %d ms (attempt %d)", delay, m_reconnectAttempts);
 	GetFrontend()->OnLoginAgain(delay);
@@ -1121,6 +1128,9 @@ bool DiscordInstance::SendMessageToChannel(Snowflake guild, Snowflake channel, c
 	j["content"] = msg;
 	j["flags"] = 0;
 	j["nonce"] = std::to_string(tempSf);
+	// a send made again (the connection failed before the answer came)
+	// gets the message the first one made, not a second copy
+	j["enforce_nonce"] = true;
 	j["tts"] = false;
 	j["mobile_network_type"] = "unknown";
 
@@ -1455,9 +1465,9 @@ void DiscordInstance::CloseGatewaySession()
 	m_gatewayConnId = -1;
 }
 
-void DiscordInstance::LoadUserSettings(const std::string& userSettings)
+void DiscordInstance::LoadUserSettings(const std::string& userSettings, bool partial)
 {
-	GetSettingsManager()->LoadDataBase64(userSettings);
+	GetSettingsManager()->LoadDataBase64(userSettings, partial);
 	UpdateSettingsInfo();
 }
 
@@ -2289,10 +2299,14 @@ void DiscordInstance::HandleUSER_GUILD_SETTINGS_UPDATE(nlohmann::json& j)
 
 void DiscordInstance::HandleUSER_SETTINGS_PROTO_UPDATE(Json& j)
 {
-	//{"t":"USER_SETTINGS_PROTO_UPDATE","s":X,"op":0,"d":{"settings":{"type":1,"proto":"blabla"},"partial":false}} [PAYLOAD ENDS HERE]
-	// d.settings.type and d.partial fields irrelevant probably
-
-	LoadUserSettings(j["d"]["settings"]["proto"]);
+	// {"settings":{"type":1,"proto":"..."},"partial":false}: type 1 is the
+	// user's settings (2, the "frecency" of emoji and GIFs, is another
+	// message whose field numbers mean other things); partial, only what
+	// changed
+	Json& d = j["d"];
+	if (!d.contains("settings") || GetFieldSafeInt(d["settings"], "type") != 1 || !d["settings"]["proto"].is_string())
+		return;
+	LoadUserSettings(d["settings"]["proto"], d.value("partial", false));
 
 	// The guild list may have updated.
 	if (SortGuilds())

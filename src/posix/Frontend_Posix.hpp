@@ -40,7 +40,6 @@ public:
 	void OnJsonException(const std::string& message) override;
 	void OnCantViewChannel(const std::string& channelName) override;
 	void OnGatewayConnectFailure() override;
-	void OnProtobufError(Protobuf::ErrorCode code) override;
 	void UpdateSelectedGuild() override {}
 	void UpdateSelectedChannel() override {}
 	void UpdateChannelList() override {}

@@ -164,11 +164,6 @@ void Frontend_Posix::OnGatewayConnectFailure()
 	OnGenericError("Could not connect to Discord servers.\n\nThis could be because you aren't connected to the Internet, or because Discord servers are down.");
 }
 
-void Frontend_Posix::OnProtobufError(Protobuf::ErrorCode code)
-{
-	OnGenericError("Cannot load settings information from Discord. Got error code " + std::to_string((int) code) + " from protobuf.");
-}
-
 void Frontend_Posix::LaunchURL(const std::string& url)
 {
 #ifndef _WIN32

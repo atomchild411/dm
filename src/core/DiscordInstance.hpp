@@ -367,7 +367,7 @@ private:
 	bool CanResume() const;
 public:
 
-	void LoadUserSettings(const std::string& userSettings);
+	void LoadUserSettings(const std::string& userSettings, bool partial = false);
 
 	bool ResortChannels(Snowflake guild);
 
