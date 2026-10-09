@@ -5,6 +5,8 @@
 # FRONTEND picks the user interface: motif (the X11/Motif client, for IRIX
 # and other historic Unix), imgui (Dear ImGui on GLFW and OpenGL 3, for
 # Linux, macOS and Windows) or cli (a text test client that exercises the core).
+# IMGUI_PLATFORM=x11 builds the imgui one on Xlib, GLX 1.2 and OpenGL 1.1
+# instead (IRIX), with X_CFLAGS and X11_LIBS for X.
 # PREFIX_DEPS is where OpenSSL and libwebp are installed (include/ and lib/
 # below it); GLFW_PREFIX where GLFW is, when not there.
 #
@@ -23,6 +25,8 @@ EXTRA_CXXFLAGS ?=
 EXTRA_LDFLAGS  ?=
 X_CFLAGS    ?=
 X_LIBS      ?= -lXm -lXt -lXext -lX11
+IMGUI_PLATFORM ?= glfw
+X11_LIBS    ?= -lGL -lX11
 TARGET_OS   ?=
 ifeq ($(TARGET_OS),windows)
 FT_LIBS     ?= $(PREFIX_DEPS)/lib/freetype.lib $(PREFIX_DEPS)/lib/libpng16_static.lib $(PREFIX_DEPS)/lib/zlib.lib
@@ -92,15 +96,25 @@ CXXFLAGS += $(X_CFLAGS)
 LIBS += $(X_LIBS)
 endif
 
-# Dear ImGui (deps/imgui, with its GLFW and OpenGL 3 back ends)
+# Dear ImGui (deps/imgui, with its GLFW and OpenGL 3 back ends, or its
+# OpenGL 2 one under our X11 platform layer)
 IMGUI_FILES :=
 ifeq ($(FRONTEND),imgui)
-CXXFLAGS += -Ideps/imgui -Ideps/imgui/backends -I$(GLFW_PREFIX)/include -DIMGUI_USE_WCHAR32
+CXXFLAGS += -Ideps/imgui -Ideps/imgui/backends -DIMGUI_USE_WCHAR32 '-DIMGUI_USER_CONFIG="imgui/imconfig_dm.h"'
 IMGUI_FILES := deps/imgui/imgui.cpp deps/imgui/imgui_draw.cpp deps/imgui/imgui_tables.cpp \
-	deps/imgui/imgui_widgets.cpp deps/imgui/backends/imgui_impl_glfw.cpp \
-	deps/imgui/backends/imgui_impl_opengl3.cpp
+	deps/imgui/imgui_widgets.cpp
+ifeq ($(IMGUI_PLATFORM),x11)
+DEFINES += -DDM_IMGUI_X11
+CXXFLAGS += $(X_CFLAGS)
+IMGUI_FILES += deps/imgui/backends/imgui_impl_opengl2.cpp
+LIBS += $(X11_LIBS)
+else
+CXXFLAGS += -I$(GLFW_PREFIX)/include
+IMGUI_FILES += deps/imgui/backends/imgui_impl_glfw.cpp deps/imgui/backends/imgui_impl_opengl3.cpp
 LIBS += $(GLFW_LIBS)
-ifeq ($(TARGET_OS),windows)
+endif
+ifeq ($(IMGUI_PLATFORM),x11)
+else ifeq ($(TARGET_OS),windows)
 LIBS += -lopengl32
 else ifeq ($(UNAME),Darwin)
 # the browser view for logging in (Objective-C++)

@@ -49,12 +49,12 @@ void Ui::Rail(float height)
 			Fill(dl, x, y, ICON, ICON, sel || hovered ? BLURPLE : ICON_BG, rounding);
 			const Image& icon = AppIconImage();
 			float s = 30;
-			dl->AddImage(Gfx::Texture(icon), ImVec2(x + (ICON - s) / 2, y + (ICON - s) / 2), ImVec2(x + (ICON + s) / 2, y + (ICON + s) / 2));
+			Gfx::AddImage(dl, icon, ImVec2(x + (ICON - s) / 2, y + (ICON - s) / 2), ImVec2(x + (ICON + s) / 2, y + (ICON + s) / 2));
 		}
 		else {
 			const Image* img = r.hasImage ? ImageCache::Get(r.imageKind, r.imagePlace, r.imageSf, (int) ICON, (int) ICON) : nullptr;
 			if (img)
-				dl->AddImageRounded(Gfx::Texture(*img), ImVec2(x, y), ImVec2(x + ICON, y + ICON), ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, rounding);
+				Gfx::AddImageRounded(dl, *img, ImVec2(x, y), ImVec2(x + ICON, y + ICON), rounding);
 			else {
 				Fill(dl, x, y, ICON, ICON, sel || hovered ? BLURPLE : ICON_BG, rounding);
 				std::string ini = Initials(r.text);

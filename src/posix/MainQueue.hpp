@@ -30,7 +30,8 @@ namespace MainQueue
 	void Send(std::function<void()> fn);
 
 	// Runs everything queued so far.  UI thread only.
-	void Drain();
+	// (true when it ran something)
+	bool Drain();
 
 	// After this, Send and Post drop their work, so threads still running
 	// while the program exits never wait for a UI thread that is gone.

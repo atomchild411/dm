@@ -97,7 +97,7 @@ namespace
 		const Image* img = ImageCache::Get(ImageCache::URL, url, 0, w, h);
 		if (img) {
 			float ix = x + (w - img->w) / 2.0f, iy = y + (h - img->h) / 2.0f;
-			dl->AddImageRounded(Gfx::Texture(*img), ImVec2(ix, iy), ImVec2(ix + img->w, iy + img->h), ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, 6.0f);
+			Gfx::AddImageRounded(dl, *img, ImVec2(ix, iy), ImVec2(ix + img->w, iy + img->h), 6.0f);
 			return;
 		}
 		Fill(dl, x, y, (float) w, (float) h, SURFACE, 6.0f);

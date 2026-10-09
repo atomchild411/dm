@@ -45,12 +45,17 @@ namespace Gfx
 	int Text(ImDrawList* dl, ImVec2 pos, const std::string& s, FontStyle st, int px, uint32_t color);
 
 	// The texture for a cached image (uploaded on first use, replaced when
-	// the image is).
-	ImTextureID Texture(const Image& img);
+	// the image is), and the part of it the image takes (OpenGL 1.1 wants
+	// textures a power of two in size).
+	struct TexRef { ImTextureID id; ImVec2 uv0, uv1; };
+	TexRef Texture(const Image& img);
 	// Textures of images that are gone (once a frame).
 	void CollectTextures();
 
-	// An image (from the cache) at (x, y), or the image clipped to a circle.
-	void DrawImage(ImDrawList* dl, const Image& img, float x, float y);
-	void DrawImageCircle(ImDrawList* dl, const Image& img, float x, float y);
+	// An image (from the cache) in a rectangle, or with rounded corners.
+	void AddImage(ImDrawList* dl, const ::Image& img, ImVec2 p0, ImVec2 p1);
+	void AddImageRounded(ImDrawList* dl, const ::Image& img, ImVec2 p0, ImVec2 p1, float rounding);
+	// An image at (x, y), or the image clipped to a circle.
+	void DrawImage(ImDrawList* dl, const ::Image& img, float x, float y);
+	void DrawImageCircle(ImDrawList* dl, const ::Image& img, float x, float y);
 }

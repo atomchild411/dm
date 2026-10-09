@@ -106,8 +106,9 @@ void MainQueue::Wait(int ms)
 	g_workCond.wait_for(lk, std::chrono::milliseconds(ms), [] { return !g_items.empty() || g_shutdown; });
 }
 
-void MainQueue::Drain()
+bool MainQueue::Drain()
 {
+	bool ran = false;
 #ifndef _WIN32
 	char buf[64];
 	while (read(g_pipe[0], buf, sizeof buf) > 0)
@@ -120,12 +121,13 @@ void MainQueue::Drain()
 		{
 			std::lock_guard<std::mutex> lk(g_lock);
 			if (g_items.empty())
-				return;
+				return ran;
 			item = std::move(g_items.front());
 			g_items.pop_front();
 		}
 
 		item.fn();
+		ran = true;
 
 		if (item.done) {
 			std::lock_guard<std::mutex> lk(g_lock);

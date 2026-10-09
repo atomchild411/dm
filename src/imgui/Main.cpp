@@ -1,4 +1,5 @@
-// Discord Messenger with Dear ImGui, on GLFW and OpenGL 3 (Linux, macOS, Windows).
+// Discord Messenger with Dear ImGui: on GLFW and OpenGL 3 (Linux, macOS,
+// Windows), or on X11 and OpenGL 1.1 (IRIX); see Platform.hpp.
 //
 //   dm-imgui [--demo]
 //
@@ -21,40 +22,14 @@
 #include <vector>
 #include <sys/stat.h>
 
-// OpenGL 3 declarations (framebuffers): the core profile header on macOS,
-// the extension prototypes elsewhere
-#if defined(__APPLE__)
-#define GL_SILENCE_DEPRECATION
-#define GLFW_INCLUDE_GLCOREARB
-#elif !defined(_WIN32)
-#define GL_GLEXT_PROTOTYPES
-#define GLFW_INCLUDE_GLEXT
-#endif
-#include <GLFW/glfw3.h>
-
 #if defined(_WIN32)
-// Windows' opengl32 exports OpenGL 1.1: the framebuffer calls (DM_SNAPSHOT)
-// are looked up once there is a context
-#define GL_FRAMEBUFFER 0x8D40
-#define GL_COLOR_ATTACHMENT0 0x8CE0
-static void (__stdcall* glGenFramebuffers)(GLsizei, GLuint*);
-static void (__stdcall* glBindFramebuffer)(GLenum, GLuint);
-static void (__stdcall* glFramebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint);
-
-static void LoadFramebufferCalls()
-{
-	glGenFramebuffers = (decltype(glGenFramebuffers)) glfwGetProcAddress("glGenFramebuffers");
-	glBindFramebuffer = (decltype(glBindFramebuffer)) glfwGetProcAddress("glBindFramebuffer");
-	glFramebufferTexture2D = (decltype(glFramebufferTexture2D)) glfwGetProcAddress("glFramebufferTexture2D");
-}
-
 // Resources_win.cpp
 void UseProgramResources();
 #endif
 
 #include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
+#include "GL.hpp"
+#include "Platform.hpp"
 
 #include <png.h> // DM_SNAPSHOT's PNG
 
@@ -79,7 +54,6 @@ void UseProgramResources();
 #include "Gfx.hpp"
 
 static DiscordInstance* g_pDiscordInstance;
-static GLFWwindow* g_window;
 static bool g_bQuit;
 
 DiscordInstance* GetDiscordInstance()
@@ -95,8 +69,10 @@ namespace
 	struct Timer { Clock::time_point due; std::function<void()> fn; bool cancelled; };
 	std::list<Timer> g_timers;
 
-	void RunDueTimers()
+	// (true when one ran)
+	bool RunDueTimers()
 	{
+		bool ran = false;
 		Clock::time_point now = Clock::now();
 		for (auto it = g_timers.begin(); it != g_timers.end(); ) {
 			if (it->cancelled) {
@@ -107,10 +83,12 @@ namespace
 				auto fn = it->fn;
 				it = g_timers.erase(it);
 				fn();
+				ran = true;
 				continue;
 			}
 			++it;
 		}
+		return ran;
 	}
 
 	// Seconds until the next timer (at most max).
@@ -213,7 +191,7 @@ public:
 			Sound::PlayNotification(nullptr);
 	}
 	bool IsWindowFocused() override {
-		return g_window && glfwGetWindowAttrib(g_window, GLFW_FOCUSED);
+		return Platform::Focused();
 	}
 
 protected:
@@ -280,23 +258,6 @@ void RequestReconnect()
 		g_pDiscordInstance->ReconnectNow();
 }
 
-// DM_SNAPSHOT: frames go into this framebuffer instead of the window.
-static GLuint g_snapFbo, g_snapTex;
-
-static void MakeSnapshotTarget(int w, int h)
-{
-#if defined(_WIN32)
-	LoadFramebufferCalls();
-#endif
-	glGenTextures(1, &g_snapTex);
-	glBindTexture(GL_TEXTURE_2D, g_snapTex);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glGenFramebuffers(1, &g_snapFbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, g_snapFbo);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_snapTex, 0);
-}
-
 // The frame just drawn, as a PNG (DM_SNAPSHOT).
 static void Snapshot(const char* path, int w, int h)
 {
@@ -327,6 +288,73 @@ static size_t CacheLimit(const char* name, size_t def)
 }
 
 // The system's theme, every few seconds where asking is cheap.
+// --bench: how long frames take.  The first second is not counted (the
+// pictures arrive and the caches fill then).
+class Bench
+{
+public:
+	explicit Bench(int frames) : m_frames(frames) {}
+	bool Running() const { return m_frames > 0; }
+	void Start() { if (Running()) m_t0 = Platform::Time(); }
+	void Built() { if (Running()) m_t1 = Platform::Time(); }
+	void Drawn()
+	{
+		if (!Running())
+			return;
+		glFinish();
+		m_t2 = Platform::Time();
+	}
+
+	// The mouse over the messages, the wheel turning: 40 frames up, 40 down.
+	void Scroll(ImGuiIO& io)
+	{
+		io.AddMousePosEvent(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
+		io.AddMouseWheelEvent(0, (m_n / 40) % 2 ? -1.0f : 1.0f);
+	}
+
+	// True when the frames are done (the times are printed then).
+	bool Swapped(ImDrawData* dd)
+	{
+		double t3 = Platform::Time();
+		if (t3 < 1.0)
+			return false;
+		m_build.push_back(m_t1 - m_t0);
+		m_draw.push_back(m_t2 - m_t1);
+		m_swap.push_back(t3 - m_t2);
+		m_total.push_back(t3 - m_t0);
+		m_vtx += dd ? dd->TotalVtxCount : 0;
+		if (++m_n < m_frames)
+			return false;
+		double sum = 0;
+		for (double t : m_total)
+			sum += t;
+		printf("dm bench: %d frames, %.1f frames a second, %ld vertices a frame\n", m_n, m_n / sum, m_vtx / m_n);
+		printf("dm bench: %-6s %8s %8s %8s %8s (ms)\n", "", "mean", "median", "95%", "max");
+		Row("build", m_build);
+		Row("draw", m_draw);
+		Row("swap", m_swap);
+		Row("frame", m_total);
+		fflush(stdout);
+		return true;
+	}
+
+private:
+	static void Row(const char* name, std::vector<double> v)
+	{
+		std::sort(v.begin(), v.end());
+		double sum = 0;
+		for (double t : v)
+			sum += t;
+		printf("dm bench: %-6s %8.2f %8.2f %8.2f %8.2f\n", name, 1000 * sum / v.size(), 1000 * v[v.size() / 2],
+			1000 * v[v.size() * 95 / 100], 1000 * v.back());
+	}
+
+	int m_frames, m_n = 0;
+	long m_vtx = 0;
+	double m_t0 = 0, m_t1 = 0, m_t2 = 0;
+	std::vector<double> m_build, m_draw, m_swap, m_total;
+};
+
 static void PollSystemTheme()
 {
 	App::CheckSystemTheme();
@@ -383,6 +411,11 @@ static void UseProgramResources()
 int main(int argc, char** argv)
 {
 	bool demo = argc > 1 && !strcmp(argv[1], "--demo");
+	// --bench [frames]: the demo drawn frame after frame while the messages
+	// scroll up and down, then the times a frame took (build, draw, swap)
+	int benchFrames = argc > 1 && !strcmp(argv[1], "--bench") ? (argc > 2 ? atoi(argv[2]) : 300) : 0;
+	if (benchFrames)
+		demo = true;
 #if defined(__APPLE__)
 	UseBundleResources();
 #elif defined(_WIN32) || defined(__linux__)
@@ -400,34 +433,15 @@ int main(int argc, char** argv)
 		[](void* handle) { ((Timer*) handle)->cancelled = true; }
 	});
 
-	if (!glfwInit()) {
-		fprintf(stderr, "dm: GLFW could not start (is there a display?)\n");
-		return 1;
-	}
-#if defined(__APPLE__)
-	const char* glsl = "#version 150";
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#else
-	const char* glsl = "#version 130";
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-#endif
 	int winW = 1180, winH = 820;
 	const char* snapshot = getenv("DM_SNAPSHOT");
-	if (snapshot)
-		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-	g_window = glfwCreateWindow(winW, winH, "Discord Messenger", nullptr, nullptr);
-	if (!g_window) {
-		fprintf(stderr, "dm: no OpenGL 3 window\n");
+	std::string err;
+	if (!Platform::Open(winW, winH, "Discord Messenger", snapshot != nullptr, err)) {
+		fprintf(stderr, "dm: %s\n", err.c_str());
 		return 1;
 	}
-	glfwMakeContextCurrent(g_window);
-	glfwSwapInterval(snapshot ? 0 : 1);
 	// network threads wake the loop
-	MainQueue::SetWakeHook([] { glfwPostEmptyEvent(); });
+	MainQueue::SetWakeHook([] { Platform::Wake(); });
 
 	SetDefaultTextSize(15); // Discord's body text
 	LoadClientConfig("imgui.conf");
@@ -444,13 +458,13 @@ int main(int argc, char** argv)
 		return 1;
 	}
 	ImGui::GetStyle().FontSizeBase = (float) GetTextSize();
-	ImGui_ImplGlfw_InitForOpenGL(g_window, !snapshot);
-	ImGui_ImplOpenGL3_Init(glsl);
-	if (snapshot) {
+	Platform::InitImGui(!snapshot);
+	if (snapshot && !benchFrames) {
 		io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
 		io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
-		MakeSnapshotTarget(winW, winH);
 	}
+	if (snapshot)
+		Platform::MakeSnapshotTarget(winW, winH);
 
 	g_pFrontend = new Frontend_ImGui;
 	g_pHTTPClient = new NetworkerThreadManager;
@@ -463,7 +477,7 @@ int main(int argc, char** argv)
 		mkdir(dir.c_str(), 0700);
 		GetMessageCache()->SetDiskCache(dir, CacheLimit("DM_HISTORY_MB", 32));
 	}
-	ImageCache::SetChangedCallback([] { glfwPostEmptyEvent(); });
+	ImageCache::SetChangedCallback([] { Platform::Wake(); });
 
 	g_pHTTPClient->Init();
 	GetWebsocketClient()->Init();
@@ -475,11 +489,15 @@ int main(int argc, char** argv)
 		token = envToken;
 
 	g_pDiscordInstance = new DiscordInstance(demo ? "" : token);
-	if (const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor()))
-		App::SetScreenSize(mode->width, mode->height);
+	int screenW, screenH;
+	Platform::ScreenSize(screenW, screenH);
+	if (screenW > 0)
+		App::SetScreenSize(screenW, screenH);
 	App::Init(demo);
 	// the theme: as the system and the setting say, the window frames to match
-	App::SetFrameHook([](bool dark, bool followSystem) { SystemTheme::FrameWindows(g_window, dark, followSystem); });
+	App::SetFrameHook([](bool dark, bool followSystem) {
+		SystemTheme::FrameWindows((GLFWwindow*) Platform::Native(), dark, followSystem);
+	});
 	App::ApplyTheme();
 	if (SystemTheme::CheapToPoll())
 		PollSystemTheme();
@@ -502,18 +520,25 @@ int main(int argc, char** argv)
 	// a couple of frames), then sleep until the next event or timer
 	int busyFrames = 3;
 	bool wasFocused = true;
-	while (!g_bQuit && !App::QuitRequested() && !glfwWindowShouldClose(g_window))
+	Bench bench(benchFrames);
+	while (!g_bQuit && !App::QuitRequested() && !Platform::ShouldClose())
 	{
+		bool active = busyFrames > 0;
 		if (busyFrames > 0)
-			glfwPollEvents();
+			Platform::PollEvents();
 		else
-			glfwWaitEventsTimeout(TimeToNextTimer(0.5));
+			active = Platform::WaitEvents(TimeToNextTimer(0.5));
 		busyFrames = std::max(0, busyFrames - 1);
-		MainQueue::Drain();
-		RunDueTimers();
+		active = MainQueue::Drain() || active;
+		active = RunDueTimers() || active;
+		// nothing new: no frame (but for a text box's blinking caret)
+		if (!active && !io.WantTextInput && !snapshot && !bench.Running())
+			continue;
 
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
+		bench.Start();
+		Platform::NewFrame();
+		if (bench.Running())
+			bench.Scroll(io);
 		if (snapshot) {
 			// the off-screen frame, whatever size the screen let the window be
 			io.DisplaySize = ImVec2((float) winW, (float) winH);
@@ -522,32 +547,39 @@ int main(int argc, char** argv)
 		ImGui::NewFrame();
 		ImGui::GetStyle().FontSizeBase = (float) GetTextSize();
 		// back in front: the system's theme may have changed meanwhile
-		bool isFocused = glfwGetWindowAttrib(g_window, GLFW_FOCUSED) != 0;
+		bool isFocused = Platform::Focused();
 		if (isFocused && !wasFocused)
 			App::CheckSystemTheme();
 		wasFocused = isFocused;
 		App::Frame(isFocused);
 		ImGui::Render();
+		bench.Built();
 		int fbW, fbH;
-		glfwGetFramebufferSize(g_window, &fbW, &fbH);
+		Platform::FramebufferSize(fbW, fbH);
 		if (snapshot) {
 			fbW = winW;
 			fbH = winH;
-			glBindFramebuffer(GL_FRAMEBUFFER, g_snapFbo);
+			Platform::BindSnapshotTarget();
 		}
 		glViewport(0, 0, fbW, fbH);
 		glClearColor(0.19f, 0.2f, 0.22f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-		if (snapshot) {
+		Platform::Render(ImGui::GetDrawData());
+		bench.Drawn();
+		if (snapshot && !bench.Running()) {
 			const char* after = getenv("DM_SNAPSHOT_AFTER");
-			if (glfwGetTime() > (after ? atof(after) : 15.0)) {
+			if (Platform::Time() > (after ? atof(after) : 15.0)) {
 				Snapshot(snapshot, fbW, fbH);
 				break;
 			}
 			busyFrames = 3; // frames keep coming until then
 		}
-		glfwSwapBuffers(g_window);
+		Platform::Swap();
+		if (bench.Running()) {
+			busyFrames = 3;
+			if (bench.Swapped(ImGui::GetDrawData()))
+				break;
+		}
 
 		if (ImGui::IsAnyItemActive() || io.MouseDown[0] || io.MouseWheel != 0)
 			busyFrames = 3;
@@ -562,10 +594,6 @@ int main(int argc, char** argv)
 	MainQueue::Shutdown();
 	g_pHTTPClient->Kill();
 
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplGlfw_Shutdown();
-	ImGui::DestroyContext();
-	glfwDestroyWindow(g_window);
-	glfwTerminate();
+	Platform::Close();
 	return 0;
 }

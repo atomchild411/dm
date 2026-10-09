@@ -187,7 +187,7 @@ namespace
 				float s = std::min(avail.x / img->w, avail.y / img->h);
 				float dw = img->w * s, dh = img->h * s;
 				ImVec2 p0(pos.x + (avail.x - dw) / 2, pos.y + (avail.y - dh) / 2);
-				dl->AddImage(Gfx::Texture(*img), p0, ImVec2(p0.x + dw, p0.y + dh));
+				Gfx::AddImage(dl, *img, p0, ImVec2(p0.x + dw, p0.y + dh));
 			}
 			else {
 				bool failed = ImageCache::Failed(ImageCache::URL, viewFetch.url, 0, viewFetch.w, viewFetch.h);

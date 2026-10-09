@@ -7,18 +7,8 @@
 #include <sys/stat.h>
 #include <vector>
 
-#if defined(__APPLE__)
-#define GL_SILENCE_DEPRECATION
-#include <OpenGL/gl3.h>
-#else
-#if defined(_WIN32)
-#include <windows.h>
-#endif
-#include <GL/gl.h>
-#endif
-#ifndef GL_CLAMP_TO_EDGE
-#define GL_CLAMP_TO_EDGE 0x812F // OpenGL 1.2 (Windows' gl.h has 1.1)
-#endif
+#include "GL.hpp"
+#include "Platform.hpp"
 
 #include "shared/Fonts.hpp"
 
@@ -50,35 +40,108 @@ namespace
 		return stat(path.c_str(), &st) == 0;
 	}
 
-	GLuint NewTexture(int w, int h, const void* rgba)
+	int PowerOfTwo(int n)
 	{
+		int p = 1;
+		while (p < n)
+			p <<= 1;
+		return p;
+	}
+
+	// A texture of RGBA (or, alpha, GL_ALPHA) pixels; where textures must be
+	// powers of two in size (OpenGL 1.1) it is padded, the picture at (1, 1)
+	// with its edge pixels copied around it (so that filtering never blends
+	// in the padding).  The part the picture takes goes to uv0 and uv1.
+	GLuint NewTexture(int w, int h, const uint8_t* px, bool alpha, ImVec2& uv0, ImVec2& uv1)
+	{
+		const int bpp = alpha ? 1 : 4;
+		GLenum format = alpha ? GL_ALPHA : GL_RGBA;
+		int tw = w, th = h, ox = 0, oy = 0;
+		std::vector<uint8_t> padded;
+		if (Platform::PowerOfTwoTextures()) {
+			tw = PowerOfTwo(w + 2);
+			th = PowerOfTwo(h + 2);
+			ox = oy = 1;
+			padded.assign((size_t) tw * th * bpp, 0);
+			for (int y = 0; y < h + 2; y++) {
+				int sy = std::min(std::max(y - 1, 0), h - 1);
+				for (int x = 0; x < w + 2; x++) {
+					int sx = std::min(std::max(x - 1, 0), w - 1);
+					memcpy(&padded[((size_t) y * tw + x) * bpp], &px[((size_t) sy * w + sx) * bpp], bpp);
+				}
+			}
+			px = padded.data();
+		}
 		GLuint id = 0;
 		glGenTextures(1, &id);
 		glBindTexture(GL_TEXTURE_2D, id);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, Platform::PowerOfTwoTextures() ? GL_CLAMP : GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, Platform::PowerOfTwoTextures() ? GL_CLAMP : GL_CLAMP_TO_EDGE);
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+		glTexImage2D(GL_TEXTURE_2D, 0, format, tw, th, 0, format, GL_UNSIGNED_BYTE, px);
+		uv0 = ImVec2((float) ox / tw, (float) oy / th);
+		uv1 = ImVec2((float) (ox + w) / tw, (float) (oy + h) / th);
 		return id;
 	}
 
-	// ---- the glyph atlas: shared/Fonts' glyphs, packed in rows --------------
+	// A picture made to fit in max by max (box filtered).
+	std::vector<uint8_t> Shrink(const std::vector<uint8_t>& rgba, int& w, int& h, int max)
+	{
+		float s = std::min((float) max / w, (float) max / h);
+		int nw = std::max(1, (int) (w * s)), nh = std::max(1, (int) (h * s));
+		std::vector<uint8_t> out((size_t) nw * nh * 4);
+		for (int y = 0; y < nh; y++) {
+			int y0 = y * h / nh, y1 = std::max(y0 + 1, (y + 1) * h / nh);
+			for (int x = 0; x < nw; x++) {
+				int x0 = x * w / nw, x1 = std::max(x0 + 1, (x + 1) * w / nw);
+				unsigned sum[4] = { 0, 0, 0, 0 }, n = 0;
+				for (int sy = y0; sy < y1; sy++)
+					for (int sx = x0; sx < x1; sx++, n++)
+						for (int c = 0; c < 4; c++)
+							sum[c] += rgba[((size_t) sy * w + sx) * 4 + c];
+				for (int c = 0; c < 4; c++)
+					out[((size_t) y * nw + x) * 4 + c] = (uint8_t) (sum[c] / n);
+			}
+		}
+		w = nw;
+		h = nh;
+		return out;
+	}
 
-	const int ATLAS = 1024;
+	// ---- the glyph atlases: shared/Fonts' glyphs, packed in rows ------------
+	// (Colour glyphs in RGBA ones; with OpenGL 1.1 the others go to alpha
+	// ones, a quarter the size: High IMPACT has 1 MB of texture memory.)
+
+	int AtlasSize()
+	{
+		return Platform::PowerOfTwoTextures() ? std::min(512, Platform::MaxTextureSize()) : 1024;
+	}
+
 	struct AtlasSlot { GLuint tex; float u0, v0, u1, v1; };
 	struct Atlas { GLuint tex = 0; int x = 1, y = 1, rowH = 0; };
-	std::vector<Atlas> g_atlases;
+	std::vector<Atlas> g_atlases[2]; // [alpha]
 	std::map<const void*, AtlasSlot> g_slots; // the glyph's pixels -> its place
 
-	Atlas& NewAtlas()
+	Atlas& NewAtlas(bool alpha)
 	{
-		std::vector<uint8_t> empty((size_t) ATLAS * ATLAS * 4, 0);
+		const int size = AtlasSize();
+		std::vector<uint8_t> empty((size_t) size * size * (alpha ? 1 : 4), 0);
 		Atlas a;
-		a.tex = NewTexture(ATLAS, ATLAS, empty.data());
-		g_atlases.push_back(a);
-		return g_atlases.back();
+		GLuint id = 0;
+		glGenTextures(1, &id);
+		glBindTexture(GL_TEXTURE_2D, id);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, Platform::PowerOfTwoTextures() ? GL_CLAMP : GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, Platform::PowerOfTwoTextures() ? GL_CLAMP : GL_CLAMP_TO_EDGE);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		GLenum format = alpha ? GL_ALPHA : GL_RGBA;
+		glTexImage2D(GL_TEXTURE_2D, 0, format, size, size, 0, format, GL_UNSIGNED_BYTE, empty.data());
+		a.tex = id;
+		g_atlases[alpha].push_back(a);
+		return g_atlases[alpha].back();
 	}
 
 	const AtlasSlot& Slot(const Fonts::PlacedGlyph& g)
@@ -88,45 +151,51 @@ namespace
 		if (it != g_slots.end())
 			return it->second;
 
-		Atlas* a = g_atlases.empty() ? &NewAtlas() : &g_atlases.back();
-		if (a->x + g.w + 1 > ATLAS) {
+		const int size = AtlasSize();
+		const bool alpha = !g.argb && Platform::PowerOfTwoTextures();
+		std::vector<Atlas>& list = g_atlases[alpha];
+		Atlas* a = list.empty() ? &NewAtlas(alpha) : &list.back();
+		if (a->x + g.w + 1 > size) {
 			a->x = 1;
 			a->y += a->rowH + 1;
 			a->rowH = 0;
 		}
-		if (a->y + g.h + 1 > ATLAS)
-			a = &NewAtlas();
+		if (a->y + g.h + 1 > size)
+			a = &NewAtlas(alpha);
 
-		// coverage as white with that alpha (tinted when drawn); colour as is
-		std::vector<uint8_t> rgba((size_t) g.w * g.h * 4);
+		// coverage as white with that alpha (tinted when drawn), or as alpha
+		// alone; colour as is
+		std::vector<uint8_t> px((size_t) g.w * g.h * (alpha ? 1 : 4));
 		for (int i = 0; i < g.w * g.h; i++) {
-			if (g.argb) {
+			if (alpha)
+				px[i] = g.coverage[i];
+			else if (g.argb) {
 				uint32_t p = g.argb[i];
-				rgba[i * 4 + 0] = (p >> 16) & 0xff;
-				rgba[i * 4 + 1] = (p >> 8) & 0xff;
-				rgba[i * 4 + 2] = p & 0xff;
-				rgba[i * 4 + 3] = (p >> 24) & 0xff;
+				px[i * 4 + 0] = (p >> 16) & 0xff;
+				px[i * 4 + 1] = (p >> 8) & 0xff;
+				px[i * 4 + 2] = p & 0xff;
+				px[i * 4 + 3] = (p >> 24) & 0xff;
 			}
 			else {
-				rgba[i * 4 + 0] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = 255;
-				rgba[i * 4 + 3] = g.coverage[i];
+				px[i * 4 + 0] = px[i * 4 + 1] = px[i * 4 + 2] = 255;
+				px[i * 4 + 3] = g.coverage[i];
 			}
 		}
 		glBindTexture(GL_TEXTURE_2D, a->tex);
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, a->x, a->y, g.w, g.h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+		glTexSubImage2D(GL_TEXTURE_2D, 0, a->x, a->y, g.w, g.h, alpha ? GL_ALPHA : GL_RGBA, GL_UNSIGNED_BYTE, px.data());
 		AtlasSlot s;
 		s.tex = a->tex;
-		s.u0 = (float) a->x / ATLAS;
-		s.v0 = (float) a->y / ATLAS;
-		s.u1 = (float) (a->x + g.w) / ATLAS;
-		s.v1 = (float) (a->y + g.h) / ATLAS;
+		s.u0 = (float) a->x / size;
+		s.v0 = (float) a->y / size;
+		s.u1 = (float) (a->x + g.w) / size;
+		s.v1 = (float) (a->y + g.h) / size;
 		a->x += g.w + 1;
 		a->rowH = std::max(a->rowH, g.h);
 		return g_slots[key] = s;
 	}
 
-	struct Tex { GLuint id; int lastUsed; };
+	struct Tex { GLuint id; ImVec2 uv0, uv1; int lastUsed; };
 	std::map<uint64_t, Tex> g_textures; // image serial -> texture
 	int g_frame = 0;
 }
@@ -203,12 +272,12 @@ int Gfx::Text(ImDrawList* dl, ImVec2 pos, const std::string& s, FontStyle st, in
 	return width;
 }
 
-ImTextureID Gfx::Texture(const Image& img)
+Gfx::TexRef Gfx::Texture(const ::Image& img)
 {
 	auto it = g_textures.find(img.serial);
 	if (it != g_textures.end()) {
 		it->second.lastUsed = g_frame;
-		return (ImTextureID) (intptr_t) it->second.id;
+		return TexRef{ (ImTextureID) (intptr_t) it->second.id, it->second.uv0, it->second.uv1 };
 	}
 	std::vector<uint8_t> rgba((size_t) img.w * img.h * 4);
 	for (size_t i = 0; i < img.px.size(); i++) {
@@ -218,9 +287,15 @@ ImTextureID Gfx::Texture(const Image& img)
 		rgba[i * 4 + 2] = p & 0xff;
 		rgba[i * 4 + 3] = (p >> 24) & 0xff;
 	}
-	GLuint id = NewTexture(img.w, img.h, rgba.data());
-	g_textures[img.serial] = Tex{ id, g_frame };
-	return (ImTextureID) (intptr_t) id;
+	// (bigger than the graphics can take: smaller, shown as big)
+	int w = img.w, h = img.h, max = Platform::MaxTextureSize() - (Platform::PowerOfTwoTextures() ? 2 : 0);
+	if (w > max || h > max)
+		rgba = Shrink(rgba, w, h, max);
+	Tex t;
+	t.id = NewTexture(w, h, rgba.data(), false, t.uv0, t.uv1);
+	t.lastUsed = g_frame;
+	g_textures[img.serial] = t;
+	return TexRef{ (ImTextureID) (intptr_t) t.id, t.uv0, t.uv1 };
 }
 
 void Gfx::CollectTextures()
@@ -236,13 +311,24 @@ void Gfx::CollectTextures()
 	}
 }
 
-void Gfx::DrawImage(ImDrawList* dl, const Image& img, float x, float y)
+void Gfx::AddImage(ImDrawList* dl, const ::Image& img, ImVec2 p0, ImVec2 p1)
 {
-	dl->AddImage(Texture(img), ImVec2(x, y), ImVec2(x + img.w, y + img.h));
+	TexRef t = Texture(img);
+	dl->AddImage(t.id, p0, p1, t.uv0, t.uv1);
 }
 
-void Gfx::DrawImageCircle(ImDrawList* dl, const Image& img, float x, float y)
+void Gfx::AddImageRounded(ImDrawList* dl, const ::Image& img, ImVec2 p0, ImVec2 p1, float rounding)
 {
-	dl->AddImageRounded(Texture(img), ImVec2(x, y), ImVec2(x + img.w, y + img.h),
-		ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, img.w * 0.5f);
+	TexRef t = Texture(img);
+	dl->AddImageRounded(t.id, p0, p1, t.uv0, t.uv1, IM_COL32_WHITE, rounding);
+}
+
+void Gfx::DrawImage(ImDrawList* dl, const ::Image& img, float x, float y)
+{
+	AddImage(dl, img, ImVec2(x, y), ImVec2(x + img.w, y + img.h));
+}
+
+void Gfx::DrawImageCircle(ImDrawList* dl, const ::Image& img, float x, float y)
+{
+	AddImageRounded(dl, img, ImVec2(x, y), ImVec2(x + img.w, y + img.h), img.w * 0.5f);
 }
