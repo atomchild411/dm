@@ -283,7 +283,6 @@ Discord Messenger is powered by the following external libraries:
 - [OpenSSL](https://www.openssl.org)
 - [FreeType](https://freetype.org), [libpng](http://www.libpng.org), [zlib](https://zlib.net) and
   [bzip2](https://sourceware.org/bzip2/)
-- [stb_image](https://github.com/nothings/stb)
 - [QR Code generator](https://github.com/nayuki/QR-Code-generator)
 - [Dear ImGui](https://github.com/ocornut/imgui) and [GLFW](https://www.glfw.org)
 - On Windows, the loader from Microsoft's [WebView2 SDK](https://developer.microsoft.com/microsoft-edge/webview2/)

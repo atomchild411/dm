@@ -29,7 +29,9 @@ FT_LIBS     ?= $(PREFIX_DEPS)/lib/freetype.lib $(PREFIX_DEPS)/lib/libpng16_stati
 GLFW_LIBS   ?= $(PREFIX_DEPS)/lib/glfw3.lib
 endif
 FT_CFLAGS   ?= -I$(PREFIX_DEPS)/include/freetype2
-FT_LIBS     ?= -lfreetype
+# FreeType, and libpng (FreeType's colour emoji, and Discord's default
+# avatars)
+FT_LIBS     ?= -lfreetype -lpng16
 GLFW_PREFIX ?= $(PREFIX_DEPS)
 # (a static GLFW on macOS: $(GLFW_PREFIX)/lib/libglfw3.a and the frameworks
 # Cocoa, IOKit, CoreFoundation and QuartzCore)
@@ -58,9 +60,6 @@ OPT = -DNDEBUG -O2
 endif
 
 CXXFLAGS = $(INC_DIRS) $(DEFINES) -std=c++11 -pthread $(OPT) $(EXTRA_CXXFLAGS)
-# nlohmann/json spells their literal operators the way newer clangs
-# call deprecated (operator "" _json): not ours to change
-CXXFLAGS += $(shell $(CXX) -Werror -Wno-deprecated-literal-operator -x c++ -fsyntax-only /dev/null 2>/dev/null && echo -Wno-deprecated-literal-operator)
 LDFLAGS  = -L$(PREFIX_DEPS)/lib -pthread $(EXTRA_LDFLAGS)
 # STATIC_DEPS=1 links OpenSSL and libwebp from their static archives, so the
 # program needs nothing but the system's own libraries.

@@ -56,16 +56,7 @@ void UseProgramResources();
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-// stb's PNG writer (DM_SNAPSHOT); its one sprintf is the SDK's to call deprecated
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#endif
-#include <stb/stb_image_write.h>
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
+#include <png.h> // DM_SNAPSHOT's PNG
 
 #include "DiscordInstance.hpp"
 #include "config/LocalSettings.hpp"
@@ -318,7 +309,14 @@ static void Snapshot(const char* path, int w, int h)
 		memcpy(&flipped[(size_t) y * w * 4], &px[(size_t) (h - 1 - y) * w * 4], (size_t) w * 4);
 	for (size_t i = 3; i < flipped.size(); i += 4)
 		flipped[i] = 255;
-	stbi_write_png(path, w, h, 4, flipped.data(), w * 4);
+	png_image img;
+	memset(&img, 0, sizeof img);
+	img.version = PNG_IMAGE_VERSION;
+	img.width = (png_uint_32) w;
+	img.height = (png_uint_32) h;
+	img.format = PNG_FORMAT_RGBA;
+	if (!png_image_write_to_file(&img, path, 0, flipped.data(), w * 4, nullptr))
+		fprintf(stderr, "dm: could not write %s: %s\n", path, img.message);
 }
 
 static size_t CacheLimit(const char* name, size_t def)

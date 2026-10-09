@@ -19,14 +19,7 @@
 #include "network/HTTPClient.hpp"
 #include "utils/Util.hpp"
 
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_ONLY_PNG
-#define STBI_ONLY_JPEG
-#define STBI_ONLY_GIF
-#define STBI_NO_STDIO
-// Pictures come from other people: a small file can claim a huge size.
-#define STBI_MAX_DIMENSIONS 8192
-#include <stb/stb_image.h>
+#include <png.h>
 
 #ifndef DISABLE_WEBP
 #include <webp/decode.h>
@@ -336,20 +329,30 @@ bool ImageCache::Decode(const uint8_t* data, size_t size, Image& out, bool anyFo
 	if (!anyFormat)
 		return false;
 
-	int w = 0, h = 0, comp = 0;
-	if (!stbi_info_from_memory(data, (int) size, &w, &h, &comp) || !SizeOK(w, h))
+	// PNG (Discord's own default avatars), through libpng; its size is
+	// checked before anything is decoded
+	png_image img;
+	memset(&img, 0, sizeof img);
+	img.version = PNG_IMAGE_VERSION;
+	if (!png_image_begin_read_from_memory(&img, data, size))
 		return false;
-	uint8_t* rgba = stbi_load_from_memory(data, (int) size, &w, &h, &comp, 4);
-	if (!rgba)
+	if (img.width > 0x7fffffff || img.height > 0x7fffffff || !SizeOK((int) img.width, (int) img.height)) {
+		png_image_free(&img);
 		return false;
-	out.w = w;
-	out.h = h;
-	out.px.resize((size_t) w * h);
+	}
+	img.format = PNG_FORMAT_RGBA;
+	std::vector<uint8_t> rgba(PNG_IMAGE_SIZE(img));
+	if (!png_image_finish_read(&img, nullptr, rgba.data(), 0, nullptr)) {
+		png_image_free(&img);
+		return false;
+	}
+	out.w = (int) img.width;
+	out.h = (int) img.height;
+	out.px.resize((size_t) out.w * out.h);
 	for (size_t i = 0; i < out.px.size(); i++) {
-		const uint8_t* p = rgba + i * 4;
+		const uint8_t* p = &rgba[i * 4];
 		out.px[i] = ((uint32_t) p[3] << 24) | ((uint32_t) p[0] << 16) | ((uint32_t) p[1] << 8) | p[2];
 	}
-	stbi_image_free(rgba);
 	return true;
 }
 
