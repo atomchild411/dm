@@ -30,7 +30,7 @@ icotool -x -w 64 -o $r/usr/share/icons/hicolor/64x64/apps/discord-messenger.png 
 chmod 644 $r/usr/share/icons/hicolor/64x64/apps/discord-messenger.png
 # the licences of what is inside (the libraries are the distribution's)
 for l in Discord-Messenger-MIT DejaVu-fonts Noto-Color-Emoji-OFL-1.1 \
-	cpp-httplib-MIT nlohmann-json-MIT qrcodegen-MIT; do
+	nlohmann-json-MIT qrcodegen-MIT; do
 	install -m 644 /src/irix/dist/licenses/$l $r/usr/share/doc/discord-messenger/licenses/
 done
 install -m 644 /src/deps/imgui/LICENSE.txt $r/usr/share/doc/discord-messenger/licenses/Dear-ImGui-MIT

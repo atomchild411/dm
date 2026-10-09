@@ -279,7 +279,6 @@ Discord Messenger is powered by the following external libraries:
 
 - [JSON for Modern C++](https://github.com/nlohmann/json)
 - [Libwebp](https://github.com/webmproject/libwebp)
-- [Httplib](https://github.com/yhirose/cpp-httplib)
 - [OpenSSL](https://www.openssl.org)
 - [FreeType](https://freetype.org), [libpng](http://www.libpng.org), [zlib](https://zlib.net) and
   [bzip2](https://sourceware.org/bzip2/)

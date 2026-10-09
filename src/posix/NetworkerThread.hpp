@@ -7,15 +7,13 @@
 #include <thread>
 
 #include "network/HTTPClient.hpp"
-
-namespace httplib {
-	class Result;
-}
+#include "network/HttpsClient.hpp"
 
 #define C_AMT_NETWORKER_THREADS (4)
 #define C_INTERACTIVE_NETWORKER_THREADS (2)
 
-// One HTTP worker: a queue of requests served by httplib on its own thread.
+// One HTTP worker: a queue of requests served on its own thread, its
+// connections kept open between them (HttpsClient).
 // The response functions run on this thread; they hand their results to the
 // UI thread themselves (the frontend's OnRequestDone).
 class NetworkerThread
@@ -46,7 +44,10 @@ private:
 	// The answer: given to the request's function, or (a connection failure,
 	// a 5xx for a request safe to repeat, a 429) true to make it again.
 	// api: a request to Discord's API (its rate limits apply).
-	bool ProcessResult(NetRequest& req, const httplib::Result& res, int& attempt, bool api, int& limited);
+	bool ProcessResult(NetRequest& req, bool answered, const HttpsResponse& res, const HttpsFailure& why,
+		int& attempt, bool api, int& limited);
+
+	HttpsClient m_https;
 
 	std::priority_queue<NetRequest> m_requests;
 	std::mutex m_requestLock;

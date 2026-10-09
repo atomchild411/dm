@@ -1,4 +1,5 @@
 #include "WebsocketClient.hpp"
+#include "TlsSocket.hpp"
 #include "../config/DiscordClientConfig.hpp"
 #include "../config/LocalSettings.hpp"
 #include "../Frontend.hpp"
@@ -6,7 +7,6 @@
 #include "../utils/Util.hpp"
 
 #include <atomic>
-#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
@@ -14,45 +14,10 @@
 #include <thread>
 #include <vector>
 
-#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
-#include <openssl/x509.h>
 
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-typedef SOCKET Sock;
-static const Sock BAD_SOCK = INVALID_SOCKET;
-#define CloseSock closesocket
-#define PollSocks WSAPoll
-#else
-#include <cerrno>
-#include <csignal>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
-typedef int Sock;
-static const Sock BAD_SOCK = -1;
-#define CloseSock close
-#define PollSocks poll
-#endif
-
-void UseSystemTrust(SSL_CTX* ctx); // posix/SystemTrust.cpp
-
-// How long each step of opening a connection may take (the TCP connect, the
-// TLS handshake, the WebSocket handshake).  An R10000 doing other work can
-// take longer than 5 s over the TLS handshake alone, so IRIX gives 30 s.
-#ifdef __sgi
-static const int STEP_TIMEOUT_MS = 30000;
-#else
-static const int STEP_TIMEOUT_MS = 5000;
-#endif
 // how long a closing connection waits for the server's side of the close
 static const int CLOSE_TIMEOUT_MS = 5000;
 // the largest message taken (Discord's READY for a big account is a few MB)
@@ -68,68 +33,6 @@ static WebsocketClient g_WSCSingleton;
 WebsocketClient* GetWebsocketClient()
 {
 	return &g_WSCSingleton;
-}
-
-static int64_t NowMs()
-{
-	return std::chrono::duration_cast<std::chrono::milliseconds>(
-		std::chrono::steady_clock::now().time_since_epoch()).count();
-}
-
-static int LastSockError()
-{
-#ifdef _WIN32
-	return WSAGetLastError();
-#else
-	return errno;
-#endif
-}
-
-static std::string SockErrorText(int e)
-{
-#ifdef _WIN32
-	char buf[256] = { 0 };
-	DWORD n = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, (DWORD) e, 0, buf, sizeof buf, NULL);
-	while (n > 0 && (buf[n - 1] == '\r' || buf[n - 1] == '\n' || buf[n - 1] == '.'))
-		buf[--n] = 0;
-	return n ? std::string(buf) : "socket error " + std::to_string(e);
-#else
-	return strerror(e);
-#endif
-}
-
-// The failures worth another try later (the network, not the server's
-// answer or its certificate).
-static bool IsRetryable(int e)
-{
-#ifdef _WIN32
-	return e == WSAETIMEDOUT || e == WSAECONNRESET || e == WSAECONNREFUSED || e == WSAENETUNREACH ||
-		e == WSAEHOSTUNREACH || e == WSAECONNABORTED;
-#else
-	return e == ETIMEDOUT || e == ECONNRESET || e == ECONNREFUSED || e == ENETUNREACH || e == EHOSTUNREACH;
-#endif
-}
-
-static bool SetNonBlocking(Sock s)
-{
-#ifdef _WIN32
-	u_long on = 1;
-	return ioctlsocket(s, FIONBIO, &on) == 0;
-#else
-	int fl = fcntl(s, F_GETFL, 0);
-	return fl >= 0 && fcntl(s, F_SETFL, fl | O_NONBLOCK) == 0;
-#endif
-}
-
-static std::string OpenSslErrorText()
-{
-	unsigned long e = ERR_get_error();
-	ERR_clear_error();
-	if (!e)
-		return "";
-	char buf[256];
-	ERR_error_string_n(e, buf, sizeof buf);
-	return buf;
 }
 
 static bool ValidUtf8(const std::string& s)
@@ -195,53 +98,13 @@ static std::string CloseFrame(int code)
 	return Frame(Opcode::CLOSE, c, 2);
 }
 
-// Wakes a connection's thread from poll(): a pipe, or on Windows (whose
-// poll takes only sockets) a UDP socket that sends to itself.
-struct Waker
-{
-#ifdef _WIN32
-	Sock s = BAD_SOCK;
-
-	bool Create()
-	{
-		s = socket(AF_INET, SOCK_DGRAM, 0);
-		if (s == BAD_SOCK)
-			return false;
-		sockaddr_in a = {};
-		a.sin_family = AF_INET;
-		a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-		int len = sizeof a;
-		return bind(s, (sockaddr*) &a, sizeof a) == 0 && getsockname(s, (sockaddr*) &a, &len) == 0 &&
-			connect(s, (sockaddr*) &a, sizeof a) == 0 && SetNonBlocking(s);
-	}
-	Sock Fd() const { return s; }
-	void Wake() { send(s, "x", 1, 0); }
-	void Drain() { char b[64]; while (recv(s, b, sizeof b, 0) > 0) {} }
-	~Waker() { if (s != BAD_SOCK) CloseSock(s); }
-#else
-	int fds[2] = { -1, -1 };
-
-	bool Create()
-	{
-		return pipe(fds) == 0 && SetNonBlocking(fds[0]) && SetNonBlocking(fds[1]);
-	}
-	Sock Fd() const { return fds[0]; }
-	void Wake() { ssize_t r = write(fds[1], "x", 1); (void) r; }
-	void Drain() { char b[64]; while (read(fds[0], b, sizeof b) > 0) {} }
-	~Waker()
-	{
-		if (fds[0] >= 0) close(fds[0]);
-		if (fds[1] >= 0) close(fds[1]);
-	}
-#endif
-};
-
 struct WebsocketClient::Connection
 {
 	int id = -1;
 	std::string host, port, path, hostHeader, userAgent;
 	bool verify = true;
-	Waker waker;
+	SocketWaker waker;
+	TlsSocket tls;
 
 	// asked for by the other threads
 	std::mutex lock;
@@ -251,9 +114,6 @@ struct WebsocketClient::Connection
 	std::atomic<bool> quiet{ false };  // tell the front end nothing more (Kill)
 
 	// the connection's own thread's
-	Sock sock = BAD_SOCK;
-	SSL_CTX* ctx = nullptr;
-	SSL* ssl = nullptr;
 	std::string rbuf;
 	size_t rpos = 0;
 	std::string wbuf;
@@ -263,13 +123,6 @@ struct WebsocketClient::Connection
 	int64_t closeDeadline = -1;
 	int remoteCode = CloseCode::ABNORMAL;
 	std::string remoteReason, server;
-
-	~Connection()
-	{
-		if (ssl) SSL_free(ssl);
-		if (ctx) SSL_CTX_free(ctx);
-		if (sock != BAD_SOCK) CloseSock(sock);
-	}
 
 	void RequestClose(int code)
 	{
@@ -289,11 +142,7 @@ struct WebsocketClient::Connection
 	}
 
 	void Run();
-	bool Open(std::string& err, int& code, bool& tlsError, bool& retry);
-	bool ConnectTcp(std::string& err, int& code, bool& retry);
 	bool Handshake(std::string& err, int& code, bool& retry);
-	int Wait(short events, int64_t deadline);
-	bool WriteAll(const std::string& data, int64_t deadline, bool& timedOut);
 	void Loop();
 	bool Flush(bool& wantWrite);
 	bool ReadAvailable();
@@ -317,142 +166,6 @@ static LiveConnections& Live()
 	return *live;
 }
 
-// Waits until the socket is ready for events, the deadline (-1: none) has
-// passed (0) or the connection was closed meanwhile (-1).
-int WebsocketClient::Connection::Wait(short events, int64_t deadline)
-{
-	for (;;)
-	{
-		if (CloseRequested())
-			return -1;
-		int timeout = -1;
-		if (deadline >= 0) {
-			int64_t left = deadline - NowMs();
-			if (left <= 0)
-				return 0;
-			timeout = int(left);
-		}
-		pollfd p[2] = {};
-		p[0].fd = sock;
-		p[0].events = events;
-		p[1].fd = waker.Fd();
-		p[1].events = POLLIN;
-		int r = PollSocks(p, 2, timeout);
-		if (r < 0) {
-#ifndef _WIN32
-			if (errno == EINTR)
-				continue;
-#endif
-			return -1;
-		}
-		if (p[1].revents)
-			waker.Drain();
-		if (p[0].revents)
-			return 1;
-	}
-}
-
-bool WebsocketClient::Connection::ConnectTcp(std::string& err, int& code, bool& retry)
-{
-	addrinfo hints = {}, *res = nullptr;
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	int r = getaddrinfo(host.c_str(), port.c_str(), &hints, &res);
-	if (r != 0) {
-		err = "Could not look up " + host + ": " + gai_strerror(r);
-		code = r;
-		retry = false;
-		return false;
-	}
-
-	int lastError = 0;
-	bool timedOut = false;
-	for (addrinfo* ai = res; ai && sock == BAD_SOCK; ai = ai->ai_next)
-	{
-		Sock s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
-		if (s == BAD_SOCK) {
-			lastError = LastSockError();
-			continue;
-		}
-		if (!SetNonBlocking(s)) {
-			lastError = LastSockError();
-			CloseSock(s);
-			continue;
-		}
-		if (connect(s, ai->ai_addr, (int) ai->ai_addrlen) != 0) {
-			int e = LastSockError();
-#ifdef _WIN32
-			bool pending = e == WSAEWOULDBLOCK;
-#else
-			bool pending = e == EINPROGRESS;
-#endif
-			if (!pending) {
-				lastError = e;
-				CloseSock(s);
-				continue;
-			}
-			sock = s;
-			int w = Wait(POLLOUT, NowMs() + STEP_TIMEOUT_MS);
-			sock = BAD_SOCK;
-			if (w <= 0) {
-				CloseSock(s);
-				if (w < 0)
-					break;
-				timedOut = true;
-				continue;
-			}
-			int soError = 0;
-			socklen_t len = sizeof soError;
-			getsockopt(s, SOL_SOCKET, SO_ERROR, (char*) &soError, &len);
-			if (soError != 0) {
-				lastError = soError;
-				CloseSock(s);
-				continue;
-			}
-		}
-		int on = 1;
-		setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char*) &on, sizeof on);
-		sock = s;
-	}
-	freeaddrinfo(res);
-
-	if (sock != BAD_SOCK)
-		return true;
-	if (lastError) {
-		err = "Could not connect to " + host + ": " + SockErrorText(lastError);
-		code = lastError;
-		retry = IsRetryable(lastError);
-	}
-	else {
-		err = "Could not connect to " + host + ": timed out";
-		code = 0;
-		retry = timedOut;
-	}
-	return false;
-}
-
-bool WebsocketClient::Connection::WriteAll(const std::string& data, int64_t deadline, bool& timedOut)
-{
-	size_t done = 0;
-	while (done < data.size())
-	{
-		int n = SSL_write(ssl, data.data() + done, int(data.size() - done));
-		if (n > 0) {
-			done += size_t(n);
-			continue;
-		}
-		int e = SSL_get_error(ssl, n);
-		if (e != SSL_ERROR_WANT_READ && e != SSL_ERROR_WANT_WRITE)
-			return false;
-		int w = Wait(e == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT, deadline);
-		if (w <= 0) {
-			timedOut = w == 0;
-			return false;
-		}
-	}
-	return true;
-}
-
 // The WebSocket handshake: an HTTP request to switch protocols, and the
 // server's 101 answer with the key's proof.
 bool WebsocketClient::Connection::Handshake(std::string& err, int& code, bool& retry)
@@ -472,9 +185,9 @@ bool WebsocketClient::Connection::Handshake(std::string& err, int& code, bool& r
 		"Sec-WebSocket-Version: 13\r\n"
 		"\r\n";
 
-	int64_t deadline = NowMs() + STEP_TIMEOUT_MS;
+	int64_t deadline = NowMs() + TLS_STEP_TIMEOUT_MS;
 	bool timedOut = false;
-	if (!WriteAll(req, deadline, timedOut)) {
+	if (!tls.Write(req.data(), req.size(), deadline, timedOut)) {
 		err = timedOut ? "The WebSocket handshake timed out" : "The connection failed during the WebSocket handshake";
 		retry = true;
 		return false;
@@ -489,22 +202,15 @@ bool WebsocketClient::Connection::Handshake(std::string& err, int& code, bool& r
 			retry = false;
 			return false;
 		}
-		int n = SSL_read(ssl, buf, sizeof buf);
+		int n = tls.Read(buf, sizeof buf, deadline);
 		if (n > 0) {
 			rbuf.append(buf, size_t(n));
 			continue;
 		}
-		int e = SSL_get_error(ssl, n);
-		int w = 0;
-		if (e == SSL_ERROR_WANT_READ || e == SSL_ERROR_WANT_WRITE)
-			w = Wait(e == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT, deadline);
-		else
-			w = -2;
-		if (w <= 0) {
-			err = w == 0 ? "The WebSocket handshake timed out" : "The connection closed during the WebSocket handshake";
-			retry = w != -1;
-			return false;
-		}
+		// (-3: closed meanwhile; nobody waits to hear)
+		err = n == -2 ? "The WebSocket handshake timed out" : "The connection closed during the WebSocket handshake";
+		retry = n != -3;
+		return false;
 	}
 
 	std::string head = rbuf.substr(0, end);
@@ -578,69 +284,6 @@ bool WebsocketClient::Connection::Handshake(std::string& err, int& code, bool& r
 		return false;
 	}
 	return true;
-}
-
-// TCP, TLS (the certificate checked, for the host name too: the gateway is
-// sent the login token), then the WebSocket handshake.
-bool WebsocketClient::Connection::Open(std::string& err, int& code, bool& tlsError, bool& retry)
-{
-	if (!ConnectTcp(err, code, retry))
-		return false;
-
-	ctx = SSL_CTX_new(TLS_client_method());
-	if (ctx) {
-		SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
-		if (verify) {
-			SSL_CTX_set_default_verify_paths(ctx);
-			UseSystemTrust(ctx);
-			SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
-		}
-		ssl = SSL_new(ctx);
-	}
-	if (!ssl || !SSL_set_fd(ssl, (int) sock) ||
-		!SSL_set_tlsext_host_name(ssl, host.c_str()) ||
-		(verify && !SSL_set1_host(ssl, host.c_str()))) {
-		err = "Could not set up TLS for " + host + " " + OpenSslErrorText();
-		retry = false;
-		return false;
-	}
-	SSL_set_mode(ssl, SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
-
-	int64_t deadline = NowMs() + STEP_TIMEOUT_MS;
-	for (;;)
-	{
-		int r = SSL_connect(ssl);
-		if (r == 1)
-			break;
-		int e = SSL_get_error(ssl, r);
-		if (e == SSL_ERROR_WANT_READ || e == SSL_ERROR_WANT_WRITE) {
-			int w = Wait(e == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT, deadline);
-			if (w < 0)
-				return false;
-			if (w == 0) {
-				err = "The TLS handshake with " + host + " timed out";
-				retry = true;
-				return false;
-			}
-			continue;
-		}
-		long vr = SSL_get_verify_result(ssl);
-		if (verify && vr != X509_V_OK) {
-			err = "The certificate of " + host + " was not accepted: " + X509_verify_cert_error_string(vr);
-			tlsError = true;
-			retry = false;
-		}
-		else {
-			std::string why = OpenSslErrorText();
-			if (why.empty() && e == SSL_ERROR_SYSCALL)
-				why = SockErrorText(LastSockError());
-			err = "The TLS handshake with " + host + " failed" + (why.empty() ? "" : ": " + why);
-			retry = true;
-		}
-		return false;
-	}
-
-	return Handshake(err, code, retry);
 }
 
 void WebsocketClient::Connection::SendClose(int code)
@@ -773,12 +416,12 @@ bool WebsocketClient::Connection::Flush(bool& wantWrite)
 	wantWrite = false;
 	while (!wbuf.empty())
 	{
-		int n = SSL_write(ssl, wbuf.data(), int(wbuf.size()));
+		int n = SSL_write(tls.Ssl(), wbuf.data(), int(wbuf.size()));
 		if (n > 0) {
 			wbuf.erase(0, size_t(n));
 			continue;
 		}
-		int e = SSL_get_error(ssl, n);
+		int e = SSL_get_error(tls.Ssl(), n);
 		if (e == SSL_ERROR_WANT_WRITE) {
 			wantWrite = true;
 			return true;
@@ -800,12 +443,12 @@ bool WebsocketClient::Connection::ReadAvailable()
 	// (at most a megabyte at a time, so frames are taken as they come)
 	for (int i = 0; i < 64; i++)
 	{
-		int n = SSL_read(ssl, buf, sizeof buf);
+		int n = SSL_read(tls.Ssl(), buf, sizeof buf);
 		if (n > 0) {
 			rbuf.append(buf, size_t(n));
 			continue;
 		}
-		int e = SSL_get_error(ssl, n);
+		int e = SSL_get_error(tls.Ssl(), n);
 		return e == SSL_ERROR_WANT_READ || e == SSL_ERROR_WANT_WRITE;
 	}
 	return true;
@@ -846,33 +489,16 @@ void WebsocketClient::Connection::Loop()
 		if (!Flush(wantWrite))
 			break;
 
-		int timeout = -1;
-		if (closeDeadline >= 0) {
-			int64_t left = closeDeadline - NowMs();
-			if (left <= 0)
-				break;
-			timeout = int(left);
-		}
+		if (closeDeadline >= 0 && NowMs() >= closeDeadline)
+			break;
 
 		// TLS may hold decrypted bytes already: no waiting for those
-		if (SSL_pending(ssl) == 0)
+		if (SSL_pending(tls.Ssl()) == 0)
 		{
-			pollfd p[2] = {};
-			p[0].fd = sock;
-			p[0].events = POLLIN | (wantWrite ? POLLOUT : 0);
-			p[1].fd = waker.Fd();
-			p[1].events = POLLIN;
-			int r = PollSocks(p, 2, timeout);
-			if (r < 0) {
-#ifndef _WIN32
-				if (errno == EINTR)
-					continue;
-#endif
+			int w = tls.Wait(TlsSocket::READABLE | (wantWrite ? TlsSocket::WRITABLE : 0), closeDeadline);
+			if (w < 0)
 				break;
-			}
-			if (p[1].revents)
-				waker.Drain();
-			if (!(p[0].revents & (POLLIN | POLLERR | POLLHUP)))
+			if (w != 1)
 				continue;
 		}
 
@@ -887,15 +513,29 @@ void WebsocketClient::Connection::Run()
 	std::string err;
 	int code = 0;
 	bool tlsError = false, retry = false;
+	TlsSocket::Failure why;
+	TlsSocket::Interrupt in;
+	in.waker = &waker;
+	in.stop = [this] { return CloseRequested(); };
+	tls.SetInterrupt(in);
 	if (!waker.Create()) {
-		err = "Could not set up the connection: " + SockErrorText(LastSockError());
+		err = "Could not set up the connection";
 	}
-	else if (Open(err, code, tlsError, retry)) {
+	else if (!tls.Open(host, port, verify, TLS_STEP_TIMEOUT_MS, why)) {
+		err = why.message;
+		code = why.code;
+		tlsError = why.tlsError;
+		retry = why.retry;
+	}
+	else if (Handshake(err, code, retry)) {
+		// open: a wake is for frames to send, or the close
+		in.stop = nullptr;
+		in.returnOnWake = true;
+		tls.SetInterrupt(in);
 		open = true;
 		Loop();
 		open = false;
-		if (ssl)
-			SSL_shutdown(ssl);
+		tls.Close();
 		if (!quiet) {
 			std::string text = "Close code: " + std::to_string(remoteCode);
 			if (!remoteReason.empty())
@@ -917,14 +557,7 @@ void WebsocketClient::Connection::Run()
 
 void WebsocketClient::Init()
 {
-#ifdef _WIN32
-	WSADATA wsa;
-	WSAStartup(MAKEWORD(2, 2), &wsa);
-#else
-	// a write to a connection the server has dropped fails, it does not
-	// end the program
-	signal(SIGPIPE, SIG_IGN);
-#endif
+	TlsSocket::Init();
 	std::lock_guard<std::mutex> g(m_mutex);
 	m_bKilled = false;
 }

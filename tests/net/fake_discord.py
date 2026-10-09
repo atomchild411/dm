@@ -45,6 +45,8 @@ class State:
         self.seq = 0
         self.api = {}           # path -> list of (status, headers, body) answers, the last repeated
         self.refuse = None      # an HTTP status to answer the WebSocket handshake with
+        self.raw = {}           # path -> bytes sent as the whole answer, then the connection closed
+        self.drop_idle = False  # end each API connection after its answer, without saying so
         self.lock = threading.Lock()
 
     def log(self, kind, **kw):
@@ -116,12 +118,32 @@ def handshake(connection, request):
 
 
 class Api(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"   # connections stay open between requests
+
     def log_message(self, *a):
         pass
+
+    def setup(self):
+        super().setup()
+        S.log("tcp")
+
+    def handle(self):
+        # (a client that exits leaves its kept connection behind it)
+        try:
+            super().handle()
+        except (ConnectionError, ssl.SSLError, OSError):
+            pass
 
     def answer(self):
         path = self.path.split("?")[0]
         S.log("api", method=self.command, path=path, auth=bool(self.headers.get("Authorization")))
+        n = int(self.headers.get("Content-Length") or 0)
+        if n:
+            self.rfile.read(n)
+        if path in S.raw:
+            self.wfile.write(S.raw[path])
+            self.close_connection = True
+            return
         with S.lock:
             queue = S.api.get(path)
             if queue:
@@ -136,9 +158,21 @@ class Api(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
         for k, v in headers.items():
             self.send_header(k, v)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        if headers.get("Transfer-Encoding") == "chunked":
+            self.end_headers()
+            i, size = 0, 1
+            while i < len(data):
+                piece = data[i:i + size]
+                self.wfile.write(b"%x;ext=1\r\n%s\r\n" % (len(piece), piece))
+                i += len(piece)
+                size = size * 3 + 7
+            self.wfile.write(b"0\r\nX-Trailer: yes\r\n\r\n")
+        else:
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        if S.drop_idle:
+            self.close_connection = True
 
     do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = answer
 
@@ -485,10 +519,91 @@ async def t_ws_wrong_name():
     await connect_fails("wss://127.0.0.1:%d/" % GW_PORT, "wrong name")
 
 
+API = "https://localhost:%d/api/v9/test/" % API_PORT
+
+
+async def t_http_keepalive():
+    """four requests, two worker threads: two connections, kept open between
+    requests"""
+    S.api["/api/v9/test/ka"] = [(200, {}, {"ok": 1})]
+    c = Client(["--get", API + "ka", "--times", "4"])
+    try:
+        await wait_for(lambda: c.p.poll() is not None, 15, "dm-cli to finish")
+        check(c.output().count("* HTTP 200") == 4, "4 answers")
+        check(len(S.of("tcp")) <= 2, "%d connections for 4 requests" % len(S.of("tcp")))
+    finally:
+        c.stop()
+
+
+async def t_http_dropped_idle():
+    """the server ends each connection after its answer, without saying so:
+    the next request goes on a new one, and nothing fails"""
+    S.drop_idle = True
+    S.api["/api/v9/test/drop"] = [(200, {}, {"ok": 1})]
+    c = Client(["--get", API + "drop", "--times", "4"])
+    try:
+        await wait_for(lambda: c.p.poll() is not None, 20, "dm-cli to finish")
+        out = c.output()
+        check(out.count("* HTTP 200") == 4 and "could not fetch" not in out, "4 answers, no failure")
+        check(len(S.of("api")) == 4, "each asked once (%d)" % len(S.of("api")))
+    finally:
+        c.stop()
+
+
+async def t_http_chunked():
+    """a chunked answer (growing chunks, an extension, a trailer) arrives whole"""
+    S.api["/api/v9/test/chunked"] = [(200, {"Transfer-Encoding": "chunked"}, "x" * 70000)]
+    c = Client(["--get", API + "chunked"])
+    try:
+        await wait_for(lambda: c.p.poll() is not None, 15, "dm-cli to finish")
+        check("* HTTP 200, 70000 bytes" in c.output(), "70000 bytes")
+    finally:
+        c.stop()
+
+
+async def t_http_redirects():
+    """a redirect: not followed with the login token; followed without it,
+    to https:// only"""
+    target = API + "target"
+    S.api["/api/v9/test/r1"] = [(302, {"Location": target}, "")]
+    S.api["/api/v9/test/r2"] = [(302, {"Location": target}, "")]
+    S.api["/api/v9/test/r3"] = [(302, {"Location": target.replace("https:", "http:")}, "")]
+    for name, token, want, followed in (("r1", True, "HTTP 302", False), ("r2", False, "HTTP 200", True),
+                                        ("r3", False, "HTTP 302", False)):
+        before = len([e for e in S.of("api") if e[2]["path"] == "/api/v9/test/target"])
+        c = Client(["--get", API + name], token=token)
+        try:
+            await wait_for(lambda: c.p.poll() is not None, 15, "dm-cli to finish")
+            after = len([e for e in S.of("api") if e[2]["path"] == "/api/v9/test/target"])
+            check(want in c.output() and (after > before) == followed,
+                  "%s (%s): %s, %s" % (name, "token" if token else "no token", want, "followed" if followed else "not followed"))
+        finally:
+            c.stop()
+
+
+async def t_http_broken_answers():
+    """broken or oversized answers fail the request, not the program"""
+    S.raw = {
+        "/api/v9/test/negative": b"HTTP/1.1 200 OK\r\nContent-Length: -5\r\n\r\nhello",
+        "/api/v9/test/huge": b"HTTP/1.1 200 OK\r\nContent-Length: 99999999999\r\n\r\nhello",
+        "/api/v9/test/badchunk": b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n-1\r\nhello\r\n0\r\n\r\n",
+        "/api/v9/test/headers": b"HTTP/1.1 200 OK\r\n" + b"".join(b"X-H%d: y\r\n" % i for i in range(1000)) + b"\r\n",
+        "/api/v9/test/nothttp": b"SSH-2.0-OpenSSH\r\n\r\n",
+    }
+    for name in S.raw:
+        c = Client(["--get", "https://localhost:%d%s" % (API_PORT, name)])
+        try:
+            await wait_for(lambda: c.p.poll() is not None, 20, "dm-cli to finish")
+            check("could not fetch it" in c.output() and c.p.returncode == 0, "%s: refused, no crash" % name.split("/")[-1])
+        finally:
+            c.stop()
+
+
 TESTS = [t_heartbeats, t_resume_after_close, t_resume_after_reconnect_op, t_invalid_session,
          t_dead_connection, t_heartbeat_request, t_auth_failed, t_api_429_retry, t_api_bucket,
          t_api_cloudflare_429, t_api_refused_token, t_close_then_drop, t_ws_frames, t_ws_refused,
-         t_ws_untrusted, t_ws_wrong_name, t_rate_limited_close, t_login_cap]
+         t_ws_untrusted, t_ws_wrong_name, t_http_keepalive, t_http_dropped_idle, t_http_chunked,
+         t_http_redirects, t_http_broken_answers, t_rate_limited_close, t_login_cap]
 
 
 async def main():

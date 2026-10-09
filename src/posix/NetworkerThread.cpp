@@ -11,7 +11,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <httplib/httplib.h>
 
 #include "RateLimits.hpp"
 #include "network/DiscordAPI.hpp"
@@ -114,17 +113,17 @@ static const char* MethodName(NetRequest::eType t)
 	}
 }
 
-bool NetworkerThread::ProcessResult(NetRequest& req, const httplib::Result& res, int& attempt, bool api, int& limited)
+bool NetworkerThread::ProcessResult(NetRequest& req, bool answered, const HttpsResponse& res, const HttpsFailure& why,
+	int& attempt, bool api, int& limited)
 {
-	using namespace httplib;
 
 	// Discord's rate limits: what the answer says of them; a 429 is made
 	// again (twice at most) once the time it asks for has passed; a refused
 	// token is not sent again
-	if (api && res) {
-		int wait = RateLimits::Learn(MethodName(req.type), req.url, res->status,
-			[&res](const char* h) { return res->get_header_value(h); }, res->body);
-		if (res->status == 401 && !req.authorization.empty())
+	if (api && answered) {
+		int wait = RateLimits::Learn(MethodName(req.type), req.url, res.status,
+			[&res](const char* h) { return res.Header(h); }, res.body);
+		if (res.status == 401 && !req.authorization.empty())
 			RateLimits::Refuse(req.authorization);
 		if (wait >= 0 && ++limited <= 2) {
 			DbgPrintF("Request to %s was rate limited; trying again in %d ms", req.url.c_str(), wait);
@@ -132,27 +131,19 @@ bool NetworkerThread::ProcessResult(NetRequest& req, const httplib::Result& res,
 		}
 	}
 
-	if (!res || res.error() == Error::SSLServerVerification)
+	if (!answered)
 	{
-		bool isSSLError = res.error() == Error::SSLServerVerification;
-		std::string errorstr = to_string(res.error());
-
-		if (!isSSLError && ++attempt < MAX_ATTEMPTS) {
-			DbgPrintF("Request to %s failed (%s), retrying", req.url.c_str(), errorstr.c_str());
+		if (!why.tlsError && ++attempt < MAX_ATTEMPTS) {
+			DbgPrintF("Request to %s failed (%s), retrying", req.url.c_str(), why.message.c_str());
 			sleep(attempt);
 			return true;
 		}
 
 		req.result = -1;
-		req.response = errorstr;
-		if (isSSLError)
+		req.response = why.message;
+		if (why.tlsError)
 			GetFrontend()->OnGenericError("Could not verify the identity of " + req.url +
-				".\n\nThe server's certificate was not accepted (" + errorstr + ").");
-	}
-	else if (res.error() == Error::Canceled)
-	{
-		req.result = HTTP_CANCELED;
-		req.response = "Operation cancelled by user";
+				".\n\n" + why.message + ".");
 	}
 	else
 	{
@@ -161,14 +152,14 @@ bool NetworkerThread::ProcessResult(NetRequest& req, const httplib::Result& res,
 		// again (sending a message is not)
 		bool repeatable = req.type == NetRequest::GET || req.type == NetRequest::PUT ||
 			req.type == NetRequest::PATCH || req.type == NetRequest::DELETE_;
-		int status = res->status;
+		int status = res.status;
 		if (repeatable && (status == 502 || status == 503 || status == 504) && ++attempt < MAX_ATTEMPTS) {
 			DbgPrintF("Request to %s got %d, retrying", req.url.c_str(), status);
 			sleep(attempt);
 			return true;
 		}
-		req.result = res->status;
-		req.response = res->body;
+		req.result = res.status;
+		req.response = res.body;
 	}
 
 	// N.B.  Don't return unless you're absolutely done with the request!
@@ -179,7 +170,7 @@ bool NetworkerThread::ProcessResult(NetRequest& req, const httplib::Result& res,
 std::string NetworkerThreadManager::ErrorMessage(int code) const
 {
 	if (code < 0) return "Client Error";
-	return std::string(httplib::detail::status_message(code));
+	return HttpsClient::StatusText(code);
 }
 
 void NetworkerThread::FulfillRequest(NetRequest& req)
@@ -187,48 +178,18 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 	std::string& url = req.url;
 	DbgPrintF("Accessing URL: %s", url.c_str());
 
-	// split the URL into its host name and path
-	std::string hostName = "", path = "";
-	auto pos = url.find("://"), pos2 = pos;
-	if (pos != std::string::npos)
-		pos2 = url.find("/", pos + 4);
-	else
-		pos2 = url.find("/");
-
-	if (pos2 != std::string::npos)
-	{
-		hostName = url.substr(0, pos2);
-		path = url.substr(pos2);
-	}
-
-	using namespace httplib;
-	Client client(hostName);
-
-	client.enable_server_certificate_verification(GetLocalSettings()->EnableTLSVerification());
-#if defined(__APPLE__) || defined(_WIN32)
-	if (GetLocalSettings()->EnableTLSVerification())
-		UseSystemTrust(client.ssl_context());
-#else
-	std::string caFile = GetCACertFile();
-	if (!caFile.empty())
-		client.set_ca_cert_path(caFile.c_str());
-#endif
-
-	// Follow redirects (CDN links), but never with the login token: httplib
-	// sends the same headers to wherever a redirect points, http:// included.
-	client.set_follow_location(req.authorization.empty());
-
-	Headers headers;
-	headers.insert(std::make_pair("User-Agent", GetClientConfig()->GetUserAgent()));
+	HttpHeaders headers;
+	headers.push_back(std::make_pair("User-Agent", GetClientConfig()->GetUserAgent()));
+	headers.push_back(std::make_pair("Accept", "*/*"));
 
 	if (GetLocalSettings()->AddExtraHeaders())
 	{
-		headers.insert(std::make_pair("X-Super-Properties", GetClientConfig()->GetSerializedBase64Blob()));
-		headers.insert(std::make_pair("X-Discord-Timezone", GetClientConfig()->GetTimezone()));
-		headers.insert(std::make_pair("X-Discord-Locale", GetClientConfig()->GetLocale()));
-		headers.insert(std::make_pair("Sec-Ch-Ua", GetClientConfig()->GetSecChUa()));
-		headers.insert(std::make_pair("Sec-Ch-Ua-Mobile", "?0"));
-		headers.insert(std::make_pair("Sec-Ch-Ua-Platform", GetClientConfig()->GetOS()));
+		headers.push_back(std::make_pair("X-Super-Properties", GetClientConfig()->GetSerializedBase64Blob()));
+		headers.push_back(std::make_pair("X-Discord-Timezone", GetClientConfig()->GetTimezone()));
+		headers.push_back(std::make_pair("X-Discord-Locale", GetClientConfig()->GetLocale()));
+		headers.push_back(std::make_pair("Sec-Ch-Ua", GetClientConfig()->GetSecChUa()));
+		headers.push_back(std::make_pair("Sec-Ch-Ua-Mobile", "?0"));
+		headers.push_back(std::make_pair("Sec-Ch-Ua-Platform", GetClientConfig()->GetOS()));
 	}
 
 	if (req.authorization.size())
@@ -237,10 +198,10 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 		assert(req.url.find("cdn") == std::string::npos);
 		assert(req.url.find("discord") != std::string::npos);
 
-		headers.insert(std::make_pair("Authorization", req.authorization));
+		headers.push_back(std::make_pair("Authorization", req.authorization));
 	}
 	for (auto& h : req.extra_headers)
-		headers.insert(h);
+		headers.push_back(h);
 
 	// a token Discord refused is not sent again (each refusal counts
 	// against this address with Cloudflare)
@@ -268,37 +229,30 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 				std::this_thread::sleep_for(std::chrono::milliseconds(wait));
 		}
 
-		switch (req.type)
-		{
-			case NetRequest::POST:
-				retry = ProcessResult(req, client.Post(path, headers, req.params, "application/x-www-form-urlencoded"), attempt, api, limited);
+		// the body's type; a DELETE without a body has none (deleting a
+		// message or a reaction)
+		HttpHeaders sent = headers;
+		switch (req.type) {
+			case NetRequest::POST: case NetRequest::PUT:
+				sent.push_back(std::make_pair("Content-Type", "application/x-www-form-urlencoded"));
 				break;
-			case NetRequest::POST_JSON:
-				retry = ProcessResult(req, client.Post(path, headers, req.params, "application/json"), attempt, api, limited);
-				break;
-			case NetRequest::PUT:
-				retry = ProcessResult(req, client.Put(path, headers, req.params, "application/x-www-form-urlencoded"), attempt, api, limited);
-				break;
-			case NetRequest::PUT_JSON:
-				retry = ProcessResult(req, client.Put(path, headers, req.params, "application/json"), attempt, api, limited);
-				break;
-			case NetRequest::GET:
-				retry = ProcessResult(req, client.Get(path, headers), attempt, api, limited);
-				break;
-			case NetRequest::PATCH:
-				retry = ProcessResult(req, client.Patch(path, headers, req.params, "application/json"), attempt, api, limited);
+			case NetRequest::POST_JSON: case NetRequest::PUT_JSON: case NetRequest::PATCH:
+				sent.push_back(std::make_pair("Content-Type", "application/json"));
 				break;
 			case NetRequest::DELETE_:
-				// no body, no content type (deleting a message or a reaction)
-				if (req.params.empty())
-					retry = ProcessResult(req, client.Delete(path, headers), attempt, api, limited);
-				else
-					retry = ProcessResult(req, client.Delete(path, headers, req.params, "application/json"), attempt, api, limited);
+				if (!req.params.empty())
+					sent.push_back(std::make_pair("Content-Type", "application/json"));
 				break;
 			default:
-				assert(!"Don't know how to handle that type of request!");
 				break;
 		}
+		const std::string body = req.type == NetRequest::GET ? std::string() : req.params;
+
+		// redirects (CDN links) are followed, but never with the login token
+		HttpsResponse res;
+		HttpsFailure why;
+		bool answered = m_https.Request(MethodName(req.type), url, sent, body, req.authorization.empty(), res, why);
+		retry = ProcessResult(req, answered, res, why, attempt, api, limited);
 	}
 	while (retry);
 }

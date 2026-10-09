@@ -29,10 +29,6 @@ enum eHttpResponseCodes
 	HTTP_CANCELED     = 998,
 };
 
-namespace httplib {
-	class Result;
-}
-
 struct NetRequest
 {
 	typedef void(*NetworkResponseFunc)(NetRequest* pReq);
