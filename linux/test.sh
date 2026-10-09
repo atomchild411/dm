@@ -4,14 +4,14 @@
 # it once, hidden, under Xvfb: the size of the picture it saved says
 # whether it drew the demo.
 #
-#   linux/test.sh [x86_64] [aarch64] [riscv64]
+#   linux/test.sh [x86_64] [aarch64]
 set -eu
 cd "$(dirname "$0")/.."
-arches=${*:-x86_64 aarch64 riscv64}
+arches=${*:-x86_64 aarch64}
 engine=$(command -v podman || command -v docker)
 mkdir -p build-linux/test
 for arch in $arches; do
-	case $arch in x86_64) plat=linux/amd64 d=amd64 ;; aarch64) plat=linux/arm64 d=arm64 ;; riscv64) plat=linux/riscv64 d=riscv64 ;; esac
+	case $arch in x86_64) plat=linux/amd64 d=amd64 ;; aarch64) plat=linux/arm64 d=arm64 ;; esac
 	deb=$(ls bin/linux/discord-messenger_*_$d.deb)
 	for img in ubuntu:24.04 debian:trixie; do
 		out=build-linux/test/$arch-$(echo $img | tr : -).png

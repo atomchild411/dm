@@ -3,8 +3,8 @@
 # linux/build.sh starts for one architecture (/src = the source tree, /work =
 # this architecture's work directory, /dl = the downloads, /fonts = the
 # fonts): the libraries, linked in; the program; and in /work/dist
-# DiscordMessenger-VERSION-linux-ARCH.tar.gz and (where AppImage has a
-# runtime: x86_64, aarch64) .AppImage, each run once, hidden, under Xvfb.
+# DiscordMessenger-VERSION-linux-ARCH.tar.gz and .AppImage, each run once,
+# hidden, under Xvfb.
 set -eu
 VERSION=1.11
 W=/work
