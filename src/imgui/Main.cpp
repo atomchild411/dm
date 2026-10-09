@@ -28,6 +28,7 @@ void UseProgramResources();
 #endif
 
 #include "imgui.h"
+#include "imgui_internal.h" // InputEventsQueue
 #include "GL.hpp"
 #include "Platform.hpp"
 
@@ -535,6 +536,8 @@ int main(int argc, char** argv)
 		if (!active && !io.WantTextInput && !snapshot && !bench.Running())
 			continue;
 
+		// input this frame: what the platform queued for ImGui
+		bool input = ImGui::GetCurrentContext()->InputEventsQueue.Size > 0;
 		bench.Start();
 		Platform::NewFrame();
 		if (bench.Running())
@@ -581,8 +584,14 @@ int main(int argc, char** argv)
 				break;
 		}
 
-		if (ImGui::IsAnyItemActive() || io.MouseDown[0] || io.MouseWheel != 0)
-			busyFrames = 3;
+		// a few more frames after any input, and until ImGui has used all of
+		// it: it spreads events that came together over several frames (a
+		// press and release within one slow frame would otherwise wait in its
+		// queue for the next event, and the click would not happen)
+		if (input || ImGui::IsAnyItemActive() || io.MouseDown[0] || io.MouseWheel != 0)
+			busyFrames = std::max(busyFrames, 2);
+		if (ImGui::GetCurrentContext()->InputEventsQueue.Size > 0)
+			busyFrames = std::max(busyFrames, 1);
 	}
 
 	if (!demo)
