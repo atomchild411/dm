@@ -530,10 +530,16 @@ int main(int argc, char** argv)
 	while (!g_bQuit && !App::QuitRequested() && !Platform::ShouldClose())
 	{
 		bool active = busyFrames > 0;
+		// a login window of ours (GTK) wants its events seen often
+		bool web = WebLogin::Busy();
 		if (busyFrames > 0)
 			Platform::PollEvents();
 		else
-			active = Platform::WaitEvents(TimeToNextTimer(0.5));
+			active = Platform::WaitEvents(web ? 0.015 : TimeToNextTimer(0.5));
+		if (web) {
+			WebLogin::Pump();
+			Platform::MakeCurrent();
+		}
 		busyFrames = std::max(0, busyFrames - 1);
 		active = MainQueue::Drain() || active;
 		active = RunDueTimers() || active;
@@ -544,6 +550,8 @@ int main(int argc, char** argv)
 		// input this frame: what the platform queued for ImGui
 		bool input = ImGui::GetCurrentContext()->InputEventsQueue.Size > 0;
 		bench.Start();
+		if (WebLogin::Busy())
+			Platform::MakeCurrent();
 		Platform::NewFrame();
 		if (bench.Running())
 			bench.Scroll(io);

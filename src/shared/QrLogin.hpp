@@ -28,6 +28,8 @@ namespace QrLogin
 
 	// What to tell the user (may hold line breaks).  (Not "Status": Xlib defines that name.)
 	const std::string& StatusText();
+	// Why the code shown is a new one (the last login could not finish), or "".
+	const std::string& Notice();
 
 	// The code to show: CodeSize() modules square (0 while there is none),
 	// CodeModule(x, y) true for a dark one.
@@ -50,6 +52,7 @@ namespace QrLogin
 		std::string sitekey;
 		std::string rqdata;
 		std::string rqtoken;
+		std::string sessionId; // sent back with the answer, as Discord's clients do
 	};
 	const Captcha& PendingCaptcha();
 	// The user's answer: the login is tried again with it.

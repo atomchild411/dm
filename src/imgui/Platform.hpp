@@ -37,6 +37,9 @@ namespace Platform
 	// glReadPixels (an OpenGL 3 framebuffer; on X11 the window itself).
 	void MakeSnapshotTarget(int w, int h);
 	void BindSnapshotTarget();
+	// Our OpenGL context current again (another toolkit in the process, such
+	// as GTK for the login window, may have made its own current).
+	void MakeCurrent();
 	void Render(ImDrawData* data);
 	void Swap();
 

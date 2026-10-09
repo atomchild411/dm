@@ -123,6 +123,9 @@ static std::function<void()> g_cancelled;
 
 @end
 
+bool WebLogin::Busy() { return false; }
+void WebLogin::Pump() {}
+
 bool WebLogin::Available()
 {
 	return true;

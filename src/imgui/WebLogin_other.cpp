@@ -1,13 +1,16 @@
-// WebLogin where there is no browser view yet (IRIX, Linux; see WebLogin_mac.mm and
-// WebLogin_win.cpp).
+// WebLogin where there is no browser view (IRIX; see WebLogin_mac.mm,
+// WebLogin_win.cpp and WebLogin_linux.cpp).
 
-#if !defined(__APPLE__) && !defined(_WIN32)
+#if !defined(__APPLE__) && !defined(_WIN32) && !defined(__linux__)
 #include "WebLogin.hpp"
 
 bool WebLogin::Available()
 {
 	return false;
 }
+
+bool WebLogin::Busy() { return false; }
+void WebLogin::Pump() {}
 
 void WebLogin::Open(std::function<void(const std::string&)>, std::function<void()> cancelled)
 {

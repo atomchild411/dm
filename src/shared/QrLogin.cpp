@@ -40,6 +40,7 @@ namespace
 		int heartbeatMs = 0;
 		std::vector<uint8_t> qr; // qrcodegen's buffer; empty until a code arrives
 		std::string status;
+		std::string notice;       // why a new code replaced the last (Notice())
 		bool waitingForPhone = false;
 		bool loggingIn = false;   // the ticket is being exchanged: keep things as they are
 		bool failed = false;      // an error is shown: wait for Retry
@@ -322,9 +323,29 @@ namespace
 					c.sitekey = j.value("captcha_sitekey", std::string());
 					c.rqdata = j.value("captcha_rqdata", std::string());
 					c.rqtoken = j.value("captcha_rqtoken", std::string());
+					c.sessionId = j.value("captcha_session_id", std::string());
+					// which fields came (their names: the values are Discord's)
+					std::string names;
+					for (auto it = j.begin(); it != j.end(); ++it)
+						names += " " + it.key();
+					fprintf(stderr, "dm: QR login: captcha fields:%s\n", names.c_str());
 				}
 			}
 			catch (...) {}
+			// the ticket is spent: an answer Discord did not accept, or a
+			// ticket it no longer knows.  Scanning a new code is the only way
+			// on, so one comes at once (the codes count as before).
+			bool spent = response.find("invalid-response") != std::string::npos ||
+				(result == 404 && response.find("20042") != std::string::npos);
+			if (spent) {
+				fprintf(stderr, "dm: QR login: ticket spent (%s); a new code\n", detail.c_str());
+				g_state->notice = response.find("invalid-response") != std::string::npos
+					? "Discord did not accept the captcha.  Scan this new code to try again."
+					: "That login expired.  Scan this new code to try again.";
+				CloseGateway();
+				Connect();
+				return;
+			}
 			if (response.find("captcha") != std::string::npos)
 				Fail("Discord wants a captcha for this login, which Discord\nMessenger cannot show.  Log in with a token instead.", detail);
 			else
@@ -371,6 +392,7 @@ void QrLogin::Retry()
 	if (g_state) {
 		g_state->quickCloses = 0;
 		g_state->codes = 0;
+		g_state->notice.clear();
 	}
 	Connect();
 }
@@ -383,6 +405,11 @@ void QrLogin::Stop()
 const std::string& QrLogin::StatusText()
 {
 	return g_state ? g_state->status : g_empty;
+}
+
+const std::string& QrLogin::Notice()
+{
+	return g_state ? g_state->notice : g_empty;
 }
 
 int QrLogin::CodeSize()
@@ -417,6 +444,8 @@ void QrLogin::SolveCaptcha(const std::string& answer)
 	headers.push_back(std::make_pair(std::string("X-Captcha-Key"), answer));
 	if (!s->captcha.rqtoken.empty())
 		headers.push_back(std::make_pair(std::string("X-Captcha-Rqtoken"), s->captcha.rqtoken));
+	if (!s->captcha.sessionId.empty())
+		headers.push_back(std::make_pair(std::string("X-Captcha-Session-Id"), s->captcha.sessionId));
 	s->captcha = QrLogin::Captcha();
 	s->failed = false;
 	s->loggingIn = true;

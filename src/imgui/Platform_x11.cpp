@@ -699,6 +699,12 @@ void Platform::Render(ImDrawData* dd)
 	glPopAttrib();
 }
 
+void Platform::MakeCurrent()
+{
+	if (g_dpy && g_win && g_ctx)
+		glXMakeCurrent(g_dpy, g_win, g_ctx);
+}
+
 void Platform::Swap()
 {
 	glXSwapBuffers(g_dpy, g_win);

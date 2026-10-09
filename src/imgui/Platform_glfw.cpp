@@ -152,6 +152,12 @@ void Platform::Render(ImDrawData* data)
 	ImGui_ImplOpenGL3_RenderDrawData(data);
 }
 
+void Platform::MakeCurrent()
+{
+	if (g_window)
+		glfwMakeContextCurrent(g_window);
+}
+
 void Platform::Swap()
 {
 	glfwSwapBuffers(g_window);

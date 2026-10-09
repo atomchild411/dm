@@ -80,7 +80,8 @@ namespace
 	{
 		if (!g_dialog)
 			return;
-		XmString xs = XmStringCreateLtoR((char*) Utf8ToLatin1(QrLogin::StatusText()).c_str(), (char*) XmFONTLIST_DEFAULT_TAG);
+		std::string text = QrLogin::Notice().empty() ? QrLogin::StatusText() : QrLogin::Notice() + "\n" + QrLogin::StatusText();
+		XmString xs = XmStringCreateLtoR((char*) Utf8ToLatin1(text).c_str(), (char*) XmFONTLIST_DEFAULT_TAG);
 		XtVaSetValues(g_dialog->status, XmNlabelString, xs, NULL);
 		XmStringFree(xs);
 		XtSetSensitive(g_dialog->retry, QrLogin::Failed() ? True : False);

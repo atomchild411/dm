@@ -84,6 +84,11 @@ namespace
 			ImGui::TextWrapped("%s", loginWhy.c_str());
 		if (!tokenMode) {
 			ImGui::Text("Log in with a QR code");
+			if (!QrLogin::Notice().empty()) {
+				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(Col(RED)));
+				ImGui::TextWrapped("%s", QrLogin::Notice().c_str());
+				ImGui::PopStyleColor();
+			}
 			const float area = 300;
 			ImVec2 pos = ImGui::GetCursorScreenPos();
 			ImGui::Dummy(ImVec2(area, area));

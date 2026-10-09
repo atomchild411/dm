@@ -4,7 +4,8 @@
 #include <string>
 
 // Logging in on discord.com's own login page, in a browser view inside
-// the app (WebKit on macOS, WebView2 on Windows): the user signs in there
+// the app (WebKit on macOS, WebView2 on Windows, WebKitGTK on Linux where
+// it is installed): the user signs in there
 // (a captcha, two-factor codes and all), and the account's token is taken
 // from the page's own requests.  The view keeps nothing: its cookies and
 // storage go with it.
@@ -12,6 +13,11 @@ namespace WebLogin
 {
 	// Whether this platform has it.
 	bool Available();
+
+	// A window of ours is open whose events the main loop must hand over
+	// (Linux: GTK's, which GLFW does not see): it then calls Pump() often.
+	bool Busy();
+	void Pump();
 
 	// Opens the login window.  done(token) once the user is in; cancelled()
 	// when they close the window first.  UI thread.

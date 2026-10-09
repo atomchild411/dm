@@ -362,6 +362,9 @@ namespace
 	Page* g_captcha;
 }
 
+bool WebLogin::Busy() { return false; }
+void WebLogin::Pump() {}
+
 bool WebLogin::Available()
 {
 	static int available = -1;
