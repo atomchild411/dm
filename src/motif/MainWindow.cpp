@@ -652,9 +652,19 @@ void MainWindow::UpdateMemberList()
 
 void MainWindow::ShowDemoLists()
 {
-	m_guilds->SetRows(Demo::GuildRows(), Demo::SELECTED_GUILD);
-	m_channels->SetRows(Demo::ChannelRows(), Demo::SELECTED_CHANNEL);
+	m_demo = true;
+	m_guilds->SetRows(Demo::GuildRows(), Demo::Guild());
+	m_channels->SetRows(Demo::ChannelRows(), Demo::Channel());
 	m_members->SetRows(Demo::MemberRows(), 0);
+}
+
+void MainWindow::OpenDemoChannel(Snowflake channel)
+{
+	if (!channel || channel == Demo::Channel())
+		return;
+	Demo::OpenChannel(channel);
+	m_messages->SetChannel(0, channel);
+	ShowDemoLists();
 }
 
 void MainWindow::OnImagesChanged()
@@ -795,12 +805,18 @@ void MainWindow::OnStopTyping(Snowflake channel, Snowflake user)
 
 void MainWindow::OnGuildPicked(Snowflake sf)
 {
-	GetDiscordInstance()->OnSelectGuild(sf);
+	if (m_demo)
+		OpenDemoChannel(Demo::SelectGuild(sf));
+	else
+		GetDiscordInstance()->OnSelectGuild(sf);
 }
 
 void MainWindow::OnChannelPicked(Snowflake sf)
 {
-	GetDiscordInstance()->OnSelectChannel(sf);
+	if (m_demo)
+		OpenDemoChannel(sf);
+	else
+		GetDiscordInstance()->OnSelectChannel(sf);
 }
 
 void MainWindow::SendCB(Widget, XtPointer client, XtPointer)

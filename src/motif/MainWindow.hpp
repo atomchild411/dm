@@ -68,7 +68,8 @@ public:
 	// Images arrived: repaint what may show them.
 	void OnImagesChanged();
 
-	// Sample rows for --demo.
+	// --demo: the sample lists; from then on picking a server or channel
+	// opens the demo's (not the core's).
 	void ShowDemoLists();
 
 private:
@@ -110,6 +111,8 @@ private:
 	static void EmojiCB(Widget, XtPointer, XtPointer);
 	Pixmap MakeEmojiPixmap(Widget button);
 	bool m_restoredLast = false; // the last channel is saved from then on
+	bool m_demo = false;
+	void OpenDemoChannel(Snowflake channel);
 	static void CancelReplyCB(Widget, XtPointer, XtPointer);
 	int m_pendingLists = 0;
 
