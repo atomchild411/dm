@@ -27,19 +27,11 @@ enum eHttpResponseCodes
 	HTTP_BADGATEWAY   = 502,
 
 	HTTP_CANCELED     = 998,
-	HTTP_PROGRESS     = 999,
 };
 
 namespace httplib {
 	class Result;
 }
-
-//
-// ! - The PUT_OCTETS_PROGRESS and GET_PROGRESS HTTP request type are special ones.
-// Basically, the pFunc is called for every time that httplib wants
-// to report progress, with a result of HTTP_PROGRESS (999), and then
-// with the actual code.
-//
 
 struct NetRequest
 {
@@ -54,9 +46,6 @@ struct NetRequest
 		PATCH,
 		POST_JSON,
 		DELETE_, // WinNT defines "DELETE" as a macro... bruh
-		PUT_OCTETS,
-		PUT_OCTETS_PROGRESS, // (!)
-		GET_PROGRESS,
 		PUT_JSON,
 	};
 	int result = 0;
@@ -69,19 +58,7 @@ struct NetRequest
 	std::string params = "";
 	std::string authorization = "";
 	std::string additional_data = "";
-	std::vector<uint8_t> params_bytes; // used only for PUT_OCTETS and PUT_OCTETS_PROGRESS
 	std::vector<std::pair<std::string, std::string>> extra_headers; // sent as they are
-	size_t m_offset; // used only for *_PROGRESS
-	size_t m_length; // used only for *_PROGRESS
-	bool m_bCancelOp = false; // used only for *_PROGRESS
-
-	size_t GetOffset() const {
-		return m_offset;
-	}
-	size_t GetTotalBytes() const {
-		return m_length;
-	}
-
 	int Priority() const;
 
 	bool operator<(const NetRequest& other) const {
@@ -96,7 +73,6 @@ struct NetRequest
 		return result == HTTP_OK || result == HTTP_NOCONTENT;
 	}
 
-	// NOTE: NetRequest takes ownership of the bytes array we pass!
 	NetRequest(
 		int _result = 0,
 		int _itype = 0,
@@ -107,9 +83,7 @@ struct NetRequest
 		const std::string& _params = "",
 		const std::string& _authorization = "",
 		const std::string& _additional_data = "",
-		NetworkResponseFunc _func = nullptr,
-		uint8_t* _bytes = nullptr,
-		size_t _size = 0
+		NetworkResponseFunc _func = nullptr
 	);
 
 	std::string ErrorMessage() const;
@@ -128,7 +102,6 @@ public:
 	virtual std::string ErrorMessage(int code) const = 0;
 
 	// Sends a request via this HTTP client.  If interactive, is prioritized.
-	// Data from stream_bytes is copied if needed.
 	virtual void PerformRequest(
 		bool interactive,
 		NetRequest::eType type,
@@ -139,8 +112,6 @@ public:
 		std::string authorization = "",
 		std::string additional_data = "",
 		NetRequest::NetworkResponseFunc pRespFunc = nullptr,
-		uint8_t* stream_bytes = nullptr,
-		size_t stream_size = 0,
 		const std::vector<std::pair<std::string, std::string>>& extra_headers = {}
 	) = 0;
 

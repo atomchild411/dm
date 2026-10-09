@@ -234,8 +234,6 @@ void MdDrawString(DrawingContext*, const Rect&, const String&, int) {}
 void MdDrawCodeBackground(DrawingContext*, const Rect&) {}
 void MdDrawForwardBackground(DrawingContext*, const Rect&) {}
 int MdGetQuoteIndentSize() { return 2; }
-void MdSetClippingRect(DrawingContext*, const Rect&) {}
-void MdClearClippingRect(DrawingContext*) {}
 
 int main(int argc, char** argv)
 {

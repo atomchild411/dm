@@ -34,12 +34,7 @@ public:
 	void OnAttachmentDownloaded(bool bIsProfilePicture, const uint8_t* pData, size_t nSize, const std::string& additData) override {}
 	void OnAttachmentFailed(bool bIsProfilePicture, const std::string& additData) override {}
 	void OnRequestDone(NetRequest* pRequest) override;
-	void OnLoadedPins(Snowflake channel, const std::string& data) override {}
 	void OnFailedToSendMessage(Snowflake channel, Snowflake message) override {}
-	void OnFailedToUploadFile(const std::string& file, int error) override;
-	void OnStartProgress(Snowflake key, const std::string& fileName, bool isUploading) override {}
-	bool OnUpdateProgress(Snowflake key, size_t offset, size_t length) override { return true; }
-	void OnStopProgress(Snowflake key) override {}
 	void OnNotification() override {}
 	void OnGenericError(const std::string& message) override;
 	void OnJsonException(const std::string& message) override;
@@ -51,35 +46,22 @@ public:
 	void UpdateChannelList() override {}
 	void UpdateMemberList() override {}
 	void UpdateChannelAcknowledge(Snowflake channelID, Snowflake messageID) override {}
-	void UpdateProfileAvatar(Snowflake userID, const std::string& resid) override {}
-	void UpdateProfilePopout(Snowflake userID) override {}
 	void UpdateUserData(Snowflake userID) override {}
-	void UpdateAttachment(Snowflake attID) override {}
 	void RepaintGuildList() override {}
-	void RepaintProfile() override {}
-	void RepaintProfileWithUserID(Snowflake id) override {}
 	void RefreshMessages(ScrollDir::eScrollDir sd, Snowflake gapCulprit) override {}
 	void RefreshMembers(const std::set<Snowflake>& members) override {}
-	void JumpToMessage(Snowflake messageInCurrentChannel) override {}
 	void LaunchURL(const std::string& url) override;
 	void OnWebsocketMessage(int gatewayID, const std::string& payload) override;
 	void OnWebsocketClose(int gatewayID, int errorCode, const std::string& message) override;
 	void OnWebsocketFail(int gatewayID, int errorCode, const std::string& message, bool isTLSError, bool mayRetry) override;
-	void RegisterIcon(Snowflake sf, const std::string& avatarlnk) override {}
-	void RegisterAvatar(Snowflake sf, const std::string& avatarlnk) override {}
-	void RegisterAttachment(Snowflake sf, const std::string& avatarlnk) override {}
-	void RegisterChannelIcon(Snowflake sf, const std::string& avatarlnk) override {}
 	std::string LoadConfig() override;
 	bool SaveConfig(const std::string& configJson) override;
 	bool IsWindowFocused() override { return true; }
 	std::string GetDirectMessagesText() override;
 	std::string GetPleaseWaitText() override;
-	std::string GetMonthName(int index) override;
 	std::string GetTodayAtText() override;
 	std::string GetYesterdayAtText() override;
-	std::string GetFormatDateOnlyText() override;
 	std::string GetFormatTimeLongText() override;
-	std::string GetFormatTimeShortText() override;
 	std::string GetFormatTimeShorterText() override;
 	std::string GetFormatTimestampTimeShort() override;
 	std::string GetFormatTimestampTimeLong() override;

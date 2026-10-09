@@ -53,11 +53,6 @@ void MessageCache::DeleteMessage(Snowflake channel, Snowflake msg)
 	m_mapMessages[channel].DeleteMessage(msg);
 }
 
-int MessageCache::GetMentionCountSince(Snowflake channel, Snowflake message, Snowflake user)
-{
-	return m_mapMessages[channel].GetMentionCountSince(message, user);
-}
-
 void MessageCache::ClearAllChannels()
 {
 	SaveDirty();
@@ -189,17 +184,6 @@ void MessageCache::ClearDiskCache()
 			remove((m_diskDir + "/" + name).c_str());
 }
 
-
-bool MessageCache::IsMessageLoaded(Snowflake channel, Snowflake message)
-{
-	auto it = m_mapMessages.find(channel);
-	if (it == m_mapMessages.end())
-		return false;
-
-	auto& msgs = it->second.m_messages;
-	auto it2 = msgs.find(message);
-	return it2 != msgs.end();
-}
 
 MessagePtr MessageCache::GetLoadedMessage(Snowflake channel, Snowflake message)
 {
@@ -430,22 +414,6 @@ bool MessageChunkList::SaveCached(size_t maxMessages, std::string& out) const
 	}
 	out += "]}";
 	return true;
-}
-
-int MessageChunkList::GetMentionCountSince(Snowflake message, Snowflake user)
-{
-	int mentCount = 0;
-
-	for (auto& msg : m_messages)
-	{
-		if (msg.first < message)
-			continue;
-
-		if (msg.second->CheckWasMentioned(user, m_guild))
-			mentCount++;
-	}
-
-	return mentCount;
 }
 
 MessagePtr MessageChunkList::GetLoadedMessage(Snowflake message)

@@ -15,7 +15,6 @@ public:
 	const std::string& GetOS() const;
 
 	nlohmann::json Serialize() const;
-	const std::string& GetSerializedJsonBlob() const;
 	const std::string& GetSerializedBase64Blob() const;
 
 private:
@@ -45,7 +44,6 @@ private:
 	std::string m_chromeVersion;
 	std::string m_secChUa;
 	std::string m_timeZone;
-	std::string m_serializedJsonBlob;
 	std::string m_serializedBase64Blob;
 
 	std::string m_launchSignature;

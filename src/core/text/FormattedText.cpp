@@ -4,16 +4,7 @@
 #include <algorithm>
 #include "../models/RectAndPoint.hpp"
 #include "../config/LocalSettings.hpp"
-
-//#define USE_STL_REGEX //-- way slower than Boost Regex
-
-#ifdef USE_STL_REGEX
-#include <regex>
-#define REN std // regex namespace
-#else
-#include "boost/regex.hpp"
-#define REN boost // regex namespace
-#endif
+#include <cstring>
 
 // ======== KNOWN ISSUES ========
 //
@@ -74,14 +65,6 @@ int g_tokenTypeTable[] = {
 	Token::STRIKE_BEGIN,
 	Token::STRIKE_END,
 };
-
-static REN::regex g_StrongMatch("(\\*){2}[^\\*\\r\\n].*?(\\*){2}");
-static REN::regex g_ItalicMatch("\\*[^\\*\\r\\n].*?\\*");
-static REN::regex g_UnderlMatch("(_){2}[^_\\r\\n].*?(_){2}");
-static REN::regex g_StrikeMatch("(~){2}[^~\\r\\n].*?(~){2}");
-static REN::regex g_ItalieMatch("(?=[ \\_\\r\\n])_.*?_(?<=[ \\_\\r\\n])");
-static REN::regex g_DbtickMatch("(`){2}[^\\*\\r\\n].*?(`){2}");
-static REN::regex g_SbtickMatch("`[^\\*\\r\\n].*?`");
 
 // Basic Markdown syntax:
 //
@@ -154,23 +137,43 @@ static void AddAndClearToken(std::vector<Token>& tokens, std::string& tok, int t
 	tok.clear();
 }
 
-static void RegexReplace(std::string& msg, const REN::regex& regex, int length1, int length2, char chr1, char chr2)
+// Finds the first span that opens with delim, then (unless notFirst is null)
+// one character not in notFirst, then anything at all, newlines included, and
+// closes with the next delim.
+static bool FindSpan(const std::string& msg, const char* delim, const char* notFirst, size_t& begin, size_t& end)
 {
-	REN::smatch match;
-	while (REN::regex_search(msg, match, regex))
+	size_t len = strlen(delim);
+	for (size_t i = msg.find(delim); i != std::string::npos; i = msg.find(delim, i + 1))
 	{
-		auto match_begin = match.position();
-		auto match_end = match_begin + match.length();
+		size_t j = i + len;
+		if (notFirst) {
+			if (j >= msg.size() || memchr(notFirst, msg[j], strlen(notFirst)))
+				continue;
+			j++;
+		}
+		size_t k = msg.find(delim, j);
+		if (k == std::string::npos)
+			return false;
+		begin = i;
+		end = k + len;
+		return true;
+	}
+	return false;
+}
 
-		for (int i = 1; i < length1; i++)
-			msg[match_begin + i] = CHAR_NOOP;
-		for (int i = 1; i < length2; i++)
-			msg[match_end - 1 - i] = CHAR_NOOP;
-
-		if (length1)
-			msg[match_begin] = chr1;
-		if (length2)
-			msg[match_end - 1] = chr2;
+// Marks every span FindSpan finds, first to last: the delimiters become chr1
+// and chr2 (padded with CHAR_NOOP).
+static void SpanReplace(std::string& msg, const char* delim, const char* notFirst, char chr1, char chr2)
+{
+	size_t len = strlen(delim), begin, end;
+	while (FindSpan(msg, delim, notFirst, begin, end))
+	{
+		for (size_t i = 1; i < len; i++) {
+			msg[begin + i] = CHAR_NOOP;
+			msg[end - 1 - i] = CHAR_NOOP;
+		}
+		msg[begin] = chr1;
+		msg[end - 1] = chr2;
 	}
 }
 
@@ -756,26 +759,6 @@ void FormattedText::Draw(DrawingContext* context, int offsetY)
 	}
 }
 
-void FormattedText::DrawConfined(DrawingContext* context, const Rect& rect, int offsetY)
-{
-	MdSetClippingRect(context, rect);
-	Draw(context, offsetY);
-	MdClearClippingRect(context);
-}
-
-void FormattedText::RunForEachCustomEmote(FunctionEachEmote func, void* context)
-{
-	if (!m_bFormatted)
-		return;
-
-	for (auto& w : m_words)
-	{
-		if (w.m_flags & WORD_CEMOJI) {
-			func(context, w.m_rect);
-		}
-	}
-}
-
 void FormattedText::SplitBlocks()
 {
 	size_t num = 0;
@@ -829,8 +812,8 @@ void FormattedText::UseRegex(std::string& str)
 	if (flags & HAS_BTICK)
 	{
 		// "`" and "``" are both valid separators
-		RegexReplace(str, g_DbtickMatch, 2, 2, CHAR_BEG_CODE, CHAR_END_CODE);
-		RegexReplace(str, g_SbtickMatch, 1, 1, CHAR_BEG_CODE, CHAR_END_CODE);
+		SpanReplace(str, "``", "*\r\n", CHAR_BEG_CODE, CHAR_END_CODE);
+		SpanReplace(str, "`", "*\r\n", CHAR_BEG_CODE, CHAR_END_CODE);
 	}
 
 	if (flags & HAS_SLASH)
@@ -929,19 +912,18 @@ void FormattedText::UseRegex(std::string& str)
 		}
 	}
 
-	// Expensive!  But I couldn't really figure out another way.
 	if (flags & HAS_STRONG)
 	{
-		RegexReplace(str, g_StrongMatch, 2, 2, CHAR_BEG_STRONG, CHAR_END_STRONG);
-		RegexReplace(str, g_ItalicMatch, 1, 1, CHAR_BEG_ITALIC, CHAR_END_ITALIC);
+		SpanReplace(str, "**", "*\r\n", CHAR_BEG_STRONG, CHAR_END_STRONG);
+		SpanReplace(str, "*", "*\r\n", CHAR_BEG_ITALIC, CHAR_END_ITALIC);
 	}
 	if (flags & HAS_EMPHAS)
 	{
-		RegexReplace(str, g_UnderlMatch, 2, 2, CHAR_BEG_UNDERL, CHAR_END_UNDERL);
-		RegexReplace(str, g_ItalieMatch, 1, 1, CHAR_BEG_ITALIE, CHAR_END_ITALIE);
+		SpanReplace(str, "__", "_\r\n", CHAR_BEG_UNDERL, CHAR_END_UNDERL);
+		SpanReplace(str, "_", nullptr, CHAR_BEG_ITALIE, CHAR_END_ITALIE);
 	}
 	if (flags & HAS_STRIKE)
-		RegexReplace(str, g_StrikeMatch, 2, 2, CHAR_BEG_STRIKE, CHAR_END_STRIKE);
+		SpanReplace(str, "~~", "~\r\n", CHAR_BEG_STRIKE, CHAR_END_STRIKE);
 }
 
 void FormattedText::RegexNecessary()

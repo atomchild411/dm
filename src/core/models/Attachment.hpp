@@ -42,11 +42,6 @@ public:
 		}
 	}
 
-	bool PreviewDifferent() const
-	{
-		return m_previewWidth != m_width || m_previewHeight != m_height;
-	}
-
 	bool IsImage() const
 	{
 		return

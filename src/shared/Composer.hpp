@@ -22,7 +22,6 @@ public:
 	// Back to a plain message.  True when an edit was dropped (its text is
 	// still in the box).
 	bool Cancel();
-	Snowflake ReplyTo() const { return m_replyTo; }
 	Snowflake Editing() const { return m_editing; }
 
 	enum Result

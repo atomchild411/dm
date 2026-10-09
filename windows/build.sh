@@ -36,7 +36,10 @@ elif command -v docker > /dev/null; then engine=docker; vol= ro=:ro; user="-u $(
 else echo "podman or docker is needed"; exit 1; fi
 
 mkdir -p build-win bin/windows
-$engine build -q -t dm-win-cross windows > /dev/null
+# this machine's own platform, named: linux/build.sh's arm64 run leaves the
+# base image's tag on arm64, and an unnamed platform would follow it
+native=linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+$engine build -q --platform $native -t dm-win-cross windows > /dev/null
 # the build number (the installer's version): the commits so far
 build=${DM_BUILD:-$(git rev-list --count HEAD 2>/dev/null || echo 0)}
 $engine run --rm $user -e DM_ACCEPT_LICENSE=$accept -e DM_BUILD=$build \

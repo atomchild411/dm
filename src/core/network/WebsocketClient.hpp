@@ -1,10 +1,21 @@
 #pragma once
-#include <websocketpp/config/asio_client.hpp>
-#include <websocketpp/client.hpp>
+
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
 
 namespace CloseCode
 {
 	enum {
+		NORMAL = 1000,
+		GOING_AWAY = 1001,
+		PROTOCOL_ERROR = 1002,
+		NO_STATUS = 1005,       // (a close frame without a code)
+		ABNORMAL = 1006,        // (no close frame: the connection dropped)
+		INVALID_PAYLOAD = 1007,
+		MESSAGE_TOO_BIG = 1009,
+
 		UNKNOWN_ERROR = 4000,
 		UNKNOWN_OPCODE,
 		DECODE_ERROR,
@@ -26,145 +37,36 @@ namespace CloseCode
 	};
 }
 
-#ifdef __sgi
-// websocketpp gives DNS, the TCP connect, the TLS handshake and the
-// WebSocket handshake 5 s each.  An R10000 doing other work can take longer
-// than that over the TLS handshake alone, so they get 30 s here.
-struct WSClientConfig : public websocketpp::config::asio_tls_client
-{
-	typedef WSClientConfig type;
-	typedef websocketpp::config::asio_tls_client base;
-
-	typedef base::concurrency_type concurrency_type;
-	typedef base::request_type request_type;
-	typedef base::response_type response_type;
-	typedef base::message_type message_type;
-	typedef base::con_msg_manager_type con_msg_manager_type;
-	typedef base::endpoint_msg_manager_type endpoint_msg_manager_type;
-	typedef base::alog_type alog_type;
-	typedef base::elog_type elog_type;
-	typedef base::rng_type rng_type;
-
-	struct transport_config : public base::transport_config
-	{
-		typedef type::concurrency_type concurrency_type;
-		typedef type::alog_type alog_type;
-		typedef type::elog_type elog_type;
-		typedef type::request_type request_type;
-		typedef type::response_type response_type;
-		typedef websocketpp::transport::asio::tls_socket::endpoint socket_type;
-
-		static const long timeout_dns_resolve = 30000;
-		static const long timeout_connect = 30000;
-		static const long timeout_socket_post_init = 30000; // the TLS handshake
-	};
-
-	typedef websocketpp::transport::asio::endpoint<transport_config> transport_type;
-
-	static const long timeout_open_handshake = 30000;
-};
-typedef websocketpp::client<WSClientConfig> WSClient;
-#else
-typedef websocketpp::client<websocketpp::config::asio_tls_client> WSClient;
-#endif
-typedef websocketpp::lib::shared_ptr<websocketpp::lib::thread> WSThreadSharedPtr;
-typedef websocketpp::lib::asio::ssl::context AsioSslContext;
-typedef websocketpp::lib::shared_ptr<AsioSslContext> AsioSslContextSharedPtr;
-typedef websocketpp::transport::asio::tls_socket::connection::socket_type AsioSocketType;
-
-class WSConnectionMetadata
-{
-public:
-	enum eStatus
-	{
-		CONNECTING,
-		OPEN,
-		FAILED,
-		CLOSED,
-	};
-
-	typedef websocketpp::lib::shared_ptr<WSConnectionMetadata> Pointer;
- 
-	WSConnectionMetadata(int id, websocketpp::connection_hdl hdl, std::string uri)
-	  : m_id(id)
-	  , m_hdl(hdl)
-	  , m_status(CONNECTING)
-	  , m_uri(uri)
-	  , m_server("N/A")
-	{}
-
-	void OnOpen(WSClient* c, websocketpp::connection_hdl hdl);
-	void OnFail(WSClient* c, websocketpp::connection_hdl hdl);
-	void OnClose(WSClient* c, websocketpp::connection_hdl hdl);
-	void OnMessage(websocketpp::connection_hdl hdl, WSClient::message_ptr msg);
-
-	websocketpp::connection_hdl GetHDL() const
-	{
-		return m_hdl;
-	}
-
-	int GetID() const
-	{
-		return m_id;
-	}
-
-	eStatus GetStatus() const
-	{
-		return m_status;
-	}
-
-private:
-	int m_id;
-	websocketpp::connection_hdl m_hdl;
-	eStatus m_status;
-	std::string m_uri;
-	std::string m_server;
-	std::string m_errorReason;
-};
-
-struct WebsocketMessageParm
-{
-	int m_gatewayId;
-	std::string m_payload;
-};
-
+// WebSocket connections (RFC 6455) over TLS, one thread each.  What arrives
+// goes to the front end, from that thread: OnWebsocketMessage for each text
+// message, then OnWebsocketClose once an open connection has ended (also one
+// this side closed), or OnWebsocketFail when it never opened.
 class WebsocketClient
 {
 public:
-	WebsocketClient();
-	~WebsocketClient();
-
 	void Init();
 
+	// Closes what is still open (1001, "going away") and waits a little for
+	// the close handshakes, those of connections closed just before too.
 	void Kill();
 
-	// Returns a connection ID.
+	// Starts connecting to a wss:// URL.  Returns the connection's ID, or -1
+	// for a URL it cannot use.
 	int Connect(const std::string& uri);
 
-	// Gets metadata about a connection.
-	WSConnectionMetadata::Pointer GetMetadata(int ID);
+	// Closes a connection with that code.  One still connecting is given up.
+	void Close(int id, int code);
 
-	// Closes a connection by ID.
-	void Close(int ID, websocketpp::close::status::value code);
-
-	// Send a message to a connection.
+	// Sends a text message on an open connection (else it is dropped).
 	void SendMsg(int id, const std::string& msg);
 
-private:
-	typedef std::map<int, WSConnectionMetadata::Pointer> WSConnList;
+	struct Connection;
 
-	WSClient m_endpoint;
-	WSThreadSharedPtr m_thread;
-	WSConnList m_connList;
+private:
+	std::mutex m_mutex;
+	std::map<int, std::shared_ptr<Connection>> m_conns;
 	int m_nextId = 0;
 	bool m_bKilled = true;
-
-	// Handle TLS initialization.
-	AsioSslContextSharedPtr HandleTLSInit(websocketpp::connection_hdl hdl);
-
-	// Handle socket initialization.
-	void HandleSocketInit(websocketpp::connection_hdl hdl, AsioSocketType& socketType);
 };
 
 WebsocketClient* GetWebsocketClient();
-

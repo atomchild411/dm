@@ -112,30 +112,11 @@ public:
 
 	void LoadDataBase64(const std::string& str);
 
-	void FlushSettings();
-
 public: // SETTINGS
-	void SetOnlineIndicator(eActiveStatus status);
 	eActiveStatus GetOnlineIndicator();
 
-	void SetCustomStatus(const std::string& text, const std::string& emoji, uint64_t timeExpiry);
 	std::string GetCustomStatusText();
-	std::string GetCustomStatusEmoji();
-	uint64_t GetCustomStatusExpiry();
 
-	void SetExplicitFilter(eExplicitFilter filter);
-	eExplicitFilter GetExplicitFilter();
-
-	void SetGuildDMBlocklist(const std::vector<Snowflake>& guilds);
-	void GetGuildDMBlocklist(std::vector<Snowflake>& guilds);
-	
-	void SetDMBlockDefault(bool b);
-	bool GetDMBlockDefault();
-
-	void SetMessageCompact(bool b); // #IRC
-	bool GetMessageCompact();
-
-	std::vector<Snowflake> GetGuildFolders();
 	void GetGuildFoldersEx(std::map<Snowflake, std::string>& folders, std::vector<std::pair<Snowflake, Snowflake>>& guilds);
 
 private:

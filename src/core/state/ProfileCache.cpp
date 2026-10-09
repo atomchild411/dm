@@ -32,7 +32,6 @@ Profile* ProfileCache::LookupProfile(Snowflake user, const std::string& username
 
 	if (!avatarLink.empty()) {
 		pProf->m_avatarlnk  = avatarLink;
-		GetFrontend()->RegisterAvatar(user, avatarLink);
 	}
 
 	if (bRequestServer)
@@ -72,73 +71,17 @@ Profile* ProfileCache::LoadProfile(Snowflake user, const nlohmann::json& jx)
 	pf->m_bIsBot     = GetFieldSafeBool(userData, "bot", false);
 	pf->m_bUsingDefaultData = false;
 
-	if (userData.contains("bio")) {
-		pf->m_bio = GetFieldSafe(userData, "bio");
-		pf->m_bExtraDataFetched = true;
-	}
-	if (userData.contains("pronouns")) {
-		pf->m_pronouns = GetFieldSafe(userData, "pronouns");
-		pf->m_bExtraDataFetched = true;
-	}
-	if (jx.contains("user_profile")) {
-		pf->m_bExtraDataFetched = true;
-
-		// TODO: I think this is the guild profile
-		auto& userProf = jx["user_profile"];
-		if (userProf.contains("pronouns"))
-			pf->m_pronouns = GetFieldSafe(userProf, "pronouns");
-		if (userProf.contains("bio"))
-			pf->m_bio = GetFieldSafe(userProf, "bio");
-	}
-
-	// Used only for the user's own profile!
-	if (userData.contains("email"))
-		pf->m_email = GetFieldSafe(userData, "email");
-
 	// Avatar links formatted as https://cdn.discordapp.com/avatars/<userid>/<avatarlnk>
 	if (userData["avatar"].is_string()) {
 		pf->m_avatarlnk = userData["avatar"];
-		GetFrontend()->RegisterAvatar(pf->m_snowflake, pf->m_avatarlnk);
 	}
 	else {
 		pf->m_avatarlnk = "";
 	}
 
 	GetFrontend()->UpdateUserData(pf->m_snowflake);
-	GetFrontend()->RepaintProfileWithUserID(pf->m_snowflake);
 
 	return pf;
-}
-
-void ProfileCache::ClearAll()
-{
-	m_profileSets.clear();
-	m_processingRequests.clear();
-}
-
-void ProfileCache::ProfileDoesntExist(Snowflake user, Snowflake guild)
-{
-	Profile* pf = &m_profileSets[user];
-	pf->m_guildMembers[guild].m_bIsLoadedFromChunk = true;
-	pf->m_guildMembers[guild].m_bIsGroup = false;
-	pf->m_guildMembers[guild].m_bExists = false;
-}
-
-bool ProfileCache::NeedRequestGuildMember(Snowflake user, Snowflake guild)
-{
-	if (!user)
-		return false;
-
-	// TODO: Deleted User
-
-	Profile* pf = LookupProfile(user, "", "", "", false);
-	if (!pf->HasGuildMemberProfile(guild))
-		return true;
-	
-	if (!pf->m_guildMembers[guild].m_bIsLoadedFromChunk)
-		return true;
-
-	return false;
 }
 
 void ProfileCache::ForgetProfile(Snowflake user)
@@ -146,42 +89,6 @@ void ProfileCache::ForgetProfile(Snowflake user)
 	auto iter = m_profileSets.find(user);
 	if (iter != m_profileSets.end())
 		m_profileSets.erase(iter);
-}
-
-void ProfileCache::RequestExtraData(Snowflake user, Snowflake guild, bool mutualGuilds, bool mutualFriends)
-{
-	RequestLoadProfile(user, guild, mutualGuilds, mutualFriends);
-}
-
-void ProfileCache::RequestNote(Snowflake user)
-{
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::GET,
-		GetDiscordAPI() + "users/@me/notes/" + std::to_string(user),
-		DiscordRequest::USER_NOTE,
-		user,
-		"",
-		GetDiscordInstance()->GetToken()
-	);
-}
-
-void ProfileCache::PutNote(Snowflake user, const std::string& note) const
-{
-	// NOTE: Strange how the official discord client just sends a PUT request for blank notes
-	// instead of having a DELETE request to do that.
-	nlohmann::json j;
-	j["note"] = note;
-
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::PUT_JSON,
-		GetDiscordAPI() + "users/@me/notes/" + std::to_string(user),
-		DiscordRequest::SET_USER_NOTE,
-		user,
-		j.dump(),
-		GetDiscordInstance()->GetToken()
-	);
 }
 
 void ProfileCache::RequestLoadProfile(Snowflake user, Snowflake guild, bool mutualGuilds, bool mutualFriends)

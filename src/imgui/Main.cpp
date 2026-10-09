@@ -180,7 +180,6 @@ public:
 	void RefreshMessages(ScrollDir::eScrollDir sd, Snowflake gapCulprit) override { App::MarkDirty(App::MESSAGES); }
 	void RefreshMembers(const std::set<Snowflake>& members) override { App::MarkDirty(App::LIST_MEMBERS); }
 	void UpdateUserData(Snowflake userID) override { App::MarkDirty(App::LIST_MEMBERS); }
-	void UpdateProfileAvatar(Snowflake userID, const std::string& resid) override { App::MarkDirty(App::LIST_MEMBERS); }
 	// the QR login's gateway is not the session's
 	void OnWebsocketMessage(int gatewayID, const std::string& payload) override {
 		if (gatewayID >= 0 && gatewayID == QrLogin::GatewayId()) {

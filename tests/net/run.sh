@@ -8,7 +8,9 @@ set -eu
 cd "$(dirname "$0")/../.."
 engine=$(command -v podman || command -v docker)
 vol=; [ "$(basename $engine)" = podman ] && vol=:Z
-$engine build -q -t dm-net-tests tests/net > /dev/null
+# this machine's own platform, named (see windows/build.sh)
+native=linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+$engine build -q --platform $native -t dm-net-tests tests/net > /dev/null
 $engine run --rm -v "$PWD":/src$vol dm-net-tests sh -c '
 	set -e
 	mkdir -p /tmp/b && cd /src

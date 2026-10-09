@@ -1,7 +1,5 @@
 bin/
-build/
 build-unix/
-keep/
 *.o
 *.d
 build-win/

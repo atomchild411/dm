@@ -86,13 +86,6 @@ struct Channel
 	bool HasPermission(uint64_t Permission);
 	bool HasPermissionConst(uint64_t Permission) const;
 
-	// Check if an arbitrary user has a permission.
-	bool HasPermissionUser(Snowflake sf, uint64_t Permission);
-
-	bool WasMentioned() const {
-		return m_mentionCount > 0;
-	}
-
 	bool HasUnreadMessages() const {
 		return m_lastViewedMsg != 0 && m_lastViewedMsg < m_lastSentMsg;
 	}
@@ -123,12 +116,6 @@ struct Channel
 			case TEXT:  return "#";
 			default:    return "";
 		}
-	}
-
-	// Gets the recipient count of a DM or group DM channel.  Note that the current
-	// user is not included in this count.
-	int GetRecipientCount() const {
-		return int(m_recipients.size());
 	}
 
 	Snowflake GetDMRecipient() const {

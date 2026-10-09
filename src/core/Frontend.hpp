@@ -31,12 +31,7 @@ public:
 	virtual void OnAttachmentDownloaded(bool bIsProfilePicture, const uint8_t* pData, size_t nSize, const std::string& additData) = 0;
 	virtual void OnAttachmentFailed(bool bIsProfilePicture, const std::string& additData) = 0;
 	virtual void OnRequestDone(NetRequest* pRequest) = 0;
-	virtual void OnLoadedPins(Snowflake channel, const std::string& data) = 0;
 	virtual void OnFailedToSendMessage(Snowflake channel, Snowflake message) = 0;
-	virtual void OnFailedToUploadFile(const std::string& file, int error) = 0;
-	virtual void OnStartProgress(Snowflake key, const std::string& fileName, bool isUploading) = 0;
-	virtual bool OnUpdateProgress(Snowflake key, size_t offset, size_t length) = 0;
-	virtual void OnStopProgress(Snowflake key) = 0;
 	virtual void OnNotification() = 0;
 
 	// Error messages
@@ -52,18 +47,12 @@ public:
 	virtual void UpdateChannelList() = 0;
 	virtual void UpdateMemberList() = 0;
 	virtual void UpdateChannelAcknowledge(Snowflake channelID, Snowflake messageID) = 0;
-	virtual void UpdateProfileAvatar(Snowflake userID, const std::string& resid) = 0;
-	virtual void UpdateProfilePopout(Snowflake userID) = 0; // <-- Updates if userID is the ID of the profile currently open
 	virtual void UpdateUserData(Snowflake userID) = 0;
-	virtual void UpdateAttachment(Snowflake attID) = 0;
 	virtual void RepaintGuildList() = 0;
-	virtual void RepaintProfile() = 0;
-	virtual void RepaintProfileWithUserID(Snowflake id) = 0;
 	virtual void RefreshMessages(ScrollDir::eScrollDir sd, Snowflake gapCulprit) = 0;
 	virtual void RefreshMembers(const std::set<Snowflake>& members) = 0;
 
 	// Interactive requests
-	virtual void JumpToMessage(Snowflake messageInCurrentChannel) = 0;
 	virtual void LaunchURL(const std::string& url) = 0;
 
 	// Called by WebSocketClient, dispatches to relevant places including DiscordInstance
@@ -77,10 +66,6 @@ public:
 	virtual void SetHeartbeatInterval(int timeMs, int firstMs) = 0;
 
 	// Interface with AvatarCache
-	virtual void RegisterIcon(Snowflake sf, const std::string& avatarlnk) = 0;
-	virtual void RegisterAvatar(Snowflake sf, const std::string& avatarlnk) = 0;
-	virtual void RegisterAttachment(Snowflake sf, const std::string& avatarlnk) = 0;
-	virtual void RegisterChannelIcon(Snowflake sf, const std::string& avatarlnk) = 0;
 
 	// Config
 	virtual std::string LoadConfig() = 0;
@@ -95,12 +80,9 @@ public:
 	// Strings
 	virtual std::string GetDirectMessagesText() = 0;
 	virtual std::string GetPleaseWaitText() = 0;
-	virtual std::string GetMonthName(int index) = 0;
 	virtual std::string GetTodayAtText() = 0;
 	virtual std::string GetYesterdayAtText() = 0;
-	virtual std::string GetFormatDateOnlyText() = 0;
 	virtual std::string GetFormatTimeLongText() = 0;
-	virtual std::string GetFormatTimeShortText() = 0;
 	virtual std::string GetFormatTimeShorterText() = 0;
 	virtual std::string GetFormatTimestampTimeShort() = 0;
 	virtual std::string GetFormatTimestampTimeLong() = 0;

@@ -8,7 +8,6 @@
 #include "Snowflake.hpp"
 #include "Attachment.hpp"
 #include "MessageType.hpp"
-#include "../network/MessagePoll.hpp"
 
 // XXX: Ok, I'm going to be cheap here and implement a separate class for the referenced message stuff.
 struct ReferenceMessage
@@ -22,7 +21,6 @@ struct ReferenceMessage
 	std::string m_avatar;
 	time_t m_timestamp;
 	bool m_bHasAttachments = false;
-	bool m_bHasComponents = false;
 	bool m_bHasEmbeds = false;
 	bool m_bMentionsAuthor = false;
 	bool m_bIsAuthorBot = false;
@@ -76,7 +74,6 @@ struct RichEmbed
 	int m_imageHeight = 0;
 	// thumbnail image
 	bool m_bHasThumbnail = false;
-	std::string m_thumbnailUrl;
 	std::string m_thumbnailProxiedUrl;
 	int m_thumbnailWidth = 0;
 	int m_thumbnailHeight = 0;
@@ -112,7 +109,6 @@ public:
 	std::string m_author = "";
 	std::string m_avatar = "";
 	Snowflake m_anchor = 0; // for gap messages
-	Snowflake m_nonce = 0; // to create messages
 	// The object Discord sent, with later updates merged in: kept when the
 	// message cache stores history on disk (s_keepJson), empty otherwise.
 	std::string m_rawJson;
@@ -123,24 +119,19 @@ public:
 	std::vector<Attachment> m_attachments;
 	std::string m_dateFull = "";
 	std::string m_dateCompact = "";
-	std::string m_dateOnly = "";
 	std::string m_editedText = "";
-	std::string m_editedTextCompact = "";
 	time_t m_dateTime = 0;
 	time_t m_timeEdited = 0;
 	std::set<Snowflake> m_userMentions;
 	std::set<Snowflake> m_roleMentions;
 	bool m_bMentionedEveryone = false;
 	bool m_bIsAuthorBot = false;
-	bool m_bIsPinned = false;
-	bool m_bRead = false; // valid only for the notification viewer messages
 	bool m_bIsForward = false;
 	Snowflake m_refMessageGuild = 0;
 	Snowflake m_refMessageChannel = 0;
 	Snowflake m_refMessageSnowflake = 0;
 	std::vector<RichEmbed> m_embeds;
 	Snowflake m_webhookId = 0;
-	std::shared_ptr<MessagePoll> m_pMessagePoll;
 	std::shared_ptr<ReferenceMessage> m_pReferencedMessage;
 
 public:
@@ -168,7 +159,6 @@ public:
 	void SetTime(time_t t);
 	void SetDateEdited(const std::string& dateStr);
 	void SetTimeEdited(time_t t);
-	void UpdateTimestamp();
 
 	bool CheckWasMentioned(Snowflake user, Snowflake guild, bool bSuppressEveryone = false, bool bSuppressRoles = false) const;
 

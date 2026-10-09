@@ -11,9 +11,7 @@ NetRequest::NetRequest(
 	const std::string& _params,
 	const std::string& _authorization,
 	const std::string& _additional_data,
-	NetworkResponseFunc _func,
-	uint8_t* _bytes,
-	size_t _size
+	NetworkResponseFunc _func
 ) : result(_result),
 	itype(_itype),
 	key(_key),
@@ -24,13 +22,6 @@ NetRequest::NetRequest(
 	authorization(_authorization),
 	additional_data(_additional_data)
 {
-	assert(_size == 0 || _bytes);
-	params_bytes.resize(_size);
-
-	if (_bytes && _size != 0) {
-		memcpy(params_bytes.data(), _bytes, _size);
-	}
-
 	if (!_func)
 		_func = &HTTPClient::DefaultRequestHandler;
 

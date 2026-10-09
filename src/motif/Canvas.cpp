@@ -133,23 +133,6 @@ void PixelFormat::MakeDitherTables()
 	}
 }
 
-unsigned long PixelFormat::PixelOf(Rgb c) const
-{
-	int v[3] = { RgbR(c), RgbG(c), RgbB(c) };
-	if (m_trueColor) {
-		unsigned long p = 0;
-		for (int i = 0; i < 3; i++) {
-			int s = m_shift[i] - 7;
-			unsigned long x = s >= 0 ? (unsigned long) v[i] << s : (unsigned long) v[i] >> -s;
-			p |= x & m_mask[i];
-		}
-		return p;
-	}
-	int n = m_levels;
-	int r = (v[0] * (n - 1) + 127) / 255, g = (v[1] * (n - 1) + 127) / 255, b = (v[2] * (n - 1) + 127) / 255;
-	return m_cube[(r * n + g) * n + b];
-}
-
 XImage* PixelFormat::MakeImage(const Rgb* px, int stride, int w, int h, int originX, int originY) const
 {
 	XImage* img = XCreateImage(m_dpy, m_visual, m_depth, ZPixmap, 0, NULL, w, h, 32, 0);

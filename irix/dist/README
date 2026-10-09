@@ -77,12 +77,10 @@ Source, and how it was built: https://github.com/atomchild411/dm
 (irix/dist has this package's recipe).
 
 Licenses: licenses/ -- Discord Messenger is MIT licensed.  Linked in:
-OpenSSL (Apache License 2.0), LLVM's libc++ (Apache License 2.0 with LLVM
-exception), FreeType (FreeType License), libpng (PNG Reference Library
-licence), zlib, bzip2 (BSD-style), libwebp (BSD, with Google's patent
-grant), asio and Boost.Beast's base64 (Boost Software License 1.0),
-WebSocket++ (BSD 3-clause), cpp-httplib, JSON for Modern C++ and Nayuki's
-QR Code generator (MIT), stb_image (MIT or public domain) and the RSA
-reference MD5.  The fonts: DejaVu (Bitstream Vera licence, and public
-domain changes) and Noto Color Emoji (SIL Open Font License 1.1).
-cacert.pem is from Mozilla (MPL 2.0).
+OpenSSL (Apache License 2.0), LLVM's libc++ (Apache License 2.0 with
+LLVM exception), FreeType (FreeType License), libpng (PNG Reference
+Library licence), zlib, bzip2 (BSD-style), libwebp (BSD, with Google's
+patent grant), cpp-httplib, JSON for Modern C++ and Nayuki's QR Code
+generator (MIT) and stb_image (MIT or public domain).  The fonts: DejaVu
+(Bitstream Vera licence, and public domain changes) and Noto Color Emoji
+(SIL Open Font License 1.1).  cacert.pem is from Mozilla (MPL 2.0).

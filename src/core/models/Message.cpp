@@ -20,7 +20,6 @@ void Message::SetTime(time_t t)
 	m_dateTime = t;
 	m_dateFull = FormatTimeLong(m_dateTime, true);
 	m_dateCompact = FormatTimeShorter(m_dateTime);
-	m_dateOnly = FormatDate(m_dateTime);
 }
 
 void Message::SetDateEdited(const std::string& dateStr)
@@ -38,26 +37,6 @@ void Message::SetTimeEdited(time_t t)
 {
 	m_timeEdited = t;
 	m_editedText = "(edited " + FormatTimeLong(m_timeEdited, true) + ")";
-	m_editedTextCompact = "(edited)";
-}
-
-void Message::UpdateTimestamp()
-{
-	if (m_type == MessageType::SENDING_MESSAGE) {
-		m_dateCompact = "Sending...";
-		m_dateFull = "Sending...";
-		return;
-	}
-
-	if (m_dateTime)
-		SetTime(m_dateTime);
-	else
-		m_dateCompact = m_dateFull = "";
-
-	if (m_timeEdited)
-		SetTimeEdited(m_timeEdited);
-	else
-		m_editedText = m_editedTextCompact = "";
 }
 
 bool Message::CheckWasMentioned(Snowflake user, Snowflake guild, bool bSuppressEveryone, bool bSuppressRoles) const
@@ -126,7 +105,6 @@ void ReferenceMessage::Load(nlohmann::json& data, Snowflake guild)
 	m_timestamp = ParseTime(GetFieldSafe(data, "timestamp"));
 	m_message = GetFieldSafe(data, "content");
 	m_bHasAttachments = data["attachments"].is_array() && data["attachments"].size() > 0;
-	m_bHasComponents = data["components"].is_array() && data["components"].size() > 0;
 	m_bHasEmbeds = data["embeds"].is_array() && data["embeds"].size() > 0;
 	m_bMentionsAuthor = false;
 
@@ -209,7 +187,6 @@ void RichEmbed::Load(Json& j)
 	}
 	if (thumbnail.is_object()) {
 		m_bHasThumbnail = true;
-		m_thumbnailUrl = GetFieldSafe(thumbnail, "url");
 		m_thumbnailProxiedUrl = GetFieldSafe(thumbnail, "proxy_url");
 		m_thumbnailWidth = GetFieldSafeInt(thumbnail, "width");
 		m_thumbnailHeight = GetFieldSafeInt(thumbnail, "height");
@@ -280,8 +257,6 @@ void Message::LoadFields(Json& data, Snowflake guild)
 {
 	Json& author = data["author"];
 
-	m_pMessagePoll.reset();
-
 	Snowflake messageId = GetSnowflake(data, "id");
 
 	Snowflake authorId = m_author_snowflake;
@@ -337,9 +312,6 @@ void Message::LoadFields(Json& data, Snowflake guild)
 		m_avatar = pf->m_avatarlnk;
 	}
 
-	if (data["pinned"].is_boolean())
-		m_bIsPinned = data["pinned"];
-
 	if (data["attachments"].is_array())
 	{
 		m_attachments.clear();
@@ -361,9 +333,6 @@ void Message::LoadFields(Json& data, Snowflake guild)
 			m_embeds.push_back(emb);
 		}
 	}
-
-	if (data.contains("poll"))
-		m_pMessagePoll = std::make_shared<MessagePoll>(data["poll"]);
 
 	// (an update without them leaves them as they were)
 	if (data["reactions"].is_array())

@@ -151,15 +151,12 @@ struct Word
 class FormattedText
 {
 public:
-	typedef void(*FunctionEachEmote) (void* context, const Rect& rect);
 
 	void SetAllowBiggerText(bool b);
 	void SetDefaultStyle(int style);
 	void SetMessage(const std::string& msg);
 	void Layout(DrawingContext* context, const Rect& rect, int offsetX = 0);
 	void Draw(DrawingContext* context, int offsetY = 0);
-	void DrawConfined(DrawingContext* context, const Rect& rect, int offsetY = 0);
-	void RunForEachCustomEmote(FunctionEachEmote func, void* context);
 	Rect GetExtent(int offsetY = 0);
 
 	std::vector<Word>& GetWords() {
@@ -174,14 +171,6 @@ public:
 		m_bFormatted = false;
 	}
 
-	void ClearFormatting() {
-		m_bFormatted = false;
-
-		for (auto& w : m_words) {
-			w.m_rect = {};
-		}
-	}
-
 	bool Empty() const {
 		if (m_rawMessage.empty())
 			return true;
@@ -190,14 +179,6 @@ public:
 		return false;
 	}
 	
-	bool IsFormatted() const {
-		return m_bFormatted;
-	}
-
-	const std::string& GetRawMessage() const {
-		return m_rawMessage;
-	}
-
 private:
 	std::string m_rawMessage;
 	std::vector<std::pair<std::string, std::string>> m_blocks; // see note 1. and 2.
@@ -229,7 +210,6 @@ private:
 	void AddWord(const Word& w) {
 		m_words.push_back(w);
 	}
-	std::vector<std::pair<std::string, std::string> > SplitBackticks(const std::string& str); // see note 2. and 4.
 	void UseRegex(std::string& str);
 	void Tokenize(const std::string& str, const std::string& oldmsg);
 	std::string EscapeChars(const std::string& str, const std::string& oldstr);

@@ -25,8 +25,6 @@ public:
 	Visual* GetVisual() const { return m_visual; }
 	int GetDepth() const { return m_depth; }
 
-	unsigned long PixelOf(Rgb c) const;
-
 	// Converts w x h pixels (stride in pixels) into a new XImage, dithered
 	// when the visual needs it.  Free with XDestroyImage.
 	XImage* MakeImage(const Rgb* px, int stride, int w, int h, int originX, int originY) const;
@@ -57,7 +55,6 @@ public:
 	void Resize(int w, int h);
 	int Width() const { return m_w; }
 	int Height() const { return m_h; }
-	Rgb* Pixels() { return m_px.data(); }
 
 	// Drawing is limited to the clip rectangle.
 	void SetClip(int x, int y, int w, int h);

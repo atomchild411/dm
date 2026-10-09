@@ -33,16 +33,12 @@ public:
 		std::string authorization = "",
 		std::string additional_data = "",
 		NetRequest::NetworkResponseFunc pRespFunc = nullptr,
-		uint8_t* stream_bytes = nullptr,
-		size_t stream_size = 0,
 		const std::vector<std::pair<std::string, std::string>>& extra_headers = {}
 	);
 
 	void StopAllRequests();
 	void PrepareQuit();
 	void Join();
-
-	bool ProgressFunction(NetRequest* pRequest, uint64_t offset, uint64_t length);
 
 private:
 	void Run();
@@ -80,8 +76,6 @@ public:
 		std::string authorization = "",
 		std::string additional_data = "",
 		NetRequest::NetworkResponseFunc pRespFunc = nullptr,
-		uint8_t* stream_bytes = nullptr,
-		size_t stream_size = 0,
 		const std::vector<std::pair<std::string, std::string>>& extra_headers = {}
 	) override;
 

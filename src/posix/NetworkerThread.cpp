@@ -72,14 +72,11 @@ int NetRequest::Priority() const
 		case POST:
 		case POST_JSON:
 		case PATCH:
-		case PUT_OCTETS:
-		case PUT_OCTETS_PROGRESS:
 		case PUT_JSON:
 		case DELETE_:
 			prio = 100;
 			break;
 		case GET:
-		case GET_PROGRESS:
 			prio = 90;
 			break;
 		default:
@@ -110,8 +107,7 @@ static const char* MethodName(NetRequest::eType t)
 {
 	switch (t) {
 		case NetRequest::POST: case NetRequest::POST_JSON: return "POST";
-		case NetRequest::PUT: case NetRequest::PUT_JSON: case NetRequest::PUT_OCTETS:
-		case NetRequest::PUT_OCTETS_PROGRESS: return "PUT";
+		case NetRequest::PUT: case NetRequest::PUT_JSON: return "PUT";
 		case NetRequest::PATCH: return "PATCH";
 		case NetRequest::DELETE_: return "DELETE";
 		default: return "GET";
@@ -186,33 +182,6 @@ std::string NetworkerThreadManager::ErrorMessage(int code) const
 	return std::string(httplib::detail::status_message(code));
 }
 
-// Custom content provider to track upload progress
-class ProgressContentProvider {
-public:
-	typedef std::function<bool(uint64_t, uint64_t)> ProgressFunction;
-
-	ProgressContentProvider(const uint8_t* bytes, size_t size, ProgressFunction prog)
-		: data_(bytes), data_size_(size), progfunc(prog) {}
-
-	bool operator()(size_t offset, httplib::DataSink& sink) {
-		size_t data_to_send = std::min(data_size_ - offset, REPORT_PROGRESS_EVERY_BYTES);
-		if (data_to_send > 0) {
-			sink.write((const char*) &data_[offset], data_to_send);
-			if (!progfunc(offset, data_size_))
-				return false;
-		}
-		else {
-			sink.done();
-		}
-		return true;
-	}
-
-private:
-	const uint8_t* data_;
-	size_t data_size_;
-	ProgressFunction progfunc;
-};
-
 void NetworkerThread::FulfillRequest(NetRequest& req)
 {
 	std::string& url = req.url;
@@ -281,7 +250,6 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 	}
 	const bool api = req.url.compare(0, GetDiscordAPI().size(), GetDiscordAPI()) == 0;
 
-	using namespace std::placeholders;
 	int attempt = 0, limited = 0;
 	bool retry = false;
 	do
@@ -314,21 +282,8 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 			case NetRequest::PUT_JSON:
 				retry = ProcessResult(req, client.Put(path, headers, req.params, "application/json"), attempt, api, limited);
 				break;
-			case NetRequest::PUT_OCTETS:
-				retry = ProcessResult(req, client.Put(path, headers, (const char*) req.params_bytes.data(), req.params_bytes.size(), "application/octet-stream"), attempt, api, limited);
-				break;
-			case NetRequest::PUT_OCTETS_PROGRESS:
-			{
-				ProgressContentProvider provider(req.params_bytes.data(), req.params_bytes.size(), std::bind(&NetworkerThread::ProgressFunction, this, &req, _1, _2));
-				req.result = HTTP_PROGRESS;
-				retry = ProcessResult(req, client.Put(path, headers, provider, "application/octet-stream"), attempt, api, limited);
-				break;
-			}
 			case NetRequest::GET:
 				retry = ProcessResult(req, client.Get(path, headers), attempt, api, limited);
-				break;
-			case NetRequest::GET_PROGRESS:
-				retry = ProcessResult(req, client.Get(path, headers, std::bind(&NetworkerThread::ProgressFunction, this, &req, _1, _2)), attempt, api, limited);
 				break;
 			case NetRequest::PATCH:
 				retry = ProcessResult(req, client.Patch(path, headers, req.params, "application/json"), attempt, api, limited);
@@ -376,11 +331,9 @@ void NetworkerThread::AddRequest(
 	std::string authorization,
 	std::string additional_data,
 	NetRequest::NetworkResponseFunc pRespFunc,
-	uint8_t* stream_bytes,
-	size_t stream_size,
 	const std::vector<std::pair<std::string, std::string>>& extra_headers)
 {
-	NetRequest rq(0, itype, requestKey, type, url, "", params, authorization, additional_data, pRespFunc, stream_bytes, stream_size);
+	NetRequest rq(0, itype, requestKey, type, url, "", params, authorization, additional_data, pRespFunc);
 	rq.extra_headers = extra_headers;
 
 	std::lock_guard<std::mutex> lk(m_requestLock);
@@ -408,21 +361,6 @@ void NetworkerThread::Join()
 {
 	if (m_thread.joinable())
 		m_thread.join();
-}
-
-bool NetworkerThread::ProgressFunction(NetRequest* pRequest, uint64_t offset, uint64_t length)
-{
-	if (pRequest->type == NetRequest::PUT_OCTETS_PROGRESS)
-		assert(length == pRequest->params_bytes.size());
-
-	pRequest->m_bCancelOp = false;
-	pRequest->m_offset = offset;
-	pRequest->m_length = length;
-	pRequest->result = HTTP_PROGRESS;
-	pRequest->pFunc(pRequest);
-
-	// Return false if the operation must be cancelled.
-	return !pRequest->m_bCancelOp;
 }
 
 NetworkerThread::NetworkerThread()
@@ -489,8 +427,6 @@ void NetworkerThreadManager::PerformRequest(
 	std::string authorization,
 	std::string additional_data,
 	NetRequest::NetworkResponseFunc pRespFunc,
-	uint8_t* stream_bytes,
-	size_t stream_size,
 	const std::vector<std::pair<std::string, std::string>>& extra_headers)
 {
 	int idx;
@@ -504,5 +440,5 @@ void NetworkerThreadManager::PerformRequest(
 	}
 
 	if (m_pNetworkThreads[idx])
-		m_pNetworkThreads[idx]->AddRequest(type, url, itype, requestKey, params, authorization, additional_data, pRespFunc, stream_bytes, stream_size, extra_headers);
+		m_pNetworkThreads[idx]->AddRequest(type, url, itype, requestKey, params, authorization, additional_data, pRespFunc, extra_headers);
 }

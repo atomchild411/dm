@@ -31,6 +31,8 @@ void NotificationManager::OnMessageCreate(Snowflake guildID, Snowflake channelID
 	notif.m_bIsReply = msg.m_type == MessageType::REPLY;
 
 	m_notifications.push_front(notif);
+	if (m_notifications.size() > 20)
+		m_notifications.pop_back();
 	GetFrontend()->OnNotification();
 }
 
@@ -40,15 +42,6 @@ Notification* NotificationManager::GetLatestNotification()
 		return nullptr;
 
 	return &m_notifications.front();
-}
-
-void NotificationManager::MarkNotificationsRead(Snowflake channelID)
-{
-	for (auto& notification : m_notifications)
-	{
-		if (notification.m_sourceChannel == channelID)
-			notification.m_bRead = true;
-	}
 }
 
 bool NotificationManager::IsNotificationWorthy(Snowflake guildID, Snowflake channelID, const Message& msg)

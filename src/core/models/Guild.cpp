@@ -95,24 +95,3 @@ uint64_t Guild::ComputeBasePermissions(Snowflake member)
 
 	return perms;
 }
-
-bool Guild::IsFirstChannel(Snowflake channel)
-{
-	Snowflake lowestId = Snowflake(-1);
-
-	for (auto& chan : m_channels) {
-		if (lowestId > chan.m_snowflake && chan.IsText())
-			lowestId = chan.m_snowflake;
-	}
-
-	return lowestId == channel;
-}
-
-bool Guild::IsUnread()
-{
-	for (auto& chan : m_channels) {
-		if (chan.HasUnreadMessages())
-			return true;
-	}
-	return false;
-}

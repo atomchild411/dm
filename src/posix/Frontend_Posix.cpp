@@ -26,11 +26,6 @@
 
 DiscordInstance* GetDiscordInstance();
 
-static const char* const g_monthNames[] = {
-	"January", "February", "March", "April", "May", "June", "July",
-	"August", "September", "October", "November", "December"
-};
-
 void SetupPosixPaths()
 {
 	std::string base;
@@ -149,15 +144,6 @@ void Frontend_Posix::OnConnectFailed(const std::string& message, bool isTLSError
 	GetDiscordInstance()->ReconnectLater();
 }
 
-void Frontend_Posix::OnFailedToUploadFile(const std::string& file, int error)
-{
-	if (error == HTTP_CANCELED)
-		return;
-
-	std::string text = "Failed to upload " + file + " (error " + std::to_string(error) + ").";
-	MainQueue::Post([this, text] { ShowError(text); });
-}
-
 void Frontend_Posix::OnGenericError(const std::string& message)
 {
 	MainQueue::Post([this, message] { ShowError(message); });
@@ -267,18 +253,9 @@ bool Frontend_Posix::SaveConfig(const std::string& configJson)
 std::string Frontend_Posix::GetDirectMessagesText() { return "Direct Messages"; }
 std::string Frontend_Posix::GetPleaseWaitText() { return "Please wait..."; }
 
-std::string Frontend_Posix::GetMonthName(int index)
-{
-	if (index < 0 || index > 11)
-		return "";
-	return g_monthNames[index];
-}
-
 std::string Frontend_Posix::GetTodayAtText() { return "Today at " + GetFormatTimestampTimeShort(); }
 std::string Frontend_Posix::GetYesterdayAtText() { return "Yesterday at " + GetFormatTimestampTimeShort(); }
-std::string Frontend_Posix::GetFormatDateOnlyText() { return "%s %d%s, %d"; }
 std::string Frontend_Posix::GetFormatTimeLongText() { return "%d-%m-%Y at " + GetFormatTimestampTimeShort(); }
-std::string Frontend_Posix::GetFormatTimeShortText() { return "%d/%m " + GetFormatTimestampTimeShort(); }
 std::string Frontend_Posix::GetFormatTimeShorterText() { return GetFormatTimestampTimeShort(); }
 
 std::string Frontend_Posix::GetFormatTimestampTimeShort()

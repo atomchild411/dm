@@ -142,7 +142,7 @@ You need:
 - OpenSSL 3, FreeType, libpng, zlib, bzip2 and libwebp built for IRIX, as static libraries, under
   one prefix.
 
-After cloning, check out the submodules with `git submodule update --init`. Then:
+Then:
 
 ```
 make FRONTEND=motif STATIC_DEPS=1 \
@@ -156,7 +156,7 @@ make FRONTEND=motif STATIC_DEPS=1 \
 
 The program is `bin/dm-motif`. `FRONTEND=cli` builds `dm-cli`, a text client that drives the same
 core without a GUI, for testing a port (`dm-cli --probe` checks HTTPS, TLS and the gateway without
-logging in). The top of the `Makefile` lists every setting.
+logging in).
 
 To make the package, copy the program and the `irix/dist` directory to an IRIX machine and run
 `irix/dist/make-tardist.sh` there; it uses IRIX's `gendist`. The script's comments give its
@@ -173,7 +173,7 @@ DejaVu (`DejaVuSans*.ttf`, `DejaVuSansMono*.ttf`) and `NotoColorEmoji.ttf`, and 
 macos/make-app.sh <fonts directory>
 ```
 
-That app is for this Mac's architecture and macOS version (Homebrew's libraries are). For one that
+It builds `bin/Discord Messenger.app`, with the libraries linked in, signed ad hoc. That app is for this Mac's architecture and macOS version (Homebrew's libraries are). For one that
 runs on every Mac from macOS 11, Apple Silicon and Intel, as the releases are:
 
 ```
@@ -185,8 +185,7 @@ SHA-256, as universal static libraries (`macos/build-deps.sh`, into `build-mac/`
 and leaves `bin/macos/DiscordMessenger-<version>-macos.dmg`. Homebrew is needed only for CMake and
 Ninja then.
 
-It builds `bin/Discord Messenger.app`, with the libraries linked in, signed ad hoc. For a quick
-build to run from the source tree instead:
+For a quick build to run from the source tree instead:
 
 ```
 make FRONTEND=imgui PREFIX_DEPS=/opt/homebrew FT_CFLAGS=-I/opt/homebrew/include/freetype2 \
@@ -279,11 +278,8 @@ nothing makes it reconnect or ask again and again.
 Discord Messenger is powered by the following external libraries:
 
 - [JSON for Modern C++](https://github.com/nlohmann/json)
-- [Boost](https://www.boost.org)
 - [Libwebp](https://github.com/webmproject/libwebp)
 - [Httplib](https://github.com/yhirose/cpp-httplib)
-- [Asio](https://think-async.com/Asio)
-- [Websocketpp](https://github.com/zaphoyd/websocketpp)
 - [OpenSSL](https://www.openssl.org)
 - [FreeType](https://freetype.org), [libpng](http://www.libpng.org), [zlib](https://zlib.net) and
   [bzip2](https://sourceware.org/bzip2/)

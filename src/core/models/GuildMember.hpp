@@ -6,7 +6,6 @@
 struct GuildMember
 {
 	bool m_bIsGroup = false;
-	bool m_bExists = true; //assumption
 
 	// if group
 	Snowflake m_groupId = 0;

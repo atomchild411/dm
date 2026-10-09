@@ -137,15 +137,3 @@ int MdGetQuoteIndentSize()
 {
 	return QUOTE_INDENT;
 }
-
-void MdSetClippingRect(DrawingContext* ctx, const Rect& rect)
-{
-	if (ctx->canvas)
-		ctx->canvas->SetClip(rect.left, rect.top, rect.Width(), rect.Height());
-}
-
-void MdClearClippingRect(DrawingContext* ctx)
-{
-	if (ctx->canvas)
-		ctx->canvas->ClearClip();
-}

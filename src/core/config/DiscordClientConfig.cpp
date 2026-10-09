@@ -1,5 +1,5 @@
 #include "DiscordClientConfig.hpp"
-#include <boost/base64/base64.hpp>
+#include "../utils/Base64.hpp"
 
 static uint64_t RandU64()
 {
@@ -77,14 +77,8 @@ DiscordClientConfig::DiscordClientConfig()
 	nlohmann::json j = Serialize();
 
 	std::string str = j.dump();
-	m_serializedJsonBlob = str;
 
-	char* buffer = new char[base64::encoded_size(str.size()) + 1];
-	size_t sz = base64::encode(buffer, str.data(), str.size());
-	std::string dataToSend(buffer, sz);
-	delete[] buffer;
-
-	m_serializedBase64Blob = dataToSend;
+	m_serializedBase64Blob = Base64Encode(str.data(), str.size());
 }
 
 nlohmann::json DiscordClientConfig::Serialize() const
@@ -109,11 +103,6 @@ nlohmann::json DiscordClientConfig::Serialize() const
 	j["client_launch_id"] = m_clientLaunchId;
 	j["client_app_state"] = "focused";
 	return j;
-}
-
-const std::string& DiscordClientConfig::GetSerializedJsonBlob() const
-{
-	return m_serializedJsonBlob;
 }
 
 const std::string& DiscordClientConfig::GetSerializedBase64Blob() const

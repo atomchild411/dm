@@ -26,8 +26,6 @@ namespace QrLogin
 	// connection and forgets the key.  loggedIn is not called.
 	void Stop();
 
-	bool Active();
-
 	// What to tell the user (may hold line breaks).  (Not "Status": Xlib defines that name.)
 	const std::string& StatusText();
 

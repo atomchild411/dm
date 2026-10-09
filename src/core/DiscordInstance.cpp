@@ -1,8 +1,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <sstream>
 #include <nlohmann/json.h>
-#include <boost/base64/base64.hpp>
+#include <openssl/err.h>
 
 #include "DiscordInstance.hpp"
 #include "network/WebsocketClient.hpp"
@@ -37,8 +38,6 @@ Snowflake CreateTemporarySnowflake()
 
 std::string GetStatusStringFromGameJsonObject(Json& game)
 {
-	std::string dump = game.dump();
-
 	if (!game.contains("type") || !game["type"].is_number_integer()) {
 		DbgPrintF("Returning nothing because type didn't exist");
 		return "";
@@ -61,12 +60,6 @@ std::string GetStatusStringFromGameJsonObject(Json& game)
 		case ACTIVITY_CUSTOM_STATUS:
 			return GetFieldSafe(game, "state");
 	}
-}
-
-void DebugResponse(NetRequest* pReq)
-{
-	//std::string str = std::to_string(pReq->result) + ": \"" + pReq->response + "\"\n";
-	//OutputDebugStringA(str.c_str());
 }
 
 void OnJsonException(Json::exception & ex)
@@ -125,7 +118,6 @@ void DiscordInstance::OnSelectChannel(Snowflake sf, bool bSendSubscriptionUpdate
 		return;
 	}
 
-	m_channelHistory.AddToHistory(m_CurrentChannel);
 	m_CurrentChannel = sf;
 
 	pGuild->m_currentChannel = m_CurrentChannel;
@@ -185,68 +177,6 @@ void DiscordInstance::RequestMessages(Snowflake sf, ScrollDir::eScrollDir dir, S
 	);
 }
 
-void DiscordInstance::RequestPinnedMessages(Snowflake channel)
-{
-	std::string messageUrl = GetDiscordAPI() + "channels/" + std::to_string(channel) + "/pins";
-
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::GET,
-		messageUrl,
-		DiscordRequest::PINS,
-		channel,
-		"",
-		m_token
-	);
-}
-
-void DiscordInstance::RequestGuildMembers(Snowflake guild, std::set<Snowflake> members, bool bLoadPresences)
-{
-	Json data;
-	Json guildIdArray, userIdsArray;
-	guildIdArray.push_back(guild);
-
-	int i = 0;
-	for (auto mem : members) {
-		if (mem != 0)
-			userIdsArray.push_back(std::to_string(mem));
-	}
-
-	if (userIdsArray.empty())
-		return;
-
-	data["guild_id"] = guildIdArray;
-	data["user_ids"] = userIdsArray;
-	data["presences"] = bLoadPresences;
-	data["limit"] = nullptr;
-	data["query"] = nullptr;
-
-	Json j;
-	j["op"] = int(GatewayOp::REQUEST_GUILD_MEMBERS);
-	j["d"] = data;
-
-	GetWebsocketClient()->SendMsg(m_gatewayConnId, j.dump());
-}
-
-void DiscordInstance::RequestGuildMembers(Snowflake guild, std::string query, bool bLoadPresences, int limit)
-{
-	Json guildIdArray;
-	guildIdArray.push_back(guild);
-
-	Json data;
-	data["query"] = query;
-	data["limit"] = limit;
-	data["user_ids"] = nullptr;
-	data["guild_id"] = guildIdArray;
-	data["presences"] = bLoadPresences;
-
-	Json j;
-	j["op"] = int(GatewayOp::REQUEST_GUILD_MEMBERS);
-	j["d"] = data;
-
-	GetWebsocketClient()->SendMsg(m_gatewayConnId, j.dump());
-}
-
 bool DiscordInstance::IsChannelMuted(Snowflake guildID, Snowflake channelID) const
 {
 	const GuildSettings* guildSettings = m_userGuildSettings.GetSettings(guildID);
@@ -296,20 +226,6 @@ std::string DiscordInstance::LookupRoleName(Snowflake sf, Snowflake guildID)
 	return "deleted-role-" + std::to_string(sf);
 }
 
-std::string DiscordInstance::LookupRoleNameGlobally(Snowflake sf)
-{
-	for (const auto& gld : m_guilds)
-	{
-		for (const auto& role : gld.m_roles)
-		{
-			if (role.first == sf)
-				return role.second.m_name;
-		}
-	}
-
-	return "deleted-role-" + std::to_string(sf);
-}
-
 std::string DiscordInstance::LookupUserNameGlobally(Snowflake sf, Snowflake gld)
 {
 	std::string placeholderName = std::to_string(sf);
@@ -318,41 +234,6 @@ std::string DiscordInstance::LookupUserNameGlobally(Snowflake sf, Snowflake gld)
 		return placeholderName;
 
 	return pf->GetName(gld);
-}
-
-#define MATCH_TEXT   (1 << 0)
-#define MATCH_VOICE  (1 << 1)
-#define MATCH_DMS    (1 << 2)
-#define MATCH_GUILDS (1 << 3)
-
-void DiscordInstance::SearchSubGuild(std::vector<QuickMatch>& matches, Guild* pGuild, int matchFlags, const char* queryPtr)
-{
-	for (auto& chan : pGuild->m_channels)
-	{
-		if (chan.m_snowflake == m_CurrentChannel)
-			continue;
-
-		if (chan.IsText()) {
-			if (~matchFlags & MATCH_TEXT)
-				continue;
-		}
-		else if (chan.IsDM()) {
-			if (~matchFlags & MATCH_DMS)
-				continue;
-		}
-		else if (chan.IsVoice()) {
-			if (~matchFlags & MATCH_VOICE)
-				continue;
-		}
-		else continue;
-
-		if (!chan.HasPermission(PERM_VIEW_CHANNEL))
-			continue;
-
-		float fzc = CompareFuzzy(chan.m_name, queryPtr);
-		if (fzc != 0.0f)
-			matches.push_back(QuickMatch(true, chan.m_snowflake, fzc, chan.m_name));
-	}
 }
 
 void DiscordInstance::RefreshRelationships()
@@ -366,77 +247,6 @@ void DiscordInstance::RefreshRelationships()
 	}
 }
 
-std::vector<QuickMatch> DiscordInstance::Search(const std::string& query)
-{
-	std::vector<QuickMatch> matches;
-
-	if (query.empty())
-	{
-		// Special mode - Show the last three channels.
-		for (int i = 0; i < C_CHANNEL_HISTORY_MAX; i++)
-		{
-			Snowflake chan = m_channelHistory.m_history[i];
-			if (!chan)
-				continue;
-
-			Channel* pChan = GetChannel(chan);
-			if (!pChan)
-				continue;
-			if (!pChan->HasPermission(PERM_VIEW_CHANNEL))
-				continue;
-
-			// Calculate a fake fuzzy factor to avoid effects of sorting.
-			float ff = float(C_CHANNEL_HISTORY_MAX - i) / float(C_CHANNEL_HISTORY_MAX);
-
-			matches.push_back(QuickMatch(true, chan, ff, pChan->m_name));
-		}
-	}
-	else
-	{
-		char firstChar = query[0];
-		int matchFlags = MATCH_TEXT | MATCH_VOICE | MATCH_DMS | MATCH_GUILDS;
-		bool cutoff = false;
-
-		switch (firstChar)
-		{
-			case '#': matchFlags = MATCH_TEXT;   cutoff = true; break;
-			case '@': matchFlags = MATCH_DMS;    cutoff = true; break;
-			case '!': matchFlags = MATCH_VOICE;  cutoff = true; break;
-			case '*': matchFlags = MATCH_GUILDS; cutoff = true; break;
-		}
-
-		const char* queryPtr = query.c_str();
-		if (cutoff) queryPtr++;
-
-		if (matchFlags & (MATCH_TEXT | MATCH_DMS | MATCH_VOICE))
-		{
-			for (auto& gld : m_guilds)
-				SearchSubGuild(matches, &gld, matchFlags, queryPtr);
-
-			SearchSubGuild(matches, &m_dmGuild, matchFlags, queryPtr);
-		}
-
-		if (matchFlags & MATCH_GUILDS)
-		{
-			for (auto& gld : m_guilds)
-			{
-				if (gld.m_snowflake == m_CurrentGuild)
-					continue;
-
-				float fzc = CompareFuzzy(gld.m_name, queryPtr);
-
-				if (fzc != 0.0f)
-					matches.push_back(QuickMatch(false, gld.m_snowflake, fzc, gld.m_name));
-			}
-		}
-	}
-
-	// Sort the matches
-	std::sort(matches.begin(), matches.end());
-
-	return matches;
-}
-
 void DiscordInstance::OnSelectGuild(Snowflake sf, Snowflake chan)
 {
 	if (m_CurrentGuild == sf)
@@ -446,8 +256,6 @@ void DiscordInstance::OnSelectGuild(Snowflake sf, Snowflake chan)
 
 		return;
 	}
-
-	m_channelHistory.AddToHistory(m_CurrentChannel);
 
 	// select the guild
 	m_CurrentGuild = sf;
@@ -486,20 +294,8 @@ void DiscordInstance::OnSelectGuild(Snowflake sf, Snowflake chan)
 	UpdateSubscriptions(sf, chan, true, true, true);
 }
 
-void OnUpdateAvatar(const std::string& resid);
-
 void DiscordInstance::HandleRequest(NetRequest* pRequest)
 {
-	if (pRequest->itype == DiscordRequest::UPLOAD_ATTACHMENT) {
-		OnUploadAttachmentFirst(pRequest);
-		return;
-	}
-
-	if (pRequest->itype == DiscordRequest::UPLOAD_ATTACHMENT_2) {
-		OnUploadAttachmentSecond(pRequest);
-		return;
-	}
-
 	// a message request is over, however it went: the gap may be asked for again
 	if (pRequest->itype == DiscordRequest::MESSAGES && pRequest->additional_data.size() > 1)
 		m_messageRequestsInProgress.erase(std::make_pair((Snowflake) pRequest->key,
@@ -590,10 +386,6 @@ void DiscordInstance::HandleRequest(NetRequest* pRequest)
 		}
 
 		case HTTP_NOTFOUND:
-			if (pRequest->itype == USER_NOTE)
-				// Just means the note doesn't exist.
-				return;
-
 		case HTTP_BADGATEWAY:
 		case HTTP_UNSUPPMEDIA:
 		{
@@ -703,7 +495,6 @@ void DiscordInstance::HandleRequest(NetRequest* pRequest)
 	try
 #endif
 	{
-		//DebugResponse(pRequest);
 		Json j;
 		
 		if (pRequest->itype != IMAGE && pRequest->itype != IMAGE_ATTACHMENT)
@@ -741,56 +532,14 @@ void DiscordInstance::HandleRequest(NetRequest* pRequest)
 				
 				GetProfileCache()->LoadProfile(userSF, j);
 				
-				if (pRequest->key == 0) {
+				if (pRequest->key == 0)
 					m_mySnowflake = userSF;
-					GetFrontend()->RepaintProfile();
-				}
 
-				break;
-			}
-			case USER_NOTE:
-			{
-				Snowflake userSF = GetSnowflake(j, "note_user_id");
-				if (userSF == 0)
-					break;
-
-				Profile* pf = GetProfileCache()->LookupProfile(userSF, "", "", "", false);
-				if (pf) {
-					pf->m_note = GetFieldSafe(j, "note");
-					pf->m_bNoteFetched = true;
-
-					GetFrontend()->UpdateProfilePopout(userSF);
-				}
-				break;
-			}
-			case GUILDS:
-			{
-				// reload guild DB
-				m_guilds.clear();
-				
-				for (auto& elem : j)
-					ParseAndAddGuild(elem);
-
-				m_CurrentChannel = 0;
-
-				GetFrontend()->RepaintGuildList();
-
-				// select the first one, if possible
-				Snowflake guildsf = 0;
-				if (m_guilds.size() > 0)
-					guildsf = m_guilds.front().m_snowflake;
-
-				OnSelectGuild(guildsf);
 				break;
 			}
 			case GUILD:
 			{
 				OnFetchedChannels(GetGuild(pRequest->key), pRequest->response);
-				break;
-			}
-			case PINS:
-			{
-				GetFrontend()->OnLoadedPins(pRequest->key, pRequest->response);
 				break;
 			}
 			case MESSAGES:
@@ -1186,149 +935,6 @@ std::string DiscordInstance::ResolveMentions(const std::string& str, Snowflake g
 	return finalStr;
 }
 
-std::string DiscordInstance::ReverseMentions(const std::string& message, Snowflake guildID, bool ttsMode)
-{
-	bool hasMent = false;
-	bool hasOpen = false;
-	bool hasClose = false;
-	for (char c : message) {
-		if (c == '@' || c == '#' || c == ':')
-			hasMent = true;
-		if (c == '<')
-			hasOpen = true;
-		if (c == '>')
-			hasClose = true;
-		if (hasMent && hasOpen && hasClose)
-			break;
-	}
-
-	if (!hasMent || !hasOpen || !hasClose)
-		// no point
-		return message;
-
-	std::string newStr = "";
-
-	for (size_t i = 0; i < message.size(); i++)
-	{
-		if (message[i] != '<')
-		{
-		DefaultHandling:
-			newStr += message[i];
-			continue;
-		}
-
-		size_t mentStart = i;
-		i++;
-
-		for (; i < message.size() && message[i] != '<' && message[i] != '>'; i++);
-
-		if (i == message.size() || message[i] != '>') {
-		ErrorParsing:
-			i = mentStart;
-			goto DefaultHandling;
-		}
-
-		i++;
-		std::string mentStr = message.substr(mentStart, i - mentStart);
-		i--; // go back so that this character is skipped.
-
-		// Now it's time to try to decode that mention.
-		if (mentStr.size() < 4)
-			goto ErrorParsing;
-
-		if (mentStr[0] != '<' || mentStr[mentStr.size() - 1] != '>') {
-			assert(!"Then how did we get here?");
-			goto ErrorParsing;
-		}
-
-		// tear off the '<' and '>'
-		mentStr = mentStr.substr(1, mentStr.size() - 2);
-		std::string resultStr = mentStr;
-
-		char mentType = mentStr[0];
-		switch (mentType)
-		{
-		case '@':
-		{
-			bool isRole = false;
-			bool hasExclam = false;
-
-			if (mentStr[1] == '&')
-				isRole = true;
-			// not totally sure what this does. I only know that certain things use it
-			if (mentStr[1] == '!')
-				hasExclam = true;
-
-			std::string mentDest = mentStr.substr((isRole || hasExclam) ? 2 : 1);
-			Snowflake sf = (Snowflake)GetIntFromString(mentDest);
-
-			if (isRole)
-				resultStr = (ttsMode ? "" : "@") + LookupRoleName(sf, guildID);
-			else
-				resultStr = (ttsMode ? "" : "@") + LookupUserNameGlobally(sf, guildID);
-
-			break;
-		}
-
-		case '#':
-		{
-			std::string mentDest = mentStr.substr(1);
-			Snowflake sf = (Snowflake)GetIntFromString(mentDest);
-			Channel* pChan = GetChannelGlobally(sf);
-			if (!pChan)
-				goto ErrorParsing;
-
-			resultStr = (ttsMode ? "" : pChan->GetTypeSymbol()) + pChan->m_name;
-			break;
-		}
-
-		case ':':
-		{
-			// look for the other :
-			size_t i;
-			for (i = 1; i < mentStr.size(); i++) {
-				if (mentStr[i] == ':')
-					break;
-			}
-			if (i == mentStr.size())
-				goto ErrorParsing;
-
-			std::string mentDest = mentStr.substr(i + 1);
-			Snowflake sf = (Snowflake)GetIntFromString(mentDest);
-			
-			Guild* pGld = GetGuild(guildID);
-			if (!pGld) {
-				// Actually trust the first part, we have no way to check I don't think
-			TrustFirstPart:
-				resultStr = mentStr.substr(0, i + 1);
-			}
-			else {
-				// Look up the name of the emoji in the guild.
-				auto emit = pGld->m_emoji.find(sf);
-				if (emit == pGld->m_emoji.end())
-					goto TrustFirstPart;
-				
-				resultStr = ":" + emit->second.m_name + ":";
-			}
-
-			assert(!resultStr.empty() && resultStr[0] == ':' && resultStr[resultStr.size() - 1] == ':');
-
-			if (ttsMode && resultStr.size() >= 2)
-				resultStr = " emoji " + resultStr.substr(1, resultStr.size() - 2);
-
-			break;
-		}
-
-		default:
-			goto ErrorParsing;
-		}
-
-		newStr += resultStr;
-	}
-
-	return newStr;
-}
-
 typedef void(DiscordInstance::*DispatchFunction)(Json& j);
 
 std::map <std::string, DispatchFunction> g_dispatchFunctions;
@@ -1491,50 +1097,6 @@ void DiscordInstance::SendHeartbeatPayload()
 	GetWebsocketClient()->SendMsg(m_gatewayConnId, j.dump());
 }
 
-bool DiscordInstance::EditMessageInCurrentChannel(const std::string& msg_, Snowflake msgId)
-{
-	if (!GetCurrentChannel() || !GetCurrentGuild())
-		return false;
-
-	std::string msg = ResolveMentions(msg_, m_CurrentGuild, m_CurrentChannel);
-
-	Channel* pChan = GetCurrentChannel();
-	
-	if (!pChan->HasPermission(PERM_SEND_MESSAGES))
-		return false;
-	
-	MessagePtr pMsg = GetMessageCache()->GetLoadedMessage(pChan->m_snowflake, msgId);
-	if (!pMsg)
-		return false;
-
-	Json j;
-	if (pMsg->m_pReferencedMessage &&
-		!pMsg->m_pReferencedMessage->m_bMentionsAuthor) {
-		Json alm, prs;
-		prs.push_back("users");
-		prs.push_back("roles");
-		prs.push_back("everyone");
-		alm["parse"] = prs;
-		alm["replied_user"] = false;
-		j["allowed_mentions"] = alm;
-	}
-
-	j["content"] = msg;
-
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::PATCH,
-		GetDiscordAPI() + "channels/" + std::to_string(pChan->m_snowflake) + "/messages/" + std::to_string(msgId),
-		DiscordRequest::MESSAGE_CREATE,
-		pChan->m_snowflake,
-		j.dump(),
-		m_token,
-		std::to_string(msgId)
-	);
-
-	return true;
-}
-
 bool DiscordInstance::SendMessageToCurrentChannel(const std::string& msg_, Snowflake& tempSf, Snowflake replyTo, bool mentionReplied)
 {
 	if (!GetCurrentChannel() || !GetCurrentGuild())
@@ -1633,34 +1195,6 @@ void DiscordInstance::Typing(Snowflake channel)
 	);
 }
 
-void DiscordInstance::RequestAcknowledgeMessages(Snowflake channel, Snowflake message, bool manual)
-{
-	Channel* pChan = GetChannelGlobally(channel);
-
-	if (!pChan) {
-		DbgPrintF("DiscordInstance::RequestAcknowledgeChannel requested ack for invalid channel %lld?", channel);
-		return;
-	}
-
-	int mentCount = GetMessageCache()->GetMentionCountSince(channel, message, m_mySnowflake);
-
-	Json j;
-	j["manual"] = manual;
-	j["mention_count"] = mentCount;
-
-	std::string url = GetDiscordAPI() + "channels/" + std::to_string(channel) + "/messages/" + std::to_string(message) + "/ack";
-
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::POST_JSON,
-		url,
-		DiscordRequest::ACK,
-		0,
-		j.dump(),
-		m_token
-	);
-}
-
 void DiscordInstance::RequestAcknowledgeChannel(Snowflake channel)
 {
 	Channel* pChan = GetChannelGlobally(channel);
@@ -1690,41 +1224,6 @@ void DiscordInstance::RequestAcknowledgeChannel(Snowflake channel)
 	);
 }
 
-void DiscordInstance::RequestAcknowledgeGuild(Snowflake guild)
-{
-	Guild* pGuild = GetGuild(guild);
-	if (!pGuild)
-		return;
-
-	Json readStates;
-	Json j;
-
-	for (auto& ch : pGuild->m_channels)
-	{
-		if (!ch.HasUnreadMessages())
-			continue;
-
-		Json item;
-		item["channel_id"] = std::to_string(ch.m_snowflake);
-		item["message_id"] = std::to_string(ch.m_lastSentMsg);
-		item["read_state_type"] = 0; //XXX: not sure what this is
-
-		readStates.push_back(item);
-	}
-
-	j["read_states"] = readStates;
-
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::POST_JSON,
-		GetDiscordAPI() + "read-states/ack-bulk",
-		DiscordRequest::ACK_BULK,
-		0,
-		j.dump(),
-		m_token
-	);
-}
-
 void DiscordInstance::RequestDeleteMessage(Snowflake chan, Snowflake msg)
 {
 	std::string url = GetDiscordAPI() + "channels/" + std::to_string(chan) + "/messages/" + std::to_string(msg);
@@ -1735,21 +1234,6 @@ void DiscordInstance::RequestDeleteMessage(Snowflake chan, Snowflake msg)
 		url,
 		0,
 		DiscordRequest::DELETE_MESSAGE,
-		"",
-		m_token
-	);
-}
-
-void DiscordInstance::RequestPinMessage(Snowflake chan, Snowflake msg)
-{
-	std::string url = GetDiscordAPI() + "channels/" + std::to_string(chan) + "/messages/pins/" + std::to_string(msg);
-
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::PUT,
-		url,
-		0,
-		DiscordRequest::PIN_MESSAGE,
 		"",
 		m_token
 	);
@@ -1799,21 +1283,6 @@ void DiscordInstance::RequestReaction(Snowflake chan, Snowflake msg, const React
 	);
 }
 
-void DiscordInstance::RequestUnpinMessage(Snowflake chan, Snowflake msg)
-{
-	std::string url = GetDiscordAPI() + "channels/" + std::to_string(chan) + "/messages/pins/" + std::to_string(msg);
-
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::DELETE_,
-		url,
-		0,
-		DiscordRequest::UNPIN_MESSAGE,
-		"",
-		m_token
-	);
-}
-
 void DiscordInstance::UpdateSubscriptions(Snowflake guildId, Snowflake channelId, bool typing, bool activities, bool threads, int rangeMembers)
 {
 	Json j, data;
@@ -1853,111 +1322,7 @@ void DiscordInstance::UpdateSubscriptions(Snowflake guildId, Snowflake channelId
 
 	j["d"] = data;
 
-	DbgPrintF("Would be: %s", j.dump().c_str());
 	GetWebsocketClient()->SendMsg(m_gatewayConnId, j.dump());
-}
-
-void DiscordInstance::RequestLeaveGuild(Snowflake guild)
-{
-	Json j;
-	j["lurking"] = false;
-
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::DELETE_,
-		GetDiscordAPI() + "users/@me/guilds/" + std::to_string(guild),
-		DiscordRequest::LEAVE_GUILD,
-		guild,
-		j.dump(),
-		GetToken()
-	);
-}
-
-void DiscordInstance::JumpToMessage(Snowflake guild, Snowflake channel, Snowflake message)
-{
-	// jump there!
-	if (m_CurrentGuild != guild) {
-		OnSelectGuild(guild);
-	}
-	if (m_CurrentChannel != channel) {
-		OnSelectChannel(channel);
-	}
-	if (message)
-		GetFrontend()->JumpToMessage(message);
-}
-
-void DiscordInstance::LaunchURL(const std::string& url)
-{
-	std::string domain, resource;
-	SplitURL(url, domain, resource);
-
-	bool isDisGG = domain == "discord.gg";
-	if (domain == "discord.gg") {
-		DbgPrintF("Invite link: %s\n", url.c_str());
-	}
-	else if (domain == "discord.com" || domain == "discordapp.com" || domain == "canary.discord.com" || domain == "canary.discordapp.com") {
-		// bone headed way to parse the URL
-		for (auto& chr : resource)
-			if (chr == '/')
-				chr = ' ';
-		std::stringstream ss(resource);
-		
-		std::string glds = "";
-		Snowflake gldid = 0, chan = 0, msg = 0;
-		std::string read;
-		if (!(ss >> read))
-			return;
-
-		if (read == "channels") {
-			if (!(ss >> glds >> chan >> msg))
-				return;
-
-			if (glds == "@me") {
-				gldid = 0;
-			}
-			else {
-				gldid = GetIntFromString(glds);
-				if (gldid == 0 && glds != "0")
-					return;
-			}
-
-			JumpToMessage(gldid, chan, msg);
-			return;
-		}
-	}
-
-	GetFrontend()->LaunchURL(url);
-}
-
-void DiscordInstance::ResetGatewayURL()
-{
-	m_gatewayUrl = "";
-}
-
-void DiscordInstance::ClearData()
-{
-	CloseGatewaySession();
-
-	m_guilds.clear();
-	m_dmGuild.m_channels.clear();
-	m_messageRequestsInProgress.clear();
-	m_gatewayUrl.clear();
-	m_gatewayResumeUrl.clear();
-	m_sessionId.clear();
-	m_sessionType.clear();
-	m_pendingUploads.clear();
-	m_channelHistory.Clear();
-	m_userGuildSettings.Clear();
-	m_channelDenyList.clear();
-	m_relationships.clear();
-
-	m_mySnowflake = 0;
-	m_CurrentGuild = 0;
-	m_CurrentChannel = 0;
-	m_gatewayConnId = -1;
-	m_heartbeatSequenceId = -1;
-	m_ackVersion = 0;
-	m_nextAttachmentID = 1;
 }
 
 std::string DiscordInstance::ResolveTimestamp(const std::string& timestampCode)
@@ -2073,17 +1438,10 @@ void DiscordInstance::ResolveLinks(FormattedText* message, std::vector<Interacta
 	}
 }
 
-void DiscordInstance::SetActivityStatus(eActiveStatus status, bool bRequestServer)
+void DiscordInstance::SetActivityStatus(eActiveStatus status)
 {
 	DbgPrintF("Setting activity status to %d", status);
 	GetProfile()->m_activeStatus = status;
-
-	if (!bRequestServer)
-		return;
-
-	GetSettingsManager()->SetOnlineIndicator(GetProfile()->m_activeStatus);
-	GetSettingsManager()->FlushSettings();
-	GetFrontend()->RepaintProfile();
 }
 
 // Ends the session on purpose (logging out, quitting): no heartbeats after
@@ -2093,51 +1451,14 @@ void DiscordInstance::CloseGatewaySession()
 	GetFrontend()->SetHeartbeatInterval(0, 0);
 	if (m_gatewayConnId < 0) return;
 
-	GetWebsocketClient()->Close(m_gatewayConnId, websocketpp::close::status::normal);
+	GetWebsocketClient()->Close(m_gatewayConnId, CloseCode::NORMAL);
 	m_gatewayConnId = -1;
-}
-
-void DiscordInstance::SendSettingsProto(const std::vector<uint8_t>& data)
-{
-	if (data.empty())
-		return;
-
-	char* buffer = new char[base64::encoded_size(data.size()) + 1];
-	size_t sz = base64::encode(buffer, data.data(), data.size());
-
-	std::string dataToSend(buffer, sz);
-	Json j;
-	j["settings"] = dataToSend;
-
-	delete[] buffer;
-
-	// send it!!
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::PATCH,
-		GetDiscordAPI() + "users/@me/settings-proto/1",
-		0,
-		0,
-		j.dump(),
-		m_token
-	);
 }
 
 void DiscordInstance::LoadUserSettings(const std::string& userSettings)
 {
-	// load some old stuff so we can check it and send appropriate events
-	std::string oldStatus = GetSettingsManager()->GetCustomStatusText();
-	eActiveStatus oldActive = GetProfile()->m_activeStatus;
-
 	GetSettingsManager()->LoadDataBase64(userSettings);
-
-	std::string newStatus = GetSettingsManager()->GetCustomStatusText();
-	eActiveStatus newActive = GetProfile()->m_activeStatus;
-
 	UpdateSettingsInfo();
-
-	if (oldStatus != newStatus || oldActive != newActive)
-		GetFrontend()->RepaintProfile();
 }
 
 bool DiscordInstance::ResortChannels(Snowflake guild)
@@ -2158,7 +1479,7 @@ bool DiscordInstance::ResortChannels(Snowflake guild)
 void DiscordInstance::UpdateSettingsInfo()
 {
 	GetProfile()->m_status = GetSettingsManager()->GetCustomStatusText();
-	SetActivityStatus(GetSettingsManager()->GetOnlineIndicator(), false);
+	SetActivityStatus(GetSettingsManager()->GetOnlineIndicator());
 }
 
 void DiscordInstance::ParsePermissionOverwrites(Channel& channel, nlohmann::json& j)
@@ -2284,8 +1605,6 @@ void DiscordInstance::ParseChannel(Channel& c, nlohmann::json& chan, int& num)
 
 				c.m_avatarLnk = GetFieldSafe(chan, "icon");
 
-				if (!c.m_avatarLnk.empty())
-					GetFrontend()->RegisterChannelIcon(c.m_snowflake, c.m_avatarLnk);
 			}
 
 			if (chan.contains("name"))
@@ -2341,57 +1660,6 @@ void DiscordInstance::ParseChannel(Channel& c, nlohmann::json& chan, int& num)
 
 bool DiscordInstance::SortGuilds()
 {
-#ifdef DISABLE_GUILD_FOLDERS
-	// Sort.
-	m_guilds.sort();
-
-	std::vector<Snowflake> ids = GetSettingsManager()->GetGuildFolders();
-
-	// Convert to set.
-	std::map<Snowflake, int> ids_set;
-	for (size_t idx = 0; idx < ids.size(); idx++)
-		ids_set[ids[idx]] = int(idx);
-
-	// arbitrarily large integer. Surely no one will ever cross 10K guilds, but even then,
-	// Discord won't let you join more than 200 (100 if you aren't using nitro), so who cares?!
-	int orderOffset = 10000;
-	int unordered = 1;
-
-	for (auto& gld : m_guilds)
-	{
-		auto iter = ids_set.find(gld.m_snowflake);
-		if (iter == ids_set.end())
-		{
-			// not found in guild folders
-			gld.m_order = orderOffset - unordered;
-			unordered++;
-		}
-		else
-		{
-			gld.m_order = orderOffset + iter->second;
-		}
-	}
-
-	// Check if already sorted, if yes, don't need to do a redundant check
-	bool sorted = true;
-	int lastOrder = -1;
-	for (auto& gld : m_guilds)
-	{
-		if (lastOrder > gld.m_order) {
-			sorted = false;
-			break;
-		}
-
-		lastOrder = gld.m_order;
-	}
-
-	// Ok, now sort again.
-	if (sorted)
-		return false;
-
-	m_guilds.sort();
-	return true;
-#else
 	GuildItemList gil = std::move(m_guildItemList);
 	m_guildItemList.Clear();
 
@@ -2443,13 +1711,10 @@ bool DiscordInstance::SortGuilds()
 	// TODO: Add a name to empty guild folders.
 
 	return gil.CompareOrder(m_guildItemList) == false;
-#endif
 }
 
 void DiscordInstance::ParseAndAddGuild(nlohmann::json& elem)
 {
-	std::string uu = elem.dump();
-
 	Guild g;
 	g.m_snowflake = GetSnowflake(elem, "id");
 	Json& props = elem["properties"];
@@ -2469,9 +1734,6 @@ void DiscordInstance::ParseAndAddGuild(nlohmann::json& elem)
 
 	// parse avatar
 	g.m_avatarlnk = GetFieldSafe(props, "icon");
-
-	if (!g.m_avatarlnk.empty())
-		GetFrontend()->RegisterIcon(g.m_snowflake, g.m_avatarlnk);
 
 	// parse channels
 	Json& channels = elem["channels"];
@@ -2551,14 +1813,12 @@ void DiscordInstance::InitDispatchFunctions()
 	DECL(MESSAGE_ACK);
 	DECL(USER_SETTINGS_PROTO_UPDATE);
 	DECL(USER_GUILD_SETTINGS_UPDATE);
-	DECL(USER_NOTE_UPDATE);
 	DECL(GUILD_CREATE);
 	DECL(GUILD_DELETE);
 	DECL(CHANNEL_CREATE);
 	DECL(CHANNEL_DELETE);
 	DECL(CHANNEL_UPDATE);
 	DECL(GUILD_MEMBER_LIST_UPDATE);
-	DECL(GUILD_MEMBERS_CHUNK);
 	DECL(TYPING_START);
 	DECL(PRESENCE_UPDATE);
 	DECL(PASSIVE_UPDATE_V1);
@@ -2658,14 +1918,9 @@ void DiscordInstance::HandleREADY(Json& j)
 	m_connectedAt = time(NULL);
 	GetFrontend()->OnConnected();
 
-#ifdef _DEBUG
-	std::string str = j.dump();
-#endif
-
 	Json& data = j["d"];
 	m_gatewayResumeUrl = data["resume_gateway_url"];
 	m_sessionId = data["session_id"];
-	m_sessionType = data["session_type"];
 
 	// ==== reload user
 	Json& user = data["user"];
@@ -3032,21 +2287,6 @@ void DiscordInstance::HandleUSER_GUILD_SETTINGS_UPDATE(nlohmann::json& j)
 	pSettings->Load(data);
 }
 
-void DiscordInstance::HandleUSER_NOTE_UPDATE(nlohmann::json& j)
-{
-	Json& data = j["d"];
-	Snowflake uid = GetSnowflake(data, "id");
-	std::string note = GetFieldSafe(data, "note");
-
-	Profile* pf = GetProfileCache()->LookupProfile(uid, "", "", "", false);
-	if (!pf) return;
-
-	pf->m_note = note;
-	pf->m_bNoteFetched = true;
-
-	GetFrontend()->UpdateProfilePopout(uid);
-}
-
 void DiscordInstance::HandleUSER_SETTINGS_PROTO_UPDATE(Json& j)
 {
 	//{"t":"USER_SETTINGS_PROTO_UPDATE","s":X,"op":0,"d":{"settings":{"type":1,"proto":"blabla"},"partial":false}} [PAYLOAD ENDS HERE]
@@ -3366,33 +2606,6 @@ void DiscordInstance::HandlePASSIVE_UPDATE_V1(nlohmann::json& j)
 	}
 }
 
-void DiscordInstance::HandleGUILD_MEMBERS_CHUNK(nlohmann::json& j)
-{
-	Json& data = j["d"];
-	Snowflake guildId = GetSnowflake(data, "guild_id");
-
-	Guild* pGld = GetGuild(guildId);
-	if (!pGld)
-		return;
-
-	std::set<Snowflake> memsToRefresh;
-	if (data["members"].is_array())
-	{
-		for (Json& mem : data["members"])
-			memsToRefresh.insert(ParseGuildMember(guildId, mem));
-	}
-
-	if (data["not_found"].is_array())
-	{
-		for (auto& nf : data["not_found"]) {
-			GetProfileCache()->ProfileDoesntExist(GetSnowflakeFromJsonObject(nf), guildId);
-		}
-	}
-
-	if (m_CurrentGuild == guildId)
-		GetFrontend()->RefreshMembers(memsToRefresh);
-}
-
 void DiscordInstance::HandleTYPING_START(nlohmann::json& j)
 {
 	Json& data = j["d"];
@@ -3516,164 +2729,4 @@ void DiscordInstance::HandleGuildMemberListUpdate_Update(Snowflake guild, nlohma
 
 	std::set<Snowflake> updates{ sf };
 	GetFrontend()->RefreshMembers(updates);
-}
-
-void DiscordInstance::OnUploadAttachmentFirst(NetRequest* pReq)
-{
-	auto& ups = m_pendingUploads;
-
-	if (pReq->result != HTTP_OK)
-	{
-		// Delete enqueued upload
-		auto iter = ups.find(pReq->key);
-		std::string name = iter->second.m_uploadFileName;
-		if (iter != ups.end())
-			ups.erase(iter);
-
-		GetFrontend()->OnFailedToUploadFile(name, pReq->result);
-		return;
-	}
-
-	Json j = Json::parse(pReq->response);
-	assert(j["attachments"].size() == 1);
-
-	for (auto& att : j["attachments"])
-	{
-		Snowflake id = GetSnowflakeFromJsonObject(att["id"]);
-
-		PendingUpload& up = ups[id];
-		up.m_uploadUrl = GetFieldSafe(att, "upload_url");
-		up.m_uploadFileName = GetFieldSafe(att, "upload_filename");
-
-		// Send data to the upload URL
-		uint8_t* pNewData = new uint8_t[up.m_data.size()];
-		memcpy(pNewData, up.m_data.data(), up.m_data.size());
-
-		GetHTTPClient()->PerformRequest(
-			true,
-			NetRequest::PUT_OCTETS_PROGRESS,
-			up.m_uploadUrl,
-			DiscordRequest::UPLOAD_ATTACHMENT_2,
-			pReq->key,
-			"",
-			"",//GetToken(),
-			"",
-			nullptr, // default processing
-			pNewData,
-			up.m_data.size()
-		);
-
-		GetFrontend()->OnStartProgress(pReq->key, up.m_name, true);
-	}
-}
-
-void DiscordInstance::OnUploadAttachmentSecond(NetRequest* pReq)
-{
-	auto& ups = m_pendingUploads;
-	auto iter = ups.find(pReq->key);
-	if (iter == ups.end())
-		return;
-
-	if (pReq->result == HTTP_PROGRESS)
-	{
-		// N.B. totally safe to access because corresponding networker thread is locked up waiting for us
-		pReq->m_bCancelOp = GetFrontend()->OnUpdateProgress(pReq->key, pReq->GetOffset(), pReq->GetTotalBytes());
-		return;
-	}
-
-	if (pReq->result != HTTP_OK)
-	{
-		// Delete enqueued upload
-		ups.erase(iter);
-		GetFrontend()->OnFailedToUploadFile(pReq->additional_data, pReq->result);
-		GetFrontend()->OnStopProgress(pReq->key);
-		return;
-	}
-
-	// Ok!  Now that we have uploaded the data, time to send the actual message.
-	PendingUpload& up = iter->second;
-
-	Json j, attachment, stickerIds;
-	attachment["id"] = std::to_string(pReq->key);
-	attachment["filename"] = up.m_name;
-	attachment["uploaded_filename"] = up.m_uploadFileName;
-
-	stickerIds = Json::array();
-
-	j["content"] = up.m_content;
-	j["nonce"] = std::to_string(up.m_tempSF);
-	j["channel_id"] = std::to_string(up.m_channelSF);
-	j["type"] = 0;
-	j["attachments"].push_back(attachment);
-	j["sticker_ids"] = stickerIds;
-
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::POST_JSON,
-		GetDiscordAPI() + "channels/" + std::to_string(up.m_channelSF) + "/messages",
-		DiscordRequest::MESSAGE_CREATE,
-		up.m_channelSF,
-		j.dump(),
-		GetToken(),
-		std::to_string(up.m_tempSF)
-	);
-
-	GetFrontend()->OnStopProgress(pReq->key);
-
-	// typing indicator goes away when a message is received, so allow sending one in like 100ms
-	m_lastTypingSent = GetTimeMs() - TYPING_INTERVAL + 100;
-
-	// Then erase it
-	ups.erase(iter);
-}
-
-bool DiscordInstance::SendMessageAndAttachmentToCurrentChannel(
-	const std::string& msg_,
-	Snowflake& tempSf,
-	uint8_t* attData,
-	size_t attSize,
-	const std::string& attName,
-	bool isSpoiler)
-{
-	if (!GetCurrentChannel() || !GetCurrentGuild())
-		return false;
-
-	std::string msg = ResolveMentions(msg_, m_CurrentGuild, m_CurrentChannel);
-
-	Channel* pChan = GetCurrentChannel();
-	tempSf = CreateTemporarySnowflake();
-
-	if (!pChan->HasPermission(PERM_SEND_MESSAGES) || !pChan->HasPermission(PERM_ATTACH_FILES))
-		return false;
-	
-	std::string newAttName = (isSpoiler ? "SPOILER_" : "") + attName;
-
-	Json file;
-	file["filename"]  = newAttName;
-	file["file_size"] = int(attSize);
-	file["is_clip"]   = false;
-	file["id"]        = std::to_string(m_nextAttachmentID);
-
-	Json files;
-	files.push_back(file);
-
-	Json j;
-	j["files"] = files;
-
-	m_pendingUploads[m_nextAttachmentID] = PendingUpload(newAttName, attData, attSize, msg, tempSf, m_CurrentChannel);
-
-	GetHTTPClient()->PerformRequest(
-		true,
-		NetRequest::POST_JSON,
-		GetDiscordAPI() + "channels/" + std::to_string(m_CurrentChannel) + "/attachments",
-		DiscordRequest::UPLOAD_ATTACHMENT,
-		m_nextAttachmentID,
-		j.dump(),
-		m_token,
-		newAttName,
-		nullptr // default processing
-	);
-
-	m_nextAttachmentID++;
-	return true;
 }

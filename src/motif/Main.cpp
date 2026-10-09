@@ -176,10 +176,6 @@ public:
 		if (GetMainWindow()->ShowsMember(userID))
 			GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_MEMBERS);
 	}
-	void UpdateProfileAvatar(Snowflake userID, const std::string& resid) override {
-		if (GetMainWindow()->ShowsMember(userID))
-			GetMainWindow()->ScheduleListUpdate(MainWindow::LIST_MEMBERS);
-	}
 	void OnAttachmentDownloaded(bool bIsProfilePicture, const uint8_t* pData, size_t nSize, const std::string& additData) override {
 		ImageCache::Downloaded(additData, pData, nSize);
 	}

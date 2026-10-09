@@ -11,6 +11,7 @@ repeated requests).  run.sh builds dm-cli and calls this in a container.
 
 import argparse
 import asyncio
+import http
 import http.server
 import json
 import os
@@ -24,7 +25,7 @@ import time
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
 
-GW_PORT, API_PORT = 8443, 8444
+GW_PORT, API_PORT, ROGUE_PORT = 8443, 8444, 8445
 T0 = time.monotonic()
 
 
@@ -43,6 +44,7 @@ class State:
         self.on_identify = None # async fn(ws) -> True: answered it (no READY)
         self.seq = 0
         self.api = {}           # path -> list of (status, headers, body) answers, the last repeated
+        self.refuse = None      # an HTTP status to answer the WebSocket handshake with
         self.lock = threading.Lock()
 
     def log(self, kind, **kw):
@@ -102,6 +104,15 @@ async def gateway(ws):
     except ConnectionClosed:
         pass
     S.log("closed", code=ws.close_code)
+
+
+def handshake(connection, request):
+    """The gateway's answer to the WebSocket handshake, when the test wants
+    it refused."""
+    if S.refuse:
+        S.log("refused", status=S.refuse)
+        return connection.respond(http.HTTPStatus(S.refuse), "busy\n")
+    return None
 
 
 class Api(http.server.BaseHTTPRequestHandler):
@@ -259,6 +270,7 @@ async def t_dead_connection():
         check(len(S.of("heartbeat")) == 1, "one unanswered heartbeat, then no more on that connection")
         await wait_for(lambda: S.of("resume"), 5, "RESUME")
         check(True, "resumed on a new connection")
+        check(S.of("closed")[0][2]["code"] == 4000, "the dead one closed by the client with 4000 (keeps the session)")
     finally:
         c.stop()
 
@@ -390,9 +402,93 @@ async def t_api_refused_token():
         c.stop()
 
 
+async def t_close_then_drop():
+    """Discord's close frame and the end of the connection together: the
+    client still reads the code (4004: never reconnects)"""
+    async def act(ws):
+        await asyncio.sleep(1)
+        S.log("dropped")
+        ws.transport.write(b"\x88\x02\x0f\xa4")   # close, 4004, unmasked
+        ws.transport.close()
+    S.on_ready = act
+    c = Client([])
+    try:
+        await wait_for(lambda: S.of("dropped"), 5, "the close")
+        await asyncio.sleep(8)
+        check("closed the connection: 4004" in c.output(), "the client read close code 4004")
+        check(len(S.of("connect")) == 1, "no reconnection in 8 s")
+    finally:
+        c.stop()
+
+
+async def t_ws_frames():
+    """a 4 MB message in fragments, a ping, a request in two fragments: all
+    taken, on the same connection"""
+    S.hb_interval = 30000
+    async def act(ws):
+        S.on_ready = None
+        await asyncio.sleep(0.5)
+        S.seq += 1
+        big = json.dumps({"op": 0, "t": "TEST_PADDING", "s": S.seq, "d": {"pad": "\u00e9x" * 2000000}})
+        await ws.send([big[i:i + 65536] for i in range(0, len(big), 65536)])
+        S.log("big sent", size=len(big.encode()))
+        t = now()
+        pong = await ws.ping(b"dm")
+        await asyncio.wait_for(pong, 5)
+        S.log("pong", after=round(now() - t, 3))
+        S.log("asked")
+        await ws.send(['{"op":', ' 1, "d": null}'])
+    S.on_ready = act
+    c = Client([])
+    try:
+        await wait_for(lambda: S.of("pong"), 15, "the pong")
+        await wait_for(lambda: S.of("heartbeat"), 5, "a heartbeat")
+        dt = S.of("heartbeat")[0][0] - S.of("asked")[0][0]
+        check(0 <= dt < 0.5, "the fragmented op 1 answered %.2f s later" % dt)
+        check(len(S.of("connect")) == 1 and not S.of("closed"), "one connection, still open")
+    finally:
+        c.stop()
+
+
+async def t_ws_refused():
+    """the gateway refuses the WebSocket handshake (503): no retrying"""
+    S.refuse = 503
+    c = Client([])
+    try:
+        await wait_for(lambda: S.of("refused"), 10, "the handshake")
+        await asyncio.sleep(8)
+        check(len(S.of("refused")) == 1, "one attempt in 8 s")
+        check("refused the WebSocket connection" in c.output(), "the user is told")
+    finally:
+        c.stop()
+
+
+async def connect_fails(url, label):
+    c = Client(["--connect", url], token=False)
+    try:
+        await wait_for(lambda: c.p.poll() is not None, 15, "dm-cli to give up")
+        out = c.output()
+        check("could not connect" in out and "(TLS)" in out, "%s: refused as a TLS failure" % label)
+        check(not S.of("connect"), "%s: no WebSocket opened" % label)
+    finally:
+        c.stop()
+
+
+async def t_ws_untrusted():
+    """a certificate from no trusted CA: refused"""
+    await connect_fails("wss://localhost:%d/" % ROGUE_PORT, "untrusted")
+
+
+async def t_ws_wrong_name():
+    """a trusted certificate for another name (localhost, reached as
+    127.0.0.1): refused"""
+    await connect_fails("wss://127.0.0.1:%d/" % GW_PORT, "wrong name")
+
+
 TESTS = [t_heartbeats, t_resume_after_close, t_resume_after_reconnect_op, t_invalid_session,
          t_dead_connection, t_heartbeat_request, t_auth_failed, t_api_429_retry, t_api_bucket,
-         t_api_cloudflare_429, t_api_refused_token, t_rate_limited_close, t_login_cap]
+         t_api_cloudflare_429, t_api_refused_token, t_close_then_drop, t_ws_frames, t_ws_refused,
+         t_ws_untrusted, t_ws_wrong_name, t_rate_limited_close, t_login_cap]
 
 
 async def main():
@@ -401,7 +497,15 @@ async def main():
     api = http.server.ThreadingHTTPServer(("127.0.0.1", API_PORT), Api)
     api.socket = sslctx.wrap_socket(api.socket, server_side=True)
     threading.Thread(target=api.serve_forever, daemon=True).start()
-    async with serve(gateway, "127.0.0.1", GW_PORT, ssl=sslctx):
+    # a server with a certificate of its own making, trusted by nobody
+    rogue = tempfile.mkdtemp()
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=localhost",
+                    "-addext", "subjectAltName=DNS:localhost", "-keyout", rogue + "/key.pem", "-out", rogue + "/cert.pem"],
+                   check=True, capture_output=True)
+    roguectx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    roguectx.load_cert_chain(rogue + "/cert.pem", rogue + "/key.pem")
+    async with serve(gateway, "127.0.0.1", GW_PORT, ssl=sslctx, process_request=handshake), \
+            serve(gateway, "127.0.0.1", ROGUE_PORT, ssl=roguectx):
         chosen = [t for t in TESTS if not OPTS.tests or t.__name__[2:] in OPTS.tests]
         failed = []
         for t in chosen:

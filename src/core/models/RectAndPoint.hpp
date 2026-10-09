@@ -1,7 +1,5 @@
 #pragma once
 
-#define W32RECT(rc) rc.left, rc.top, rc.right, rc.bottom
-
 struct Rect {
 	int left = 0;
 	int top = 0;
@@ -14,7 +12,6 @@ struct Rect {
 	Rect() {}
 	Rect(int l, int t, int r, int b) : left(l), top(t), right(r), bottom(b) {}
 
-	void SetEmpty() { left = top = right = bottom = 0; }
 };
 
 struct Point {

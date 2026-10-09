@@ -24,8 +24,6 @@ struct GuildRole
 	Snowflake m_id = 0;
 	std::string m_name;
 	int m_colorOriginal = 0;
-	std::string m_icon; // avatar
-	std::string m_unicodeEmoji;
 	// role is pinned in the user listing according to Discord API.
 	// Probably actually means "show separate from other online members"
 	bool m_bHoist = false;
@@ -42,14 +40,6 @@ struct GuildRole
 	}
 
 	void Load(nlohmann::json& j);
-};
-
-struct GuildMemberGroup
-{
-	int m_count = 0;
-
-	GuildMemberGroup() {}
-	GuildMemberGroup(int count) : m_count(count) {}
 };
 
 struct Guild
@@ -105,11 +95,8 @@ struct Guild
 
 	uint64_t ComputeBasePermissions(Snowflake member);
 
-	bool IsFirstChannel(Snowflake channel);
-
 	void AddKnownMember(Snowflake sf) {
 		m_knownMembers.insert(sf);
 	}
 
-	bool IsUnread();
 };

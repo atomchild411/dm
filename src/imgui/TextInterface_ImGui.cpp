@@ -141,15 +141,3 @@ int MdGetQuoteIndentSize()
 {
 	return TextLayout::QUOTE_INDENT;
 }
-
-void MdSetClippingRect(DrawingContext* ctx, const Rect& rect)
-{
-	if (ctx->dl)
-		ctx->dl->PushClipRect(At(ctx, rect.left, rect.top), At(ctx, rect.right, rect.bottom), true);
-}
-
-void MdClearClippingRect(DrawingContext* ctx)
-{
-	if (ctx->dl)
-		ctx->dl->PopClipRect();
-}

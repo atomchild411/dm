@@ -11,7 +11,7 @@
 #include <utime.h>
 #include <vector>
 
-#include <md5/MD5.h>
+#include <openssl/evp.h>
 
 #include "Frontend.hpp"
 #include "network/DiscordAPI.hpp"
@@ -164,7 +164,16 @@ namespace
 		auto it = ids.find(what);
 		if (it != ids.end())
 			return it->second;
-		std::string id = MD5(what).finalize().hexdigest();
+		// MD5 only names the files (as it always has, so caches stay valid)
+		unsigned char md[EVP_MAX_MD_SIZE];
+		unsigned int mdLen = 0;
+		EVP_Digest(what.data(), what.size(), md, &mdLen, EVP_md5(), NULL);
+		std::string id;
+		for (unsigned int i = 0; i < mdLen; i++) {
+			static const char hex[] = "0123456789abcdef";
+			id += hex[md[i] >> 4];
+			id += hex[md[i] & 15];
+		}
 		ids.emplace(what, id);
 		return id;
 	}

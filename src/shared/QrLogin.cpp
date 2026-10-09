@@ -13,7 +13,6 @@
 #include <openssl/rsa.h>
 #include <openssl/x509.h>
 
-#include <boost/base64/base64.hpp>
 #include <nlohmann/json.h>
 #include <qrcodegen/qrcodegen.h>
 
@@ -22,6 +21,7 @@
 #include "network/WebsocketClient.hpp"
 #include "posix/MainQueue.hpp"
 #include "Timers.hpp"
+#include "utils/Base64.hpp"
 
 using Json = nlohmann::json;
 
@@ -77,8 +77,6 @@ namespace
 			"",
 			"",
 			TicketResponse,
-			nullptr,
-			0,
 			headers
 		);
 	}
@@ -99,8 +97,7 @@ namespace
 
 	std::string Base64(const uint8_t* data, size_t n, bool url)
 	{
-		std::string out(base64::encoded_size(n), '\0');
-		out.resize(base64::encode(&out[0], data, n));
+		std::string out = Base64Encode(data, n);
 		if (url) {
 			for (auto& ch : out) {
 				if (ch == '+') ch = '-';
@@ -112,18 +109,10 @@ namespace
 		return out;
 	}
 
-	std::vector<uint8_t> Unbase64(const std::string& s)
-	{
-		std::vector<uint8_t> out(base64::decoded_size(s.size()) + 4);
-		auto r = base64::decode(out.data(), s.c_str(), s.size());
-		out.resize(r.first);
-		return out;
-	}
-
 	// RSA-OAEP with SHA-256, as the remote-auth gateway encrypts.
 	bool Decrypt(EVP_PKEY* key, const std::string& b64, std::vector<uint8_t>& out)
 	{
-		std::vector<uint8_t> in = Unbase64(b64);
+		std::vector<uint8_t> in = Base64Decode(b64);
 		EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(key, NULL);
 		bool ok = ctx && EVP_PKEY_decrypt_init(ctx) > 0 &&
 			EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) > 0 &&
@@ -195,7 +184,7 @@ namespace
 		StopHeartbeat();
 		int id = g_gateway.exchange(-1);
 		if (id >= 0)
-			GetWebsocketClient()->Close(id, websocketpp::close::status::normal);
+			GetWebsocketClient()->Close(id, CloseCode::NORMAL);
 	}
 
 	void Connect()
@@ -276,7 +265,7 @@ namespace
 		g_state = nullptr;
 		int id = g_gateway.exchange(-1);
 		if (id >= 0)
-			GetWebsocketClient()->Close(id, websocketpp::close::status::normal);
+			GetWebsocketClient()->Close(id, CloseCode::NORMAL);
 		if (s->heartbeat)
 			Timers::Cancel(s->heartbeat);
 		if (s->key)
@@ -389,11 +378,6 @@ void QrLogin::Stop()
 	delete Detach();
 }
 
-bool QrLogin::Active()
-{
-	return g_state != nullptr;
-}
-
 const std::string& QrLogin::StatusText()
 {
 	return g_state ? g_state->status : g_empty;
@@ -496,7 +480,7 @@ void QrLogin::OnGatewayMessage(const std::string& payload)
 		// The code must be for our key (its SHA-256): a code for another key
 		// would log the phone in to whoever holds that key.
 		std::string fingerprint = j.value("fingerprint", "");
-		std::vector<uint8_t> der = Unbase64(s->publicKey);
+		std::vector<uint8_t> der = Base64Decode(s->publicKey);
 		unsigned char digest[32];
 		unsigned int dlen = 0;
 		EVP_Digest(der.data(), der.size(), digest, &dlen, EVP_sha256(), NULL);

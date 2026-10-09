@@ -21,9 +21,6 @@ public:
 	// If this is a folder, gets a list of its sub items.
 	virtual std::list<AbstractGuildItem*>* GetItems() = 0;
 
-	// Get this guild item's avatar icon.
-	virtual std::string GetAvatar() = 0;
-
 	// Get this guild item's ID.
 	// For guild folders, this is the ID of the folder. For guilds, this is the ID of the guild.
 	virtual Snowflake GetID() { return m_id; }
@@ -58,8 +55,6 @@ public:
 	bool IsFolder() override { return true; }
 
 	std::list<AbstractGuildItem*>* GetItems() override { return &m_items; }
-
-	std::string GetAvatar() override { return ""; }
 
 	void EraseGuild(Snowflake guildId) override
 	{
@@ -102,8 +97,6 @@ public:
 	bool IsFolder() override { return false; }
 
 	std::list<AbstractGuildItem*>* GetItems() override { return nullptr; }
-
-	std::string GetAvatar() override { return m_avatar; }
 
 	GuildGuildItem(Snowflake guild, const std::string& name, const std::string& avatar) {
 		m_name = name;

@@ -44,14 +44,11 @@ TARGET    ?= bin/dm-$(FRONTEND)
 endif
 
 DEFINES = \
-	-DASIO_STANDALONE             \
-	-DASIO_HAS_THREADS            \
-	-DASIO_SEPARATE_COMPILATION   \
 	-DDISCORD_MESSENGER           \
 	-DCPPHTTPLIB_OPENSSL_SUPPORT  \
 	-DCPPHTTPLIB_NO_EXCEPTIONS
 
-INC_DIRS = -Isrc -Isrc/core -Ideps -Ideps/asio -Ideps/websocketpp \
+INC_DIRS = -Isrc -Isrc/core -Ideps \
 	-I$(PREFIX_DEPS)/include
 
 ifeq ($(DEBUG),yes)
@@ -61,7 +58,7 @@ OPT = -DNDEBUG -O2
 endif
 
 CXXFLAGS = $(INC_DIRS) $(DEFINES) -std=c++11 -pthread $(OPT) $(EXTRA_CXXFLAGS)
-# nlohmann/json and asio spell their literal operators the way newer clangs
+# nlohmann/json spells their literal operators the way newer clangs
 # call deprecated (operator "" _json): not ours to change
 CXXFLAGS += $(shell $(CXX) -Werror -Wno-deprecated-literal-operator -x c++ -fsyntax-only /dev/null 2>/dev/null && echo -Wno-deprecated-literal-operator)
 LDFLAGS  = -L$(PREFIX_DEPS)/lib -pthread $(EXTRA_LDFLAGS)
@@ -148,10 +145,7 @@ endif
 
 CXXFILES := \
 	$(shell find src/core src/posix src/shared src/$(FRONTEND) -type f -name '*.cpp') \
-	$(IMGUI_FILES) $(COMPAT_FILES) \
-	deps/asio/src/asio.cpp \
-	deps/asio/src/asio_ssl.cpp \
-	deps/md5/MD5.cpp
+	$(IMGUI_FILES) $(COMPAT_FILES)
 
 CFILES := deps/qrcodegen/qrcodegen.c
 
@@ -171,17 +165,17 @@ clean:
 $(BUILD_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	@echo ">> $<"
-	@$(CXX) $(CXXFLAGS) -MMD -MF $(BUILD_DIR)/$*.d -c $< -o $@
+	@$(CXX) $(CXXFLAGS) -MMD -MP -MF $(BUILD_DIR)/$*.d -c $< -o $@
 
 $(BUILD_DIR)/%.o: %.mm
 	@mkdir -p $(dir $@)
 	@echo ">> $<"
-	@$(CXX) $(CXXFLAGS) -fobjc-arc -MMD -MF $(BUILD_DIR)/$*.d -c $< -o $@
+	@$(CXX) $(CXXFLAGS) -fobjc-arc -MMD -MP -MF $(BUILD_DIR)/$*.d -c $< -o $@
 
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	@echo ">> $<"
-	@$(CC) -std=c99 $(OPT) $(EXTRA_CXXFLAGS:-std=%=) -MMD -MF $(BUILD_DIR)/$*.d -c $< -o $@
+	@$(CC) -std=c99 $(OPT) $(EXTRA_CXXFLAGS:-std=%=) -MMD -MP -MF $(BUILD_DIR)/$*.d -c $< -o $@
 
 $(BUILD_DIR)/dm.res: windows/dm.rc windows/dm.manifest
 	@mkdir -p $(dir $@)

@@ -28,7 +28,6 @@ struct MessageChunkList
 	void AddMessage(const Message& msg);
 	void EditMessage(const Message& msg);
 	void DeleteMessage(Snowflake message);
-	int GetMentionCountSince(Snowflake message, Snowflake user);
 	MessagePtr GetLoadedMessage(Snowflake message);
 };
 
@@ -45,9 +44,7 @@ public:
 	void AddMessage(Snowflake channel, const Message& msg);
 	void EditMessage(Snowflake channel, const Message& msg);
 	void DeleteMessage(Snowflake channel, Snowflake message);
-	int GetMentionCountSince(Snowflake channel, Snowflake message, Snowflake user);
 	void ClearAllChannels();
-	bool IsMessageLoaded(Snowflake channel, Snowflake message);
 
 	MessagePtr GetLoadedMessage(Snowflake channel, Snowflake message);
 
