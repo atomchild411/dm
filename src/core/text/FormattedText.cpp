@@ -1,5 +1,6 @@
 #include "FormattedText.hpp"
 #include <cassert>
+#include <cctype>
 #include <stack>
 #include <algorithm>
 #include "../models/RectAndPoint.hpp"
@@ -502,6 +503,15 @@ void FormattedText::ParseText()
 
 				const char* strv = tk.m_text.c_str();
 				size_t len = tk.m_text.size();
+				// ```lang<LF>: a word before the first line break names the
+				// language, and is not shown (as Discord does)
+				size_t k = 0;
+				while (k < len && (isalnum((unsigned char) strv[k]) || strchr("+-#._", strv[k])))
+					k++;
+				if (k > 0 && k + 1 < len && strv[k] == '\n') {
+					strv += k;
+					len -= k;
+				}
 				if (*strv) {
 					if (strv[0] == '\n') {
 						strv++;
