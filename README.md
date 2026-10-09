@@ -225,6 +225,10 @@ leaves `bin/windows/DiscordMessenger-<version>-windows-x64.msi` and `.zip`, and 
 a port (`dm-cli --probe` checks HTTPS, TLS and the gateway without logging in). `--demo` starts any
 client with sample servers and messages, without connecting.
 
+`tests/net/run.sh` tests how the client treats Discord's servers, against a stand-in for them (never
+the real ones), in a container: resuming sessions, heartbeats, close codes, rate limits, and that
+nothing makes it reconnect or ask again and again.
+
 ## Features
 
 ### Implemented

@@ -13,6 +13,10 @@
 
 #include <httplib/httplib.h>
 
+#include "RateLimits.hpp"
+#include "network/DiscordAPI.hpp"
+#include <thread>
+
 #ifndef DM_DATADIR
 #define DM_DATADIR "/usr/local/share/discord-messenger"
 #endif
@@ -102,9 +106,35 @@ int NetRequest::Priority() const
 	return prio;
 }
 
-bool NetworkerThread::ProcessResult(NetRequest& req, const httplib::Result& res, int& attempt)
+static const char* MethodName(NetRequest::eType t)
+{
+	switch (t) {
+		case NetRequest::POST: case NetRequest::POST_JSON: return "POST";
+		case NetRequest::PUT: case NetRequest::PUT_JSON: case NetRequest::PUT_OCTETS:
+		case NetRequest::PUT_OCTETS_PROGRESS: return "PUT";
+		case NetRequest::PATCH: return "PATCH";
+		case NetRequest::DELETE_: return "DELETE";
+		default: return "GET";
+	}
+}
+
+bool NetworkerThread::ProcessResult(NetRequest& req, const httplib::Result& res, int& attempt, bool api, int& limited)
 {
 	using namespace httplib;
+
+	// Discord's rate limits: what the answer says of them; a 429 is made
+	// again (twice at most) once the time it asks for has passed; a refused
+	// token is not sent again
+	if (api && res) {
+		int wait = RateLimits::Learn(MethodName(req.type), req.url, res->status,
+			[&res](const char* h) { return res->get_header_value(h); }, res->body);
+		if (res->status == 401 && !req.authorization.empty())
+			RateLimits::Refuse(req.authorization);
+		if (wait >= 0 && ++limited <= 2) {
+			DbgPrintF("Request to %s was rate limited; trying again in %d ms", req.url.c_str(), wait);
+			return true;
+		}
+	}
 
 	if (!res || res.error() == Error::SSLServerVerification)
 	{
@@ -243,50 +273,72 @@ void NetworkerThread::FulfillRequest(NetRequest& req)
 	for (auto& h : req.extra_headers)
 		headers.insert(h);
 
+	// a token Discord refused is not sent again (each refusal counts
+	// against this address with Cloudflare)
+	if (!req.authorization.empty() && RateLimits::IsRefused(req.authorization)) {
+		DbgPrintF("Not sending %s: Discord refused the token", req.url.c_str());
+		return;
+	}
+	const bool api = req.url.compare(0, GetDiscordAPI().size(), GetDiscordAPI()) == 0;
+
 	using namespace std::placeholders;
-	int attempt = 0;
+	int attempt = 0, limited = 0;
 	bool retry = false;
 	do
 	{
+		// wait for the route's (or every route's) limit to pass, rather than
+		// meet it; a wait of minutes is given up
+		if (api) {
+			int wait = RateLimits::WaitBefore(MethodName(req.type), req.url);
+			if (wait > 120000) {
+				req.result = HTTP_TOOMANYREQS;
+				req.response = "Discord asked to wait " + std::to_string(wait / 1000) + " seconds before more requests.";
+				req.pFunc(&req);
+				return;
+			}
+			if (wait > 0)
+				std::this_thread::sleep_for(std::chrono::milliseconds(wait));
+		}
+
 		switch (req.type)
 		{
 			case NetRequest::POST:
-				retry = ProcessResult(req, client.Post(path, headers, req.params, "application/x-www-form-urlencoded"), attempt);
+				retry = ProcessResult(req, client.Post(path, headers, req.params, "application/x-www-form-urlencoded"), attempt, api, limited);
 				break;
 			case NetRequest::POST_JSON:
-				retry = ProcessResult(req, client.Post(path, headers, req.params, "application/json"), attempt);
+				retry = ProcessResult(req, client.Post(path, headers, req.params, "application/json"), attempt, api, limited);
 				break;
 			case NetRequest::PUT:
-				retry = ProcessResult(req, client.Put(path, headers, req.params, "application/x-www-form-urlencoded"), attempt);
+				retry = ProcessResult(req, client.Put(path, headers, req.params, "application/x-www-form-urlencoded"), attempt, api, limited);
 				break;
 			case NetRequest::PUT_JSON:
-				retry = ProcessResult(req, client.Put(path, headers, req.params, "application/json"), attempt);
+				retry = ProcessResult(req, client.Put(path, headers, req.params, "application/json"), attempt, api, limited);
 				break;
 			case NetRequest::PUT_OCTETS:
-				retry = ProcessResult(req, client.Put(path, headers, (const char*) req.params_bytes.data(), req.params_bytes.size(), "application/octet-stream"), attempt);
+				retry = ProcessResult(req, client.Put(path, headers, (const char*) req.params_bytes.data(), req.params_bytes.size(), "application/octet-stream"), attempt, api, limited);
 				break;
 			case NetRequest::PUT_OCTETS_PROGRESS:
 			{
 				ProgressContentProvider provider(req.params_bytes.data(), req.params_bytes.size(), std::bind(&NetworkerThread::ProgressFunction, this, &req, _1, _2));
 				req.result = HTTP_PROGRESS;
-				retry = ProcessResult(req, client.Put(path, headers, provider, "application/octet-stream"), attempt);
+				retry = ProcessResult(req, client.Put(path, headers, provider, "application/octet-stream"), attempt, api, limited);
 				break;
 			}
 			case NetRequest::GET:
-				retry = ProcessResult(req, client.Get(path, headers), attempt);
+				retry = ProcessResult(req, client.Get(path, headers), attempt, api, limited);
 				break;
 			case NetRequest::GET_PROGRESS:
-				retry = ProcessResult(req, client.Get(path, headers, std::bind(&NetworkerThread::ProgressFunction, this, &req, _1, _2)), attempt);
+				retry = ProcessResult(req, client.Get(path, headers, std::bind(&NetworkerThread::ProgressFunction, this, &req, _1, _2)), attempt, api, limited);
 				break;
 			case NetRequest::PATCH:
-				retry = ProcessResult(req, client.Patch(path, headers, req.params, "application/json"), attempt);
+				retry = ProcessResult(req, client.Patch(path, headers, req.params, "application/json"), attempt, api, limited);
 				break;
 			case NetRequest::DELETE_:
 				// no body, no content type (deleting a message or a reaction)
 				if (req.params.empty())
-					retry = ProcessResult(req, client.Delete(path, headers), attempt);
+					retry = ProcessResult(req, client.Delete(path, headers), attempt, api, limited);
 				else
-					retry = ProcessResult(req, client.Delete(path, headers, req.params, "application/json"), attempt);
+					retry = ProcessResult(req, client.Delete(path, headers, req.params, "application/json"), attempt, api, limited);
 				break;
 			default:
 				assert(!"Don't know how to handle that type of request!");

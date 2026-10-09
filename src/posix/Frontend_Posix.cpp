@@ -61,6 +61,7 @@ void SetupPosixPaths()
 
 void Frontend_Posix::StartSession()
 {
+	m_sessionGen++;
 	DiscordInstance* pInst = GetDiscordInstance();
 	if (pInst->HasGatewayURL()) {
 		pInst->StartGatewaySession();
@@ -76,9 +77,13 @@ void Frontend_Posix::StartSession()
 	}
 }
 
-void Frontend_Posix::OnLoginAgain()
+void Frontend_Posix::OnLoginAgain(int delayMs)
 {
-	MainQueue::Post([this] { StartSession(); });
+	int gen = m_sessionGen;
+	ScheduleReconnect(delayMs, [this, gen] {
+		if (gen == m_sessionGen) // (no session started meanwhile)
+			StartSession();
+	});
 }
 
 void Frontend_Posix::OnAddMessage(Snowflake channelID, const Message& msg)
@@ -140,11 +145,8 @@ void Frontend_Posix::OnConnectFailed(const std::string& message, bool isTLSError
 		return;
 	}
 
-	DbgPrintF("%s\nTrying to connect again in %d ms", message.c_str(), m_retryDelayMs);
-	ScheduleReconnect(m_retryDelayMs);
-	m_retryDelayMs = m_retryDelayMs * 115 / 100;
-	if (m_retryDelayMs > 10000)
-		m_retryDelayMs = 10000;
+	DbgPrintF("%s\nTrying to connect again later", message.c_str());
+	GetDiscordInstance()->ReconnectLater();
 }
 
 void Frontend_Posix::OnFailedToUploadFile(const std::string& file, int error)

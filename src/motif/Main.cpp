@@ -71,7 +71,6 @@ public:
 		GetMainWindow()->SetStatus("Connecting to Discord...");
 	}
 	void OnConnected() override {
-		m_retryDelayMs = 1000;
 		GetMainWindow()->SetStatus("");
 		GetMainWindow()->UpdateGuildList();
 		// once the login data is in (this runs as it starts): where the
@@ -82,7 +81,10 @@ public:
 		});
 	}
 	void OnSessionClosed(int errorCode) override {
-		GetMainWindow()->SetStatus("Disconnected (" + std::to_string(errorCode) + ").  File > Reconnect to try again.");
+		if (errorCode == CloseCode::TOO_MANY_LOGINS)
+			GetMainWindow()->SetStatus("Discord keeps ending the connection, so Discord Messenger stopped reconnecting.  File > Reconnect to try again.");
+		else
+			GetMainWindow()->SetStatus("Disconnected (" + std::to_string(errorCode) + ").  File > Reconnect to try again.");
 	}
 	void OnLoggedOut() override {
 		ShowLogon("Discord did not accept the token.  Log in again.");
@@ -184,13 +186,13 @@ public:
 	void OnAttachmentFailed(bool bIsProfilePicture, const std::string& additData) override {
 		ImageCache::DownloadFailed(additData);
 	}
-	void SetHeartbeatInterval(int timeMs) override {
+	void SetHeartbeatInterval(int timeMs, int firstMs) override {
 		if (m_heartbeat)
 			XtRemoveTimeOut(m_heartbeat);
 		m_heartbeat = 0;
 		m_heartbeatMs = timeMs;
 		if (timeMs > 0)
-			m_heartbeat = XtAppAddTimeOut(g_app, timeMs, HeartbeatCB, this);
+			m_heartbeat = XtAppAddTimeOut(g_app, firstMs, HeartbeatCB, this);
 	}
 	void RequestQuit() override {
 		g_bQuit = true;
@@ -208,9 +210,9 @@ protected:
 	void ShowError(const std::string& message) override {
 		GetMainWindow()->ShowError(message);
 	}
-	void ScheduleReconnect(int ms) override {
-		GetMainWindow()->SetStatus("Could not connect; trying again...");
-		XtAppAddTimeOut(g_app, ms, ReconnectCB, this);
+	void ScheduleReconnect(int ms, std::function<void()> fn) override {
+		GetMainWindow()->SetStatus("Reconnecting...");
+		XtAppAddTimeOut(g_app, ms, ReconnectCB, new std::function<void()>(fn));
 	}
 
 private:
@@ -220,7 +222,9 @@ private:
 		GetDiscordInstance()->SendHeartbeat();
 	}
 	static void ReconnectCB(XtPointer client, XtIntervalId*) {
-		((Frontend_Motif*) client)->StartSession();
+		std::function<void()>* fn = (std::function<void()>*) client;
+		(*fn)();
+		delete fn;
 	}
 
 	XtIntervalId m_heartbeat = 0;
@@ -281,6 +285,7 @@ void RequestLogout()
 {
 	if (g_pDiscordInstance)
 		g_pDiscordInstance->CloseGatewaySession();
+	g_pFrontend->CancelReconnect();
 	// the account's messages and pictures do not stay behind it
 	Conversations::CloseAll();
 	GetMessageCache()->ClearDiskCache();
@@ -292,10 +297,9 @@ void RequestLogout()
 
 void RequestReconnect()
 {
-	if (g_pDiscordInstance) {
-		g_pDiscordInstance->CloseGatewaySession();
-		g_pFrontend->StartSession();
-	}
+	// (the session resumes: closing it first would end it)
+	if (g_pDiscordInstance)
+		g_pDiscordInstance->ReconnectNow();
 }
 
 // --demo: sample messages and lists, without logging in (to see how

@@ -18,7 +18,8 @@ public:
 	virtual ~Frontend() {}
 
 	// Events
-	virtual void OnLoginAgain() = 0;
+	// Connect the gateway again (StartSession) after delayMs.
+	virtual void OnLoginAgain(int delayMs) = 0;
 	virtual void OnLoggedOut() = 0;
 	virtual void OnSessionClosed(int errorCode) = 0;
 	virtual void OnConnecting() = 0;
@@ -71,7 +72,9 @@ public:
 	virtual void OnWebsocketFail(int gatewayID, int errorCode, const std::string& message, bool isTLSError, bool mayRetry) = 0;
 
 	// Heartbeat interval
-	virtual void SetHeartbeatInterval(int timeMs) = 0;
+	// Call DiscordInstance::SendHeartbeat after firstMs, then every timeMs;
+	// timeMs 0 stops it.
+	virtual void SetHeartbeatInterval(int timeMs, int firstMs) = 0;
 
 	// Interface with AvatarCache
 	virtual void RegisterIcon(Snowflake sf, const std::string& avatarlnk) = 0;

@@ -1,5 +1,7 @@
 #include "../network/DiscordAPI.hpp"
 #include "Guild.hpp"
+
+#include <algorithm>
 #include "../utils/Util.hpp"
 #include "../network/HTTPClient.hpp"
 #include "../network/DiscordRequest.hpp"
@@ -25,6 +27,18 @@ GuildMember* Guild::GetGuildMember(Snowflake sf)
 
 void Guild::RequestFetchChannels()
 {
+	// The lists ask each time they are drawn until the channels are in:
+	// asked once, and only after 30 s again (then 1, 2, 4, 8 min) if the
+	// answer never came.
+	time_t now = time(NULL);
+	if (m_channelsRequestedAt) {
+		int wait = 30 << std::min(m_channelsRequestsInVain, 4);
+		if (now - m_channelsRequestedAt < wait)
+			return;
+		m_channelsRequestsInVain++;
+	}
+	m_channelsRequestedAt = now;
+
 	std::string url;
 
 	if (m_snowflake)

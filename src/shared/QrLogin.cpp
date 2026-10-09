@@ -1,5 +1,8 @@
 #include "QrLogin.hpp"
 
+#include <algorithm>
+#include <cstdlib>
+#include <ctime>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -43,6 +46,11 @@ namespace
 		std::string ticket;       // the phone's, to exchange for the token
 		QrLogin::Captcha captcha; // what Discord wants solved first (none: no site key)
 		int generation = 0;       // bumped by every new login
+		// the connection's: when it opened, how often in a row it closed
+		// soon after, and how many codes went unscanned (Retry starts over)
+		time_t connectedAt = 0;
+		int quickCloses = 0;
+		int codes = 0;
 	};
 
 	State* g_state;
@@ -201,14 +209,44 @@ namespace
 		g_state->ticket.clear();
 		g_state->captcha = QrLogin::Captcha();
 		SetStatus("Connecting to Discord\xe2\x80\xa6");
+		g_state->connectedAt = time(NULL);
 		int id = GetWebsocketClient()->Connect(GATEWAY_URL);
 		g_gateway = id;
 		if (id < 0)
 			SetStatus("Could not reach Discord's login service.  Check the network, then try again.");
 	}
 
+	// The connection closed (a code expired, the login was cancelled, the
+	// network): another, later each time it closed soon after opening, none
+	// after five such or once a half hour's codes went unscanned; so a
+	// login service that keeps closing, or a dialog left open, is not
+	// connected to again and again.
+	void Fail(const std::string& why, const std::string& detail);
+
+	bool MayReconnect(int& ms)
+	{
+		time_t now = time(NULL);
+		if (now - g_state->connectedAt < 30)
+			g_state->quickCloses++;
+		else
+			g_state->quickCloses = 0;
+		if (g_state->quickCloses >= 5) {
+			Fail("Discord's login service keeps closing the connection.  Try again later,\n"
+				"or log in on discord.com's page or with a token.", "closed soon after opening, 5 times");
+			return false;
+		}
+		if (++g_state->codes > 15) {
+			Fail("The QR code expired.  Try Again for a new one.", "15 codes unscanned");
+			return false;
+		}
+		ms = std::min(60000, ms << g_state->quickCloses) + rand() % 1000;
+		return true;
+	}
+
 	void ReconnectAfter(int ms)
 	{
+		if (!MayReconnect(ms))
+			return;
 		int gen = g_state->generation;
 		Timers::After(ms, [gen] {
 			if (g_state && g_state->generation == gen)
@@ -338,6 +376,11 @@ void QrLogin::Start(std::function<void()> changed, std::function<void(const std:
 
 void QrLogin::Retry()
 {
+	// the user asked: the counts start over
+	if (g_state) {
+		g_state->quickCloses = 0;
+		g_state->codes = 0;
+	}
 	Connect();
 }
 

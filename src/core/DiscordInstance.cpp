@@ -659,8 +659,8 @@ void DiscordInstance::HandleRequest(NetRequest* pRequest)
 
 		case HTTP_TOOMANYREQS:
 		{
-			str = "You're issuing requests too fast!  Try again later.  Maybe grab a seltzer and calm down.\n"
-				"The resource in question is: " + pRequest->url;
+			str = "Discord asked Discord Messenger to slow down, so this was given up:\n" + pRequest->url +
+				"\n\nTry it again in a minute.";
 			bExitAfterError = false;
 			bShowMessageBox = true;
 			break;
@@ -852,51 +852,126 @@ void DiscordInstance::OnFetchedMessages(Snowflake gap, ScrollDir::eScrollDir sd)
 	GetFrontend()->RefreshMessages(sd, gap);
 }
 
+// Discord closed the gateway: what its close code asks of a client
+// (discord.com/developers/docs/topics/opcodes-and-status-codes).
 void DiscordInstance::GatewayClosed(int errorCode)
 {
 	m_gatewayConnId = -1;
+	GetFrontend()->SetHeartbeatInterval(0, 0);
 
 	switch (errorCode)
 	{
-		// Websocketpp codes
-		case websocketpp::close::status::abnormal_close:
-		case websocketpp::close::status::going_away:
-		case websocketpp::close::status::service_restart:
-		case websocketpp::close::status::normal:
-		case CloseCode::LOG_ON_AGAIN:
-		case CloseCode::INVALID_SEQ:
-		case CloseCode::SESSION_TIMED_OUT:
-		{
-			GetFrontend()->OnLoginAgain();
-			break;
-		}
+		// the token is not (or no longer) good: never again with it
 		case CloseCode::AUTHENTICATION_FAILED:
-		case CloseCode::NOT_AUTHENTICATED:
-		{
+			ForgetSession();
 			GetFrontend()->OnLoggedOut();
 			break;
-		}
-		default:
-		{
+
+		// not for a client like this one, and not to be retried
+		case CloseCode::INVALID_SHARD:
+		case CloseCode::SHARDING_REQUIRED:
+		case CloseCode::INVALID_API_VERSION:
+		case CloseCode::INVALID_INTENT:
+		case CloseCode::DISALLOWED_INTENT:
 			GetFrontend()->OnSessionClosed(errorCode);
 			break;
-		}
+
+		// the session is gone: a fresh login, later
+		case CloseCode::INVALID_SEQ:
+		case CloseCode::SESSION_TIMED_OUT:
+			ForgetSession();
+			ReconnectLater();
+			break;
+
+		// sent too much: a minute's pause at least
+		case CloseCode::RATE_LIMITED:
+			ReconnectLater(60000);
+			break;
+
+		// anything else (a dropped connection, Discord restarting, its
+		// errors 4000 to 4005): resume, later
+		default:
+			ReconnectLater();
+			break;
 	}
+}
+
+bool DiscordInstance::CanResume() const
+{
+	return !m_sessionId.empty() && !m_gatewayResumeUrl.empty() && m_heartbeatSequenceId >= 0;
+}
+
+void DiscordInstance::ForgetSession()
+{
+	m_sessionId.clear();
+	m_gatewayResumeUrl.clear();
+	m_heartbeatSequenceId = -1;
+}
+
+void DiscordInstance::DropConnection()
+{
+	GetFrontend()->SetHeartbeatInterval(0, 0);
+	if (m_gatewayConnId < 0)
+		return;
+	int id = m_gatewayConnId;
+	m_gatewayConnId = -1; // (its close comes back for an old connection: ignored)
+	GetWebsocketClient()->Close(id, 4000);
 }
 
 void DiscordInstance::StartGatewaySession()
 {
 	GetFrontend()->OnConnecting();
+	DropConnection();
 
-	if (m_gatewayConnId)
-		GetWebsocketClient()->Close(m_gatewayConnId, websocketpp::close::status::normal);
+	// the session's own address when it can be resumed, else the gateway's
+	m_resuming = CanResume();
+	std::string url = m_resuming ? m_gatewayResumeUrl : m_gatewayUrl;
+	if (!url.empty() && url[url.size() - 1] != '/')
+		url += '/';
+	DbgPrintF("Gateway: %s %s", m_resuming ? "resuming at" : "connecting to", url.c_str());
 
-	int connID = GetWebsocketClient()->Connect(m_gatewayUrl + DISCORD_WSS_DETAILS);
+	int connID = GetWebsocketClient()->Connect(url + DISCORD_WSS_DETAILS);
 
 	if (connID < 0)
 		GetFrontend()->OnGatewayConnectFailure();
 
 	m_gatewayConnId = connID;
+}
+
+void DiscordInstance::ReconnectLater(int minimumMs)
+{
+	time_t now = time(NULL);
+	// up for a while before it dropped: the backoff starts over
+	if (m_connectedAt && now - m_connectedAt > 60)
+		m_reconnectAttempts = 0;
+	m_connectedAt = 0;
+
+	// Something keeps making the client log in afresh (Discord ends each
+	// session, or the network keeps failing just after the login): stop,
+	// and let the user decide, rather than log in again and again.
+	while (!m_identifies.empty() && now - m_identifies.front() > 3600)
+		m_identifies.pop_front();
+	if (m_identifies.size() >= MAX_IDENTIFIES_PER_HOUR) {
+		DbgPrintF("Gateway: %d fresh logins this hour; not reconnecting by itself", (int) m_identifies.size());
+		GetFrontend()->OnSessionClosed(CloseCode::TOO_MANY_LOGINS);
+		return;
+	}
+
+	int base = 1000 << std::min(m_reconnectAttempts, 6);
+	if (base > 60000)
+		base = 60000;
+	int delay = base / 2 + rand() % (base / 2 + 1);
+	if (delay < minimumMs)
+		delay = minimumMs + rand() % 5000;
+	m_reconnectAttempts++;
+	DbgPrintF("Gateway: reconnecting in %d ms (attempt %d)", delay, m_reconnectAttempts);
+	GetFrontend()->OnLoginAgain(delay);
+}
+
+void DiscordInstance::ReconnectNow()
+{
+	m_reconnectAttempts = 0;
+	GetFrontend()->OnLoginAgain(0);
 }
 
 std::string DiscordInstance::TransformMention(const std::string& source, Snowflake guild, Snowflake channel)
@@ -1269,40 +1344,47 @@ void DiscordInstance::HandleGatewayMessage(const std::string& payload)
 	{
 		case HELLO:
 		{
-			GetFrontend()->SetHeartbeatInterval(j["d"]["heartbeat_interval"]);
+			// heartbeats every interval, the first after a random part of
+			// it (so clients that reconnect together do not beat together)
+			int interval = j["d"]["heartbeat_interval"];
+			m_heartbeatAcked = true;
+			GetFrontend()->SetHeartbeatInterval(interval, (int) (interval * (rand() / (RAND_MAX + 1.0))));
 
-			// hello packet - send an identification back
-			Json jout;
-			jout["op"] = IDENTIFY;
-
-			Json data, presenceData, propertiesData;
-			data["token"] = m_token;
-			data["compress"] = false;
-			// note: real Discord client sends "capabilities" field, undocumented so not gonna bother really
-			data["capabilities"] = 16381;
-
-			presenceData["activities"] = Json::array();
-			presenceData["afk"] = false;
-			presenceData["broadcast"] = nullptr;
-			presenceData["since"] = 0;
-			presenceData["status"] = "online";
-
-			propertiesData = GetClientConfig()->Serialize();
-
-			data["presence"] = presenceData;
-			data["properties"] = propertiesData;
-			jout["d"] = data;
-
-			GetWebsocketClient()->SendMsg(m_gatewayConnId, jout.dump());
-
-			// send a heartbeat too, we'd like to keep things simple
-			SendHeartbeat();
-
+			if (m_resuming)
+				SendResume();
+			else
+				SendIdentify();
 			break;
 		}
 		case HEARTBACK:
 		{
-			DbgPrintF("Heartbeat acknowledged");
+			m_heartbeatAcked = true;
+			break;
+		}
+		case HEARTBEAT:
+		{
+			// Discord wants one now
+			SendHeartbeatPayload();
+			break;
+		}
+		case RECONNECT:
+		{
+			// Discord asks for a new connection: resume on it
+			DbgPrintF("Gateway: asked to reconnect");
+			DropConnection();
+			ReconnectLater();
+			break;
+		}
+		case INVALID_SESSION:
+		{
+			// the session cannot go on: resume it, or (d is false) log in
+			// afresh, on a new connection after 1 to 5 s, as Discord asks
+			bool resumable = j["d"].is_boolean() && j["d"].get<bool>();
+			DbgPrintF("Gateway: invalid session (%s)", resumable ? "resumable" : "not resumable");
+			if (!resumable)
+				ForgetSession();
+			DropConnection();
+			ReconnectLater(1000 + rand() % 4000);
 			break;
 		}
 		case DISPATCH:
@@ -1335,7 +1417,65 @@ void DiscordInstance::HandleGatewayMessage(const std::string& payload)
 	}
 }
 
+void DiscordInstance::SendIdentify()
+{
+	using namespace GatewayOp;
+	m_identifies.push_back(time(NULL));
+
+	Json jout;
+	jout["op"] = IDENTIFY;
+
+	Json data, presenceData, propertiesData;
+	data["token"] = m_token;
+	data["compress"] = false;
+	// note: real Discord client sends "capabilities" field, undocumented so not gonna bother really
+	data["capabilities"] = 16381;
+
+	presenceData["activities"] = Json::array();
+	presenceData["afk"] = false;
+	presenceData["broadcast"] = nullptr;
+	presenceData["since"] = 0;
+	presenceData["status"] = "online";
+
+	propertiesData = GetClientConfig()->Serialize();
+
+	data["presence"] = presenceData;
+	data["properties"] = propertiesData;
+	jout["d"] = data;
+
+	GetWebsocketClient()->SendMsg(m_gatewayConnId, jout.dump());
+}
+
+void DiscordInstance::SendResume()
+{
+	using namespace GatewayOp;
+	Json j, d;
+	d["token"] = m_token;
+	d["session_id"] = m_sessionId;
+	d["seq"] = m_heartbeatSequenceId;
+	j["op"] = RESUME;
+	j["d"] = d;
+	GetWebsocketClient()->SendMsg(m_gatewayConnId, j.dump());
+}
+
 void DiscordInstance::SendHeartbeat()
+{
+	if (m_gatewayConnId < 0)
+		return; // (no connection: nothing to beat for)
+
+	// no answer to the last one: the connection is dead (though the
+	// system may not know yet); resume on a new one
+	if (!m_heartbeatAcked) {
+		DbgPrintF("Gateway: heartbeat not acknowledged; reconnecting");
+		DropConnection();
+		ReconnectLater();
+		return;
+	}
+	m_heartbeatAcked = false;
+	SendHeartbeatPayload();
+}
+
+void DiscordInstance::SendHeartbeatPayload()
 {
 	DbgPrintF("Sending heartbeat");
 
@@ -1946,8 +2086,11 @@ void DiscordInstance::SetActivityStatus(eActiveStatus status, bool bRequestServe
 	GetFrontend()->RepaintProfile();
 }
 
+// Ends the session on purpose (logging out, quitting): no heartbeats after
+// it, and nothing reconnects (1000 tells Discord the session is over).
 void DiscordInstance::CloseGatewaySession()
 {
+	GetFrontend()->SetHeartbeatInterval(0, 0);
 	if (m_gatewayConnId < 0) return;
 
 	GetWebsocketClient()->Close(m_gatewayConnId, websocketpp::close::status::normal);
@@ -2396,6 +2539,7 @@ void DiscordInstance::InitDispatchFunctions()
 {
 	g_dispatchFunctions.clear();
 	DECL(READY);
+	DECL(RESUMED);
 	DECL(READY_SUPPLEMENTAL);
 	DECL(MESSAGE_CREATE);
 	DECL(MESSAGE_UPDATE);
@@ -2437,6 +2581,14 @@ static std::string GetStatusFromActivities(Json& activities)
 	}
 
 	return GetStatusStringFromGameJsonObject(activities[0]);
+}
+
+// The session resumed: what was missed came before this, as events.
+void DiscordInstance::HandleRESUMED(Json& j)
+{
+	m_connectedAt = time(NULL);
+	DbgPrintF("Gateway: session resumed");
+	GetFrontend()->OnConnected();
 }
 
 void DiscordInstance::HandleREADY_SUPPLEMENTAL(Json& j)
@@ -2503,6 +2655,7 @@ void DiscordInstance::HandleREADY_SUPPLEMENTAL(Json& j)
 
 void DiscordInstance::HandleREADY(Json& j)
 {
+	m_connectedAt = time(NULL);
 	GetFrontend()->OnConnected();
 
 #ifdef _DEBUG

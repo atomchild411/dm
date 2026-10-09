@@ -6,6 +6,11 @@
 
 #include "DiscordInstance.hpp"
 #include "state/MessageCache.hpp"
+#include "Perf.hpp"
+#include "Timers.hpp"
+
+#include <map>
+#include <set>
 
 std::string MessageList::FormatSize(int bytes)
 {
@@ -486,6 +491,30 @@ bool MessageList::NewestShown(bool atBottom) const
 	return !m_items.back().msg->IsLoadGap(); // a gap: the newest are still being fetched
 }
 
+// Read marks, as Discord's own client sends them: at most one every few
+// seconds a channel (a busy channel read as it goes would send one a
+// message), the newest message's.
+static void SendReadMark(Snowflake channel)
+{
+	const double SPACING = 3.0;
+	static std::map<Snowflake, double> s_last;
+	static std::set<Snowflake> s_pending;
+	double now = Perf::Now(), since = now - s_last[channel];
+	if (since >= SPACING) {
+		s_last[channel] = now;
+		GetDiscordInstance()->RequestAcknowledgeChannel(channel);
+	}
+	else if (!s_pending.count(channel)) {
+		s_pending.insert(channel);
+		Timers::After((int) ((SPACING - since) * 1000) + 1, [channel] {
+			s_pending.erase(channel);
+			s_last[channel] = Perf::Now();
+			if (DiscordInstance* pInst = GetDiscordInstance())
+				pInst->RequestAcknowledgeChannel(channel); // (the newest by then)
+		});
+	}
+}
+
 bool MessageList::AcknowledgeIfUnread()
 {
 	DiscordInstance* pInst = GetDiscordInstance();
@@ -495,7 +524,7 @@ bool MessageList::AcknowledgeIfUnread()
 	if (m_ackSent == pChan->m_lastSentMsg)
 		return false; // asked already; Discord's answer is on its way
 	m_ackSent = pChan->m_lastSentMsg;
-	pInst->RequestAcknowledgeChannel(m_channel);
+	SendReadMark(m_channel);
 	// at once, not when Discord's read state comes back
 	pChan->m_lastViewedMsg = pChan->m_lastSentMsg;
 	pChan->m_mentionCount = 0;

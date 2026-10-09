@@ -141,13 +141,15 @@ class Frontend_ImGui : public Frontend_Posix
 public:
 	void OnConnecting() override { App::SetStatus("Connecting to Discord..."); }
 	void OnConnected() override {
-		m_retryDelayMs = 1000;
 		App::SetStatus("");
 		App::MarkDirty(App::LISTS);
 		MainQueue::Post([] { App::RestoreLastChannel(); });
 	}
 	void OnSessionClosed(int errorCode) override {
-		App::SetStatus("Disconnected (" + std::to_string(errorCode) + ").  File > Reconnect to try again.");
+		if (errorCode == CloseCode::TOO_MANY_LOGINS)
+			App::SetStatus("Discord keeps ending the connection, so Discord Messenger stopped reconnecting.  Settings > Reconnect to try again.");
+		else
+			App::SetStatus("Disconnected (" + std::to_string(errorCode) + ").  Settings > Reconnect to try again.");
 	}
 	void OnLoggedOut() override {
 		App::ShowLogin("Discord did not accept the token.  Log in again.");
@@ -207,12 +209,12 @@ public:
 	void OnAttachmentFailed(bool bIsProfilePicture, const std::string& additData) override {
 		ImageCache::DownloadFailed(additData);
 	}
-	void SetHeartbeatInterval(int timeMs) override {
+	void SetHeartbeatInterval(int timeMs, int firstMs) override {
 		Timers::Cancel(m_heartbeat);
 		m_heartbeat = 0;
 		m_heartbeatMs = timeMs;
 		if (timeMs > 0)
-			m_heartbeat = Timers::After(timeMs, [this] { Heartbeat(); });
+			m_heartbeat = Timers::After(firstMs, [this] { Heartbeat(); });
 	}
 	void RequestQuit() override { g_bQuit = true; }
 	// a mention or a direct message: a sound
@@ -226,9 +228,9 @@ public:
 
 protected:
 	void ShowError(const std::string& message) override { App::ShowError(message); }
-	void ScheduleReconnect(int ms) override {
-		App::SetStatus("Could not connect; trying again...");
-		Timers::After(ms, [this] { StartSession(); });
+	void ScheduleReconnect(int ms, std::function<void()> fn) override {
+		App::SetStatus("Reconnecting...");
+		Timers::After(ms, fn);
 	}
 
 private:
@@ -269,6 +271,7 @@ void RequestLogout()
 {
 	if (g_pDiscordInstance)
 		g_pDiscordInstance->CloseGatewaySession();
+	g_pFrontend->CancelReconnect();
 	// the account's messages and pictures do not stay behind it
 	GetMessageCache()->ClearDiskCache();
 	ImageCache::ClearDisk();
@@ -279,10 +282,9 @@ void RequestLogout()
 
 void RequestReconnect()
 {
-	if (g_pDiscordInstance) {
-		g_pDiscordInstance->CloseGatewaySession();
-		g_pFrontend->StartSession();
-	}
+	// (the session resumes: closing it first would end it)
+	if (g_pDiscordInstance)
+		g_pDiscordInstance->ReconnectNow();
 }
 
 // DM_SNAPSHOT: frames go into this framebuffer instead of the window.

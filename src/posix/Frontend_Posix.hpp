@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <string>
 #include "Frontend.hpp"
 
@@ -17,8 +19,10 @@ public:
 	// Starts (or restarts) the session: fetches the gateway URL if needed,
 	// then connects.  UI thread.
 	void StartSession();
+	// A reconnect scheduled before this does not happen (logging out).
+	void CancelReconnect() { m_sessionGen++; }
 
-	void OnLoginAgain() override;
+	void OnLoginAgain(int delayMs) override;
 	void OnLoggedOut() override {}
 	void OnSessionClosed(int errorCode) override {}
 	void OnConnecting() override {}
@@ -92,14 +96,16 @@ protected:
 	virtual void ShowError(const std::string& message) = 0;
 
 	// The gateway connection failed; mayRetry says whether trying again can
-	// help.  The default reconnects after a growing delay (ScheduleRetry).
-	// UI thread.
+	// help.  The default reconnects later (DiscordInstance::ReconnectLater,
+	// which spaces the attempts out).  UI thread.
 	virtual void OnConnectFailed(const std::string& message, bool isTLSError, bool mayRetry);
 
-	// Calls StartSession after ms milliseconds.  UI thread.
-	virtual void ScheduleReconnect(int ms) = 0;
+	// Calls fn after ms milliseconds.  UI thread.
+	virtual void ScheduleReconnect(int ms, std::function<void()> fn) = 0;
 
-	int m_retryDelayMs = 1000;
+	// StartSession's count: a reconnect scheduled before another session
+	// started does not start one more.
+	int m_sessionGen = 0;
 };
 
 // Sets up the settings directory ($HOME/.discordmessenger, or DM_HOME) and

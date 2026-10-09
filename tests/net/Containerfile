@@ -1,0 +1,7 @@
+# The network-behaviour tests (tests/net/run.sh): dm-cli built here against a
+# stand-in for Discord's gateway and API (fake_discord.py) on this machine.
+FROM docker.io/library/debian:trixie
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        g++ make pkg-config libssl-dev libwebp-dev libfreetype-dev zlib1g-dev \
+        python3 python3-websockets openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*

@@ -9,9 +9,11 @@
 //   dm-cli --connect wss://host/
 //                     open a websocket to that address and print whether
 //                     TLS let it through (a wrong host name must not).
-//   dm-cli --get https://host/path
-//                     fetch that address over HTTPS and print the status
-//                     (a certificate that is not trusted must fail).
+//   dm-cli --get https://host/path [--times N]
+//                     fetch that address over HTTPS (N times, one after
+//                     the other) and print the status (a certificate that
+//                     is not trusted must fail); with DM_TOKEN, as the user
+//                     (for tests against a stand-in for Discord's API).
 
 #include <cerrno>
 #include <cstdio>
@@ -21,6 +23,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <vector>
 #ifndef _WIN32
 #include <sys/select.h>
 #endif
@@ -39,6 +42,23 @@ static bool g_bQuit;
 static bool g_bProbe;
 static const char* g_connectUrl; // --connect: one websocket, no session
 static const char* g_getUrl;     // --get: one HTTPS request, no session
+static int g_getTimes = 1;        // --times
+static std::string g_getToken;    // DM_TOKEN, for --get
+
+static void Fetch(int left)
+{
+	GetHTTPClient()->PerformRequest(true, NetRequest::GET, g_getUrl, 0, 0, "", g_getToken, std::to_string(left), [](NetRequest* req) {
+		if (req->result < 0)
+			printf("* could not fetch it: %s\n", req->response.c_str());
+		else
+			printf("* HTTP %d, %zu bytes\n", req->result, req->response.size());
+		int left = GetIntFromString(req->additional_data);
+		if (left > 1)
+			MainQueue::Post([left] { Fetch(left - 1); });
+		else
+			MainQueue::Post([] { g_bQuit = true; });
+	});
+}
 
 DiscordInstance* GetDiscordInstance()
 {
@@ -71,25 +91,33 @@ static int AddTimer(int ms, bool repeat, std::function<void()> fn)
 	return id;
 }
 
+// fn after firstMs, then every periodMs
+static int AddRepeating(int firstMs, int periodMs, std::function<void()> fn)
+{
+	int id = g_nextTimerId++;
+	g_timers[id] = Timer{ NowMs() + firstMs, periodMs, fn };
+	return id;
+}
+
 static void RunDueTimers()
 {
+	// the due ones first: a timer's function may add or remove timers
 	long long now = NowMs();
-	for (auto it = g_timers.begin(); it != g_timers.end(); )
+	std::vector<int> due;
+	for (auto& t : g_timers)
+		if (t.second.due <= now)
+			due.push_back(t.first);
+	for (int id : due)
 	{
-		if (it->second.due > now) {
-			++it;
-			continue;
-		}
+		auto it = g_timers.find(id);
+		if (it == g_timers.end())
+			continue; // removed by one before it
 		std::function<void()> fn = it->second.fn;
-		if (it->second.interval) {
+		if (it->second.interval)
 			it->second.due = now + it->second.interval;
-			++it;
-		}
-		else {
-			it = g_timers.erase(it);
-		}
+		else
+			g_timers.erase(it);
 		fn();
-		now = NowMs();
 	}
 }
 
@@ -113,7 +141,6 @@ public:
 		printf("* connecting to the gateway\n");
 	}
 	void OnConnected() override {
-		m_retryDelayMs = 1000;
 		printf("* connected as user %llu\n", (unsigned long long) GetDiscordInstance()->GetUserID());
 	}
 	void OnSessionClosed(int errorCode) override {
@@ -155,12 +182,13 @@ public:
 		}
 		Frontend_Posix::OnWebsocketClose(gatewayID, errorCode, message);
 	}
-	void SetHeartbeatInterval(int timeMs) override {
-		printf("* heartbeat every %d ms\n", timeMs);
+	void SetHeartbeatInterval(int timeMs, int firstMs) override {
+		if (timeMs > 0)
+			printf("* heartbeat every %d ms, the first in %d ms\n", timeMs, firstMs);
 		if (m_heartbeatTimer)
 			g_timers.erase(m_heartbeatTimer);
 		m_heartbeatTimer = timeMs > 0 ?
-			AddTimer(timeMs, true, [] { GetDiscordInstance()->SendHeartbeat(); }) : 0;
+			AddRepeating(firstMs, timeMs, [] { GetDiscordInstance()->SendHeartbeat(); }) : 0;
 	}
 	void RequestQuit() override {
 		g_bQuit = true;
@@ -170,8 +198,9 @@ protected:
 	void ShowError(const std::string& message) override {
 		fprintf(stderr, "error: %s\n", message.c_str());
 	}
-	void ScheduleReconnect(int ms) override {
-		AddTimer(ms, false, [this] { StartSession(); });
+	void ScheduleReconnect(int ms, std::function<void()> fn) override {
+		printf("* reconnecting in %d ms\n", ms);
+		AddTimer(ms, false, fn);
 	}
 
 private:
@@ -217,8 +246,10 @@ int main(int argc, char** argv)
 			g_connectUrl = argv[++i];
 		else if (!strcmp(argv[i], "--get") && i + 1 < argc)
 			g_getUrl = argv[++i];
+		else if (!strcmp(argv[i], "--times") && i + 1 < argc)
+			g_getTimes = atoi(argv[++i]);
 		else {
-			fprintf(stderr, "usage: %s [--probe | --connect wss://host/ | --get https://host/path]\n", argv[0]);
+			fprintf(stderr, "usage: %s [--probe | --connect wss://host/ | --get https://host/path [--times N]]\n", argv[0]);
 			return 2;
 		}
 	}
@@ -254,13 +285,9 @@ int main(int argc, char** argv)
 	g_pDiscordInstance = new DiscordInstance(token);
 	if (g_getUrl) {
 		printf("* fetching %s\n", g_getUrl);
-		g_pHTTPClient->PerformRequest(true, NetRequest::GET, g_getUrl, 0, 0, "", "", "", [](NetRequest* req) {
-			if (req->result < 0)
-				printf("* could not fetch it: %s\n", req->response.c_str());
-			else
-				printf("* HTTP %d, %zu bytes\n", req->result, req->response.size());
-			MainQueue::Post([] { g_bQuit = true; });
-		});
+		if (envToken && *envToken)
+			g_getToken = envToken;
+		Fetch(g_getTimes);
 	}
 	else if (g_connectUrl) {
 		printf("* connecting to %s\n", g_connectUrl);

@@ -47,7 +47,10 @@ public:
 private:
 	void Run();
 	void FulfillRequest(NetRequest& request);
-	bool ProcessResult(NetRequest& req, const httplib::Result& res, int& attempt);
+	// The answer: given to the request's function, or (a connection failure,
+	// a 5xx for a request safe to repeat, a 429) true to make it again.
+	// api: a request to Discord's API (its rate limits apply).
+	bool ProcessResult(NetRequest& req, const httplib::Result& res, int& attempt, bool api, int& limited);
 
 	std::priority_queue<NetRequest> m_requests;
 	std::mutex m_requestLock;

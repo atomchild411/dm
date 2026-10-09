@@ -21,6 +21,8 @@ namespace CloseCode
 		DISALLOWED_INTENT,
 
 		LOG_ON_AGAIN = 5000,
+		// (ours: the client stopped reconnecting by itself, DiscordInstance)
+		TOO_MANY_LOGINS = 5001,
 	};
 }
 

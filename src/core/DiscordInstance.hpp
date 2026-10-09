@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <string>
 #include <list>
+#include <deque>
+#include <ctime>
 #include <set>
 #include <unordered_set>
 #include <nlohmann/json.h>
@@ -184,6 +186,16 @@ public:
 	std::string m_gatewayResumeUrl = "";
 	std::string m_sessionId = ""; // for resume
 	std::string m_sessionType = "";
+
+	// The gateway session, as Discord asks clients to keep it: resumed
+	// after a drop (not logged in afresh), heartbeats acknowledged (or the
+	// connection is dead), reconnects spaced out more each time, and fresh
+	// logins (IDENTIFY) limited, so nothing can make the client hammer Discord.
+	bool m_resuming = false;          // this connection resumes the session
+	bool m_heartbeatAcked = true;     // the last heartbeat was acknowledged
+	int m_reconnectAttempts = 0;      // since the session was last up for a while
+	time_t m_connectedAt = 0;         // when READY or RESUMED came (0: not up)
+	std::deque<time_t> m_identifies;  // the fresh logins of the last hour
 
 	// Last time we sent a typing indicator
 	uint64_t m_lastTypingSent = 0;
@@ -510,7 +522,28 @@ public:
 
 	void HandleGatewayMessage(const std::string& payload);
 
+	// The heartbeat timer's: sends one, or (the last one was never
+	// acknowledged) drops the dead connection and reconnects.
 	void SendHeartbeat();
+
+	// After the gateway closed or could not be reached: reconnects later,
+	// a random half to whole of 1, 2, 4 ... 60 s (at least minimumMs), unless
+	// the client logged in afresh too often this hour.
+	void ReconnectLater(int minimumMs = 0);
+
+	// The user asked to reconnect: at once, the backoff forgotten.
+	void ReconnectNow();
+
+private:
+	void SendIdentify();
+	void SendResume();
+	void SendHeartbeatPayload();
+	// Closes the connection and keeps the session resumable (4000, where
+	// 1000 would end the session).
+	void DropConnection();
+	void ForgetSession();
+	bool CanResume() const;
+public:
 
 	void SendSettingsProto(const std::vector<uint8_t>& data);
 
@@ -540,6 +573,7 @@ private:
 
 	// handle functions
 	void HandleREADY(nlohmann::json& j);
+	void HandleRESUMED(nlohmann::json& j);
 	void HandleREADY_SUPPLEMENTAL(nlohmann::json& j);
 	void HandleMESSAGE_CREATE(nlohmann::json& j);
 	void HandleMESSAGE_DELETE(nlohmann::json& j);
@@ -584,3 +618,6 @@ std::string GetFieldSafe(const nlohmann::json& j, const std::string& key);
 int GetFieldSafeInt(const nlohmann::json& j, const std::string& key);
 
 #define TYPING_INTERVAL 10000 // 10 sec
+// Fresh logins (IDENTIFY) in an hour after which the client stops
+// reconnecting by itself (Discord allows 1000 a day; a person needs a few).
+#define MAX_IDENTIFIES_PER_HOUR 10

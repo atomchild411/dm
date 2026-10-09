@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ctime>
 #include <string>
 #include <list>
 #include <map>
@@ -58,6 +59,9 @@ struct Guild
 	std::string m_avatarlnk = "";
 
 	bool m_bChannelsLoaded = false;
+	// RequestFetchChannels: when it last asked, and how often in vain
+	time_t m_channelsRequestedAt = 0;
+	int m_channelsRequestsInVain = 0;
 	std::list<Channel> m_channels;
 	Snowflake m_currentChannel = 0;
 
