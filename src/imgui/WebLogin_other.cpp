@@ -1,4 +1,4 @@
-// WebLogin where there is no browser view yet (see WebLogin_mac.mm and
+// WebLogin where there is no browser view yet (IRIX, Linux; see WebLogin_mac.mm and
 // WebLogin_win.cpp).
 
 #if !defined(__APPLE__) && !defined(_WIN32)

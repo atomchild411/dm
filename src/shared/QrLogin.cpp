@@ -220,8 +220,10 @@ namespace
 		else
 			g_state->quickCloses = 0;
 		if (g_state->quickCloses >= 5) {
+			// the ways the dialog offers are under this text (no discord.com
+			// page where there is no browser view: IRIX, Linux)
 			Fail("Discord's login service keeps closing the connection.  Try again later,\n"
-				"or log in on discord.com's page or with a token.", "closed soon after opening, 5 times");
+				"or log in another way (below).", "closed soon after opening, 5 times");
 			return false;
 		}
 		if (++g_state->codes > 15) {
