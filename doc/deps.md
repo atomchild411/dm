@@ -15,4 +15,6 @@ settings Discord sends (`src/core/utils/ProtoReader.hpp`).
 GitHub's dependency graph cannot read C or C++ builds, so the versions above,
 and the ones the platform scripts build, are listed by hand in
 `.github/dependencies.json`; `.github/workflows/dependency-graph.yml` submits
-that list on every push that changes it.  Keep it in step when a version moves.
+that list on every push that changes it.  Each package is listed once (the
+graph shows a package once per manifest): libraries more than one platform
+uses go under `deps`.  Keep it in step when a version moves.
