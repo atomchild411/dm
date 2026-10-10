@@ -1,0 +1,9 @@
+# Dependabot keeps the workflows' actions current. It cannot watch the C and
+# C++ libraries (its advisories cover package ecosystems, not git tags);
+# .github/workflows/vulnerabilities.yml checks those against OSV.dev.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -1,0 +1,27 @@
+# Check every library in .github/dependencies.json against OSV.dev weekly
+# and whenever the list changes. A failed run is the warning: GitHub emails
+# it. Dependabot alerts cannot cover these (see .github/dependabot.yml).
+name: Vulnerabilities
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  push:
+    branches: [master]
+    paths:
+      - .github/dependencies.json
+      - .github/osv-check.sh
+      - .github/osv-ignore.txt
+      - .github/workflows/vulnerabilities.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  osv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Look the libraries up in OSV.dev
+        run: sh .github/osv-check.sh

@@ -17,4 +17,7 @@ and the ones the platform scripts build, are listed by hand in
 `.github/dependencies.json`; `.github/workflows/dependency-graph.yml` submits
 that list on every push that changes it.  Each package is listed once (the
 graph shows a package once per manifest): libraries more than one platform
-uses go under `deps`.  Keep it in step when a version moves.
+uses go under `deps`.  Keep it in step when a version moves: the same list
+is what `.github/workflows/vulnerabilities.yml` checks against OSV.dev every
+week (`sh .github/osv-check.sh` runs it locally).  Dependabot alerts are on,
+but they only cover package ecosystems, so they cannot see these libraries.
