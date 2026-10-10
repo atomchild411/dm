@@ -2,8 +2,8 @@
 # Builds the libraries the macOS app links, as static universal libraries
 # (arm64 and x86_64) for macOS 11 and later, into build-mac/pfx:
 # OpenSSL, FreeType, libpng, libwebp and GLFW (zlib is the system's), from
-# their release tarballs, each checked by its SHA-256.  Once; macos/release.sh
-# runs it.
+# their release tarballs, each checked by its SHA-256, with the fixes in
+# deps/patches.  Again only when those change; macos/release.sh runs it.
 #
 #   macos/build-deps.sh
 set -eu
@@ -11,7 +11,9 @@ cd "$(dirname "$0")/.."
 W=$PWD/build-mac
 MIN=11.0
 P=$W/pfx
-[ -f $P/.done ] && exit 0
+# what the libraries are built from: a build is reused while it matches
+stamp=$(grep '^fetch ' "$0" | cat - deps/patches/*/*.patch | shasum -a 256 | cut -c1-16)
+[ "$(cat $P/.done 2>/dev/null)" = "$stamp" ] && exit 0
 mkdir -p $W/dl
 export MACOSX_DEPLOYMENT_TARGET=$MIN
 
@@ -30,17 +32,20 @@ fetch libwebp-1.6.0.tar.gz https://storage.googleapis.com/downloads.webmproject.
 	e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
 fetch glfw-3.4.tar.gz https://github.com/glfw/glfw/archive/refs/tags/3.4.tar.gz \
 	c038d34200234d071fae9345bc455e4a8f2f544ab60150765d7704e08f3dac01
-fetch openssl-3.6.4.tar.gz https://github.com/openssl/openssl/releases/download/openssl-3.6.4/openssl-3.6.4.tar.gz \
-	9bffaa1ad1e07b354c21bd3324ec02fa15579f45a7d0494b3e74bc449b7333ef
+fetch openssl-3.6.5.tar.gz https://github.com/openssl/openssl/releases/download/openssl-3.6.5/openssl-3.6.5.tar.gz \
+	a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98
 
 # Each architecture on its own (the libraries' SIMD code picks by it), then
 # the two put together with lipo.
 for arch in arm64 x86_64; do
 	A=$W/pfx-$arch B=$W/deps-$arch
-	[ -f $A/.done ] && continue
+	[ "$(cat $A/.done 2>/dev/null)" = "$stamp" ] && continue
 	rm -rf $A $B && mkdir -p $A $B
-	for f in libpng-1.6.58.tar.xz freetype-2.14.3.tar.xz libwebp-1.6.0.tar.gz glfw-3.4.tar.gz openssl-3.6.4.tar.gz; do
+	for f in libpng-1.6.58.tar.xz freetype-2.14.3.tar.xz libwebp-1.6.0.tar.gz glfw-3.4.tar.gz openssl-3.6.5.tar.gz; do
 		tar xf $W/dl/$f -C $B
+	done
+	for d in $B/*; do
+		for f in deps/patches/${d##*/}/*.patch; do [ -f "$f" ] && patch -s -p1 -d $d < $f; done
 	done
 	CM="cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$A -DCMAKE_PREFIX_PATH=$A \
 		-DCMAKE_OSX_ARCHITECTURES=$arch -DCMAKE_OSX_DEPLOYMENT_TARGET=$MIN -DBUILD_SHARED_LIBS=OFF \
@@ -59,14 +64,14 @@ for arch in arm64 x86_64; do
 		-DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF -DWEBP_BUILD_EXTRAS=OFF
 	cmk glfw glfw-3.4 -DGLFW_BUILD_EXAMPLES=OFF -DGLFW_BUILD_TESTS=OFF -DGLFW_BUILD_DOCS=OFF
 	case $arch in arm64) t=darwin64-arm64-cc ;; x86_64) t=darwin64-x86_64-cc ;; esac
-	( cd $B/openssl-3.6.4 &&
+	( cd $B/openssl-3.6.5 &&
 	  ./Configure $t no-shared no-apps no-tests no-docs no-module --prefix=$A --libdir=lib \
 		-mmacosx-version-min=$MIN &&
 	  make -j4 build_libs && make install_dev ) > $B/openssl.log 2>&1 ||
 		{ tail -30 $B/openssl.log; echo "openssl ($arch) FAILED"; exit 1; }
 	tar xzf $W/dl/glfw-3.4.tar.gz -O glfw-3.4/LICENSE.md > $A/GLFW-LICENSE.md
 	rm -rf $B
-	touch $A/.done
+	echo $stamp > $A/.done
 done
 
 echo "== universal libraries"
@@ -76,4 +81,4 @@ for l in libssl.a libcrypto.a libfreetype.a libpng16.a libwebp.a libsharpyuv.a l
 	lipo -create $W/pfx-arm64/lib/$l $W/pfx-x86_64/lib/$l -output $P/lib/$l
 done
 cp $W/pfx-arm64/GLFW-LICENSE.md $P/
-touch $P/.done
+echo $stamp > $P/.done

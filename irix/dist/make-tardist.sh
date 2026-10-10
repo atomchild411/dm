@@ -18,8 +18,9 @@
 # FONTS       a directory with DejaVuSans.ttf, -Bold, -Oblique,
 #             -BoldOblique, DejaVuSansMono.ttf, -Bold and NotoColorEmoji.ttf
 #             (pkgsrc's share/fonts/X11/TTF has them all)
-# VERSION     the image version, a number that grows with each release
-#             (for example 111000001: 1.11, build 1)
+# VERSION     the image version, a number that grows with each release:
+#             VERSION's digits, then the build number as six digits (for
+#             example 112000662: 1.12, build 662)
 #
 # Installs /usr/local/bin/discord-messenger and
 # /usr/local/lib/discord-messenger (roots, fonts, licenses, README); with

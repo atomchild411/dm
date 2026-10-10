@@ -42,7 +42,7 @@ cp bin/dm-imgui-app "$app/Contents/MacOS/Discord Messenger"
 # the version: the release's, and the commit count as the build
 build=$(git rev-list --count HEAD)
 minos=$(vtool -show-build "$app/Contents/MacOS/Discord Messenger" 2>/dev/null | awk '/minos/ {print $2; exit}')
-sed -e "s/@VERSION@/1.11/" -e "s/@BUILD@/$build/" -e "s/@MINOS@/${minos:-11.0}/" macos/Info.plist.in > "$app/Contents/Info.plist"
+sed -e "s/@VERSION@/$(cat VERSION)/" -e "s/@BUILD@/$build/" -e "s/@MINOS@/${minos:-11.0}/" macos/Info.plist.in > "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"
 
 # the icon, from the app's .ico (64 px at most: larger sizes are scaled up)

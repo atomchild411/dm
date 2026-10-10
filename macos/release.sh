@@ -10,7 +10,7 @@ fonts=${1:?"usage: $0 FONTS (the fonts directory, as for make-app.sh)"}
 macos/build-deps.sh
 macos/make-app.sh "$fonts"
 
-name=DiscordMessenger-1.11-macos
+name=DiscordMessenger-$(cat VERSION)-macos
 tmp=$(mktemp -d)
 mkdir "$tmp/Discord Messenger"
 cp -R "bin/Discord Messenger.app" "$tmp/Discord Messenger/"

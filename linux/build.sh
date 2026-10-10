@@ -6,11 +6,11 @@
 #   linux/build.sh --fonts DIR [x86_64] [aarch64]
 #
 # For each architecture, in bin/linux/:
-#   DiscordMessenger-1.11-linux-ARCH.tar.gz  to unpack anywhere; built on
+#   DiscordMessenger-VERSION-linux-ARCH.tar.gz  to unpack anywhere; built on
 #       Ubuntu 22.04 with OpenSSL, FreeType, libpng, libwebp and GLFW linked
 #       in, so it runs on distributions from about 2022 on
-#   DiscordMessenger-1.11-linux-ARCH.AppImage  the same as one file
-#   discord-messenger_1.11.N_ARCH.deb  for Ubuntu 24.04 and later and Debian
+#   DiscordMessenger-VERSION-linux-ARCH.AppImage  the same as one file
+#   discord-messenger_VERSION.N_ARCH.deb  for Ubuntu 24.04 and later and Debian
 #       13, with their own libraries
 # --fonts DIR: the fonts, as for macos/make-app.sh.  Work files go to
 # build-linux/.

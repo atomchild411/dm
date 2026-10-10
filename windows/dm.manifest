@@ -2,7 +2,7 @@
 <!-- The program's manifest: Windows 10 and 11, and UTF-8 as the code page,
      so file names and the C library's text are UTF-8 as on the other systems. -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="io.github.atomchild411.DiscordMessenger" version="1.11.0.0"/>
+  <assemblyIdentity type="win32" name="io.github.atomchild411.DiscordMessenger" version="@VERSION_FULL@.0"/>
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>

@@ -188,9 +188,21 @@ $(BUILD_DIR)/%.o: %.c
 	@echo ">> $<"
 	@$(CC) -std=c99 $(OPT) $(EXTRA_CXXFLAGS:-std=%=) -MMD -MP -MF $(BUILD_DIR)/$*.d -c $< -o $@
 
-$(BUILD_DIR)/dm.res: windows/dm.rc windows/dm.manifest
+# the version: VERSION (major.minor) and DM_BUILD (the build number, 0 for
+# a developer build), filled into the resource templates
+DM_VERSION := $(shell cat VERSION)
+DM_BUILD   ?= 0
+DM_VERSION_FULL := $(DM_VERSION).$(DM_BUILD)
+comma := ,
+$(BUILD_DIR)/rc/dm.rc $(BUILD_DIR)/rc/dm.manifest: windows/dm.rc windows/dm.manifest VERSION
+	@mkdir -p $(BUILD_DIR)/rc
+	@sed -e 's|@VERSION_FULL@|$(DM_VERSION_FULL)|g' windows/dm.manifest > $(BUILD_DIR)/rc/dm.manifest
+	@sed -e 's|@VERSION_FULL@|$(DM_VERSION_FULL)|g' -e 's|@VERSION_COMMAS@|$(subst .,$(comma),$(DM_VERSION_FULL)),0|g' \
+		-e 's|@MANIFEST@|dm.manifest|' -e 's|@ICON@|$(CURDIR)/irix/icon_discord.ico|' windows/dm.rc > $(BUILD_DIR)/rc/dm.rc
+
+$(BUILD_DIR)/dm.res: $(BUILD_DIR)/rc/dm.rc
 	@mkdir -p $(dir $@)
-	@echo ">> $<"
+	@echo ">> windows/dm.rc"
 	@$(RC) -FO $@ $<
 
 $(TARGET): $(OBJ) Makefile

@@ -7,23 +7,17 @@
         "pkg:github/nlohmann/json@v3.12.0",
         "pkg:github/nayuki/QR-Code-generator@v1.8.0",
         "pkg:github/ocornut/imgui@v1.92.9",
-        "pkg:github/openssl/openssl@openssl-3.6.4",
+        "pkg:github/openssl/openssl@openssl-3.6.5",
         "pkg:github/freetype/freetype@VER-2-14-3",
         "pkg:github/pnggroup/libpng@v1.6.58",
         "pkg:github/webmproject/libwebp@v1.6.0",
-        "pkg:github/glfw/glfw@3.4"
-      ]
-    },
-    "windows": {
-      "file": "windows/inside.sh",
-      "packages": [
+        "pkg:github/glfw/glfw@3.4",
         "pkg:github/madler/zlib@v1.3.2"
       ]
     },
     "irix": {
       "file": "irix/dist/make-tardist.sh",
       "packages": [
-        "pkg:github/madler/zlib@v1.3.1",
         "pkg:generic/bzip2@1.0.8?download_url=https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz&vcs_url=git+https://gitlab.com/bzip2/bzip2@bzip2-1.0.8",
         "pkg:github/llvm/llvm-project@llvmorg-21.1.8"
       ]

@@ -6,7 +6,7 @@
 # DiscordMessenger-VERSION-linux-ARCH.tar.gz and .AppImage, each run once,
 # hidden, under Xvfb.
 set -eu
-VERSION=1.11
+VERSION=$(cat /src/VERSION)
 W=/work
 arch=$(uname -m)
 mkdir -p $W/dist
@@ -26,8 +26,8 @@ fetch libwebp-1.6.0.tar.gz https://storage.googleapis.com/downloads.webmproject.
 	e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
 fetch glfw-3.4.tar.gz https://github.com/glfw/glfw/archive/refs/tags/3.4.tar.gz \
 	c038d34200234d071fae9345bc455e4a8f2f544ab60150765d7704e08f3dac01
-fetch openssl-3.6.4.tar.gz https://github.com/openssl/openssl/releases/download/openssl-3.6.4/openssl-3.6.4.tar.gz \
-	9bffaa1ad1e07b354c21bd3324ec02fa15579f45a7d0494b3e74bc449b7333ef
+fetch openssl-3.6.5.tar.gz https://github.com/openssl/openssl/releases/download/openssl-3.6.5/openssl-3.6.5.tar.gz \
+	a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98
 # the AppImage runtime (AppImage/type2-runtime release 20251108)
 case $arch in
 x86_64) fetch runtime-x86_64 https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64 \
@@ -38,10 +38,15 @@ esac
 
 # ---- the libraries, static -----------------------------------------------
 P=$W/pfx B=$W/deps
-if [ ! -f $P/.done ]; then
+# what the libraries are built from: a build is reused while it matches
+stamp=$(grep '^fetch ' /src/linux/inside-portable.sh | cat - /src/deps/patches/*/*.patch | sha256sum | cut -c1-16)
+if [ "$(cat $P/.done 2>/dev/null)" != "$stamp" ]; then
 	rm -rf $P $B && mkdir -p $P $B
-	for f in libpng-1.6.58.tar.xz freetype-2.14.3.tar.xz libwebp-1.6.0.tar.gz glfw-3.4.tar.gz openssl-3.6.4.tar.gz; do
+	for f in libpng-1.6.58.tar.xz freetype-2.14.3.tar.xz libwebp-1.6.0.tar.gz glfw-3.4.tar.gz openssl-3.6.5.tar.gz; do
 		tar xf /dl/$f -C $B
+	done
+	for d in $B/*; do
+		for f in /src/deps/patches/${d##*/}/*.patch; do [ -f "$f" ] && patch -s -p1 -d $d < $f; done
 	done
 	CM="cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$P -DCMAKE_PREFIX_PATH=$P \
 		-DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5"
@@ -59,13 +64,13 @@ if [ ! -f $P/.done ]; then
 		-DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF -DWEBP_BUILD_EXTRAS=OFF
 	# X11 and Wayland both: GLFW loads either's libraries when it runs
 	cmk glfw glfw-3.4 -DGLFW_BUILD_EXAMPLES=OFF -DGLFW_BUILD_TESTS=OFF -DGLFW_BUILD_DOCS=OFF
-	( cd $B/openssl-3.6.4 &&
+	( cd $B/openssl-3.6.5 &&
 	  ./Configure no-shared no-apps no-tests no-docs no-module --prefix=$P --libdir=lib &&
 	  make -j16 build_libs && make install_dev ) > $B/openssl.log 2>&1 ||
 		{ tail -30 $B/openssl.log; echo "openssl ($arch) FAILED"; exit 1; }
 	tar xzf /dl/glfw-3.4.tar.gz -O glfw-3.4/LICENSE.md > $P/GLFW-LICENSE.md
 	rm -rf $B
-	touch $P/.done
+	echo $stamp > $P/.done
 fi
 
 # ---- the program ------------------------------------------------------------

@@ -4,7 +4,7 @@
 # headers are for GLFW, Xvfb and Mesa for the test run.
 FROM docker.io/library/ubuntu:22.04
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        g++ make cmake ninja-build perl python3 pkg-config curl ca-certificates xz-utils file \
+        g++ make cmake ninja-build patch perl python3 pkg-config curl ca-certificates xz-utils file \
         zlib1g-dev libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
         libxext-dev libxkbcommon-dev libwayland-dev wayland-protocols \
         squashfs-tools icoutils xvfb libgl1-mesa-dri \

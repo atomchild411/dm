@@ -8,7 +8,9 @@ Each as its upstream released it, unchanged:
 
 Everything else the program uses is linked from the system or built from its
 release tarball by the platform scripts: OpenSSL, FreeType, libpng, zlib,
-bzip2, libwebp and GLFW.  The network code (HTTPS, WebSocket) is our own,
+bzip2, libwebp and GLFW.  Security fixes upstream has committed but not yet
+released are applied on top from `deps/patches` (its README lists them); the
+IRIX builds get the same fixes from our pkgsrc packages.  The network code (HTTPS, WebSocket) is our own,
 over OpenSSL, in `src/core/network`; so is the reader for the protobuf
 settings Discord sends (`src/core/utils/ProtoReader.hpp`).
 
@@ -21,3 +23,13 @@ uses go under `deps`.  Keep it in step when a version moves: the same list
 is what `.github/workflows/vulnerabilities.yml` checks against OSV.dev every
 week (`sh .github/osv-check.sh` runs it locally).  Dependabot alerts are on,
 but they only cover package ecosystems, so they cannot see these libraries.
+A CVE we have patched goes in `.github/osv-ignore.txt`, with the reason.
+
+## The version
+
+`VERSION` holds the release's version, the same for every client (since
+1.12); each build's number is the commit count at the release commit
+(`DM_BUILD` where there is no .git).  The Windows resources, the MSI, the
+macOS bundle, the .deb and the tarball names all read it; the IRIX image
+version is VERSION's digits followed by the build as six digits (1.12,
+build 662: 112000662).

@@ -5,7 +5,7 @@
 # installed in /usr, with its dependencies as dpkg-shlibdeps finds them.
 # DM_BUILD is the version's third part.
 set -eu
-VERSION=1.11.${DM_BUILD:-0}
+VERSION=$(cat /src/VERSION).${DM_BUILD:-0}
 W=/work
 debarch=$(dpkg --print-architecture)
 mkdir -p $W/dist

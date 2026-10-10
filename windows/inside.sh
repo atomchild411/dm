@@ -5,7 +5,7 @@
 # in /work/dist DiscordMessenger-VERSION-windows-{x64,arm64}.zip and .msi
 # (the installer; DM_BUILD, the build number, is its version's third part).
 set -eu
-VERSION=1.11
+VERSION=$(cat /src/VERSION)
 W=/work
 mkdir -p $W/dl $W/dist
 
@@ -55,12 +55,14 @@ fetch glfw-3.4.tar.gz https://github.com/glfw/glfw/archive/refs/tags/3.4.tar.gz 
 fetch microsoft.web.webview2.1.0.4191.47.nupkg \
 	https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.4191.47/microsoft.web.webview2.1.0.4191.47.nupkg \
 	f492bbf547d0da329553b6727435b677579b1e9f91cc9e4a1ad029366d5f23d0
-fetch openssl-3.6.4.tar.gz https://github.com/openssl/openssl/releases/download/openssl-3.6.4/openssl-3.6.4.tar.gz \
-	9bffaa1ad1e07b354c21bd3324ec02fa15579f45a7d0494b3e74bc449b7333ef
+fetch openssl-3.6.5.tar.gz https://github.com/openssl/openssl/releases/download/openssl-3.6.5/openssl-3.6.5.tar.gz \
+	a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98
 
 deps() {
 	arch=$1 P=$W/pfx-$1 B=$W/deps-$1
-	[ -f $P/.done ] && return 0
+	# what the libraries are built from: a build is reused while it matches
+	stamp=$(grep '^fetch ' /src/windows/inside.sh | cat - /src/deps/patches/*/*.patch | sha256sum | cut -c1-16)
+	[ "$(cat $P/.done 2>/dev/null)" = "$stamp" ] && return 0
 	rm -rf $P $B && mkdir -p $P $B
 	CM="cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=/src/windows/toolchain.cmake -DWIN_ARCH=$arch \
 		-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$P -DCMAKE_PREFIX_PATH=$P \
@@ -71,8 +73,11 @@ deps() {
 		{ $CM -S $d -B $d/b "$@" && cmake --build $d/b && cmake --install $d/b; } > $B/$n.log 2>&1 ||
 			{ tail -30 $B/$n.log; echo "$n ($arch) FAILED"; exit 1; }
 	}
-	for f in zlib-1.3.2.tar.xz libpng-1.6.58.tar.xz freetype-2.14.3.tar.xz libwebp-1.6.0.tar.gz glfw-3.4.tar.gz openssl-3.6.4.tar.gz; do
+	for f in zlib-1.3.2.tar.xz libpng-1.6.58.tar.xz freetype-2.14.3.tar.xz libwebp-1.6.0.tar.gz glfw-3.4.tar.gz openssl-3.6.5.tar.gz; do
 		tar xf $W/dl/$f -C $B
+	done
+	for d in $B/*; do
+		for f in /src/deps/patches/${d##*/}/*.patch; do [ -f "$f" ] && patch -s -p1 -d $d < $f; done
 	done
 	echo "== libraries ($arch)"
 	cmk zlib zlib-1.3.2 -DZLIB_BUILD_SHARED=OFF -DZLIB_BUILD_TESTING=OFF
@@ -87,14 +92,14 @@ deps() {
 	# OpenSSL: its MinGW targets use a Unix makefile, but the compiler is
 	# still clang for the MSVC ABI.  The C code everywhere (no-asm).
 	case $arch in x86_64) t=mingw64 ;; aarch64) t=mingwarm64 ;; esac
-	( cd $B/openssl-3.6.4 &&
+	( cd $B/openssl-3.6.5 &&
 	  ./Configure $t no-asm no-shared no-apps no-tests no-docs no-module \
 		--prefix=$P --libdir=lib CC=$arch-windows-clang AR=llvm-ar RANLIB=llvm-ranlib RC=llvm-rc \
 		CFLAGS="-O2 -Wno-everything" &&
 	  make -j$(nproc) build_libs && make install_dev ) > $B/openssl.log 2>&1 ||
 		{ tail -30 $B/openssl.log; echo "openssl ($arch) FAILED"; exit 1; }
 	rm -rf $B
-	touch $P/.done
+	echo $stamp > $P/.done
 }
 
 # WebView2's SDK (a NuGet package, a zip): its headers and static loader
