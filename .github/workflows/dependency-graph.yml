@@ -1,0 +1,40 @@
+# Submit .github/dependencies.json to GitHub's dependency graph. C and C++
+# have no manifest GitHub can read, so without this the graph is empty.
+name: Dependency graph
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/dependencies.json
+      - .github/workflows/dependency-graph.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write   # the dependency submission API needs it
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the snapshot
+        run: |
+          jq --arg sha "$GITHUB_SHA" --arg ref "$GITHUB_REF" --arg run "$GITHUB_RUN_ID" \
+             --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/master/.github/dependencies.json" \
+             --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{
+               version: 0, sha: $sha, ref: $ref, scanned: $now,
+               job: { correlator: "dependency-graph", id: $run },
+               detector: { name: "dependencies.json", version: "1", url: $url },
+               manifests: (.manifests | with_entries(.value = {
+                 name: .key,
+                 file: { source_location: .value.file },
+                 resolved: (.value.packages | map({ key: ., value: {
+                   package_url: ., relationship: "direct", scope: "runtime" } }) | from_entries)
+               }))
+             }' .github/dependencies.json > snapshot.json
+          cat snapshot.json
+      - name: Submit it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/$GITHUB_REPOSITORY/dependency-graph/snapshots" --method POST --input snapshot.json

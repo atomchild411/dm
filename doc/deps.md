@@ -11,3 +11,8 @@ release tarball by the platform scripts: OpenSSL, FreeType, libpng, zlib,
 bzip2, libwebp and GLFW.  The network code (HTTPS, WebSocket) is our own,
 over OpenSSL, in `src/core/network`; so is the reader for the protobuf
 settings Discord sends (`src/core/utils/ProtoReader.hpp`).
+
+GitHub's dependency graph cannot read C or C++ builds, so the versions above,
+and the ones the platform scripts build, are listed by hand in
+`.github/dependencies.json`; `.github/workflows/dependency-graph.yml` submits
+that list on every push that changes it.  Keep it in step when a version moves.
