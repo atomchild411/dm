@@ -593,8 +593,18 @@ void Platform::Render(ImDrawData* dd)
 {
 	if (dd->Textures)
 		for (ImTextureData* tex : *dd->Textures)
-			if (tex->Status != ImTextureStatus_OK)
+			if (tex->Status != ImTextureStatus_OK) {
+				// Updates widened to IMPACT's terms (Platform::Aligned32):
+				// Dear ImGui keeps every texel of the atlas.
+				if (tex->Status == ImTextureStatus_WantUpdates)
+					for (ImTextureRect& r : tex->Updates) {
+						int x = r.x, w = r.w;
+						Aligned32(x, w, tex->Width);
+						r.x = (unsigned short) x;
+						r.w = (unsigned short) w;
+					}
 				ImGui_ImplOpenGL2_UpdateTexture(tex);
+			}
 	int fbW = (int) (dd->DisplaySize.x * dd->FramebufferScale.x);
 	int fbH = (int) (dd->DisplaySize.y * dd->FramebufferScale.y);
 	if (fbW <= 0 || fbH <= 0)

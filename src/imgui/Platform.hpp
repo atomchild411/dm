@@ -47,6 +47,24 @@ namespace Platform
 	bool PowerOfTwoTextures();
 	int MaxTextureSize();
 
+	// High and Maximum IMPACT refuse (GL_INVALID_VALUE) a texture subimage
+	// unless its right side is a multiple of 32 and it is 32 texels wide or
+	// more (glTexSubImage2D(3G)'s MACHINE DEPENDENCIES name the first; IRIX
+	// 6.5.22's libGLcore checks both, even at the texture's right edge).
+	// Columns x..x+w-1 of a texture tw wide, widened to those terms; the
+	// texels added must be sent as the texture already has them.
+	inline void Aligned32(int& x, int& w, int tw)
+	{
+		int right = (x + w + 31) & ~31;
+		if (right > tw)
+			right = tw;
+		int left = right - 32 < x ? right - 32 : x;
+		if (left < 0)
+			left = 0;
+		x = left;
+		w = right - left;
+	}
+
 	// The native window, for SystemTheme (a GLFWwindow*; null on X11).
 	void* Native();
 }

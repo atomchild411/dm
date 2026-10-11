@@ -120,7 +120,9 @@ namespace
 	}
 
 	struct AtlasSlot { GLuint tex; float u0, v0, u1, v1; };
-	struct Atlas { GLuint tex = 0; int x = 1, y = 1, rowH = 0; };
+	// The atlas's texels are kept here too: a glyph goes up with the
+	// columns to its right as far as a multiple of 32 (see Slot).
+	struct Atlas { GLuint tex = 0; int x = 1, y = 1, rowH = 0; std::vector<uint8_t> px; };
 	std::vector<Atlas> g_atlases[2]; // [alpha]
 	std::map<const void*, AtlasSlot> g_slots; // the glyph's pixels -> its place
 
@@ -140,7 +142,8 @@ namespace
 		GLenum format = alpha ? GL_ALPHA : GL_RGBA;
 		glTexImage2D(GL_TEXTURE_2D, 0, format, size, size, 0, format, GL_UNSIGNED_BYTE, empty.data());
 		a.tex = id;
-		g_atlases[alpha].push_back(a);
+		a.px = std::move(empty);
+		g_atlases[alpha].push_back(std::move(a));
 		return g_atlases[alpha].back();
 	}
 
@@ -164,26 +167,39 @@ namespace
 			a = &NewAtlas(alpha);
 
 		// coverage as white with that alpha (tinted when drawn), or as alpha
-		// alone; colour as is
-		std::vector<uint8_t> px((size_t) g.w * g.h * (alpha ? 1 : 4));
-		for (int i = 0; i < g.w * g.h; i++) {
-			if (alpha)
-				px[i] = g.coverage[i];
-			else if (g.argb) {
-				uint32_t p = g.argb[i];
-				px[i * 4 + 0] = (p >> 16) & 0xff;
-				px[i * 4 + 1] = (p >> 8) & 0xff;
-				px[i * 4 + 2] = p & 0xff;
-				px[i * 4 + 3] = (p >> 24) & 0xff;
+		// alone; colour as is; into the atlas's own copy, then sent
+		const int bpp = alpha ? 1 : 4;
+		for (int y = 0; y < g.h; y++)
+			for (int x = 0; x < g.w; x++) {
+				const int i = y * g.w + x;
+				uint8_t* px = &a->px[((size_t) (a->y + y) * size + a->x + x) * bpp];
+				if (alpha)
+					px[0] = g.coverage[i];
+				else if (g.argb) {
+					uint32_t p = g.argb[i];
+					px[0] = (p >> 16) & 0xff;
+					px[1] = (p >> 8) & 0xff;
+					px[2] = p & 0xff;
+					px[3] = (p >> 24) & 0xff;
+				}
+				else {
+					px[0] = px[1] = px[2] = 255;
+					px[3] = g.coverage[i];
+				}
 			}
-			else {
-				px[i * 4 + 0] = px[i * 4 + 1] = px[i * 4 + 2] = 255;
-				px[i * 4 + 3] = g.coverage[i];
-			}
-		}
+		// The columns sent are widened to IMPACT's terms (Platform::Aligned32), from
+		// the copy.
+		int left = a->x, width = g.w;
+		Platform::Aligned32(left, width, size);
 		glBindTexture(GL_TEXTURE_2D, a->tex);
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, a->x, a->y, g.w, g.h, alpha ? GL_ALPHA : GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+		glPixelStorei(GL_UNPACK_ROW_LENGTH, size);
+		glPixelStorei(GL_UNPACK_SKIP_PIXELS, left);
+		glPixelStorei(GL_UNPACK_SKIP_ROWS, a->y);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, left, a->y, width, g.h, alpha ? GL_ALPHA : GL_RGBA, GL_UNSIGNED_BYTE, a->px.data());
+		glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+		glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+		glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
 		AtlasSlot s;
 		s.tex = a->tex;
 		s.u0 = (float) a->x / size;
