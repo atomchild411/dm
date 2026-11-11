@@ -22,6 +22,6 @@ jobs:
   osv:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Look the libraries up in OSV.dev
         run: sh .github/osv-check.sh
